@@ -5,7 +5,7 @@
  * Opened from the COB page (app/pages/cob-page.php) by a project row's "View": window.cobModal.open(budgetReferenceNumber,
  * projectCode?) — projectCode, when given, scrolls to and highlights that project. It shows what the request is made of, straight
  * from GET /cob/read/{budget_reference_number} (CobService::fetchById): the request, then every Program block, every Project of
- * it, each Project's chart-of-accounts line items with the eight COB columns (Approved Amount, Revision / Realignment, Revised Amount,
+ * it, each Project's chart-of-accounts line items with the eight COB columns (Approved Amount, Amendment / Realignment, Revised Amount,
  * RFA Approved, LAA Issued, Budget Balance, Outstanding CBA, Budget Balance Available for Earmarking), and its supporting documents
  * (fims.budget_req_project_attachment). A COE request has no program or project: its line items are shown as a COE card, split into PS / MOOE.
  * Every line carries the identifier of its account code — CO (1…), PS (5-01…), MOOE (5-02…).
@@ -54,15 +54,11 @@
 #cobv-overlay .cobv-muted { color:var(--afims-text-muted, #62657E);font-size:12.5px; }
 #cobv-overlay .cobv-neg { color:#dc2626; }
 #cobv-overlay .cobv-pos { color:var(--green-txt, #0C7539); }
-#cobv-overlay .cobv-adj { min-width:190px; }
-#cobv-overlay .cobv-adj > div { display:flex;justify-content:space-between;align-items:baseline;gap:10px; }
-#cobv-overlay .cobv-adj > div + div { margin-top:2px; }
-#cobv-overlay .cobv-adj-k { font-size:10px;font-weight:500;letter-spacing:.03em;text-transform:uppercase;color:var(--afims-text-muted, #62657E); }
 #cobv-overlay .cobv-dash { color:var(--afims-text-disabled, #A9AAB8); }
 </style>
 
 <div id="cobv-overlay" class="nha-overlay no-print">
-    <div class="nha-modal nha-modal-xl" role="dialog" aria-modal="true" aria-labelledby="cobv-title">
+    <div class="nha-modal u-modal-xl" role="dialog" aria-modal="true" aria-labelledby="cobv-title">
         <div class="nha-modal-hdr">
             <h3 id="cobv-title">Approved Budget Request</h3>
             <button type="button" class="nha-modal-close" id="cobv-close" aria-label="Close">&times;</button>
@@ -104,31 +100,21 @@
         if (Math.abs(n) < 0.005) return '<span class="cobv-dash">-</span>';
         return n < 0 ? `<span class="cobv-neg">(${plain(-n)})</span>` : plain(n);
     };
-    // The Revision / Realignment column is signed and coloured (a deduction - in red, an addition + in green); the other columns keep the sheet's brackets. Its cell shows, on a line,
-    // only the latest adjustment (a realignment is - on the budget that gave funds up and + on the one that received them); the Total row has nothing in it.
+    // The Amendment / Realignment column is signed and coloured (a deduction - in red, an addition + in green); the other columns keep the sheet's brackets. Its cell shows, on a line, the total of
+    // every approved amendment and realignment (a realignment is - on the budget that gave funds up and + on the one that received them); the Total row has nothing in it.
     const signed = v => {
         const n = Number(v || 0);
         if (Math.abs(n) < 0.005) return '<span class="cobv-dash">-</span>';
         return n < 0 ? `<span class="cobv-neg">−${plain(-n)}</span>` : `<span class="cobv-pos">+${plain(n)}</span>`;
     };
-    // the Revision / Realignment cell. A line item shows only what the LATEST approved request changed on it (the server sends latest_revision_amount / latest_realignment_amount with every row),
-    // each part on a line of its own with its own sign and colour — a part that is nothing is left out; no adjustment at all is a dash. A project's / the request's Total row shows NOTHING in this
-    // column: there is no total of the revisions / realignments (Revised Amount is still worked out from all of them, per line, on the server).
-    const adjCell = (o, leaf) => {
-        if (!leaf) return '<td class="cobv-num"></td>';
-        const rev = Number(o.latest_revision_amount || 0), rea = Number(o.latest_realignment_amount || 0), net = Number(o.revision_amount || 0);
-        const line = (tag, n) => Math.abs(n) < 0.005 ? '' : `<div><span class="cobv-adj-k">${tag}</span>${signed(n)}</div>`;
-        const lines = line('Revision', rev) + line('Realignment', rea);
-        // a line whose latest request nets to nothing on it but that has earlier adjustments still shows its net
-        if (!lines) return Math.abs(net) < 0.005 ? '<td class="cobv-num cobv-adj"><span class="cobv-dash">-</span></td>' : `<td class="cobv-num">${signed(net)}</td>`;
-        const title = esc('Latest adjustment only. Net of all revisions and realignments to date: ' + (Math.abs(net) < 0.005 ? '—' : (net < 0 ? '−' : '+') + '₱ ' + plain(Math.abs(net))) + ' (Approved Amount + this net = Revised Amount)');
-        return `<td class="cobv-num cobv-adj" title="${title}">${lines}</td>`;
-    };
+    // the Amendment / Realignment cell: the TOTAL of every approved amendment and realignment on the line to date (the server's revision_amount — Approved Amount + this = Revised Amount), so an
+    // amendment and a realignment into the same line add up. Nothing at all is a dash. A Total row shows NOTHING in this column: the figure is per line and is not rolled up.
+    const adjCell = (o, leaf) => leaf ? `<td class="cobv-num">${signed(o.revision_amount)}</td>` : '<td class="cobv-num"></td>';
     // the eight columns, in the order of the COB sheet: [key, heading, tooltip]
     const COLS = [
         ['approved_amount', 'Approved Amount', 'What FMD suggested in the Budget Proposal module, before any revision or CBA'],
-        ['revision_amount', 'Revision / Realignment', 'A line shows only its LATEST revision or realignment (+ green, − red); the Total row has no figure here'],
-        ['revised_amount', 'Revised Amount', 'Approved Amount net of Revision / Realignment (a decrease lowers it)'],
+        ['revision_amount', 'Amendment / Realignment', 'The total of ALL the approved amendments and realignments to date (+ green, − red); the Total row has no figure here'],
+        ['revised_amount', 'Revised Amount', 'Approved Amount net of Amendment / Realignment (a decrease lowers it)'],
         ['rfa_approved', 'RFA Approved', 'Drawn from the CBAs by approved RFAs'],
         ['laa_issued', 'LAA Issued', 'Drawn from the CBAs by issued LAAs'],
         ['remaining_balance', 'Budget Balance', 'Revised Amount less Outstanding CBA, RFA Approved and LAA Issued'],
@@ -189,8 +175,7 @@
         // (anything else a programless line might be booked to goes last, as "Other"). CobService::fetchById() calls them unassigned_line_items.
         const loose = r.unassigned_line_items || [];
         if (loose.length) {
-            // the two figures of the Revision / Realignment cell ride along with the columns
-            const SUMMED = [...COLS.map(([k]) => k), 'latest_revision_amount', 'latest_realignment_amount'];
+            const SUMMED = COLS.map(([k]) => k);
             const sum = ls => ls.reduce((a, l) => { for (const k of SUMMED) a[k] += Number(l[k] || 0); return a; }, Object.fromEntries(SUMMED.map(k => [k, 0])));
             const groups = [['PS', 'Personal Services'], ['MOOE', 'Maintenance and Other Operating Expenses']]
                 .map(([c, name]) => [c, name, loose.filter(l => l.expense_class === c)]);

@@ -14,9 +14,6 @@ $_pod_list = 'PurchaseOrder';
 $_pod_form = $_pod_list;
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <style>
@@ -177,7 +174,7 @@ $_pod_form = $_pod_list;
 
     <!-- Reject / cancel reason modal -->
     <div id="pod-modal" class="nha-overlay">
-        <div class="nha-modal nha-modal-sm">
+        <div class="nha-modal u-modal-sm">
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title" id="pod-modal-title">Reject Purchase Order</h3>
                 <button type="button" class="nha-modal-close" onclick="pod_closeModal()">&times;</button>

@@ -191,6 +191,14 @@ and COE classifications. None of those have a source in the Budget Request table
 the page's filters. There is no flat records tab and no `GET /cob/list` any more. The old page itself is kept outside the
 repo as `cob-page.old-design.php` next to the other old-COB reference files.
 
+## Supplemental projects (new projects released by a SARO)
+
+A **Supplemental** request (Budget Amendment → the Supplemental tab, `BudgetRevisionService::approveSupplemental()`) adds a NEW project that is not in the approved COB. Once **approved** it is an ordinary
+project of the filing office's Approved budget request for the SARO's fiscal year, so it appears **in its Program / Sub-Program under CO** — nothing else in the COB changes to show it, and **the SARO number is not
+shown here**. Its budget lines are created with `suggested_amount` 0 and their amount is written to the ledger as `SUPPLEMENTAL` rows, so the amount is in **Revision / Realignment (Amendment)** and the
+**Approved Amount is 0**; Revised Amount = that amount, and it flows into the parents' Revised Amount, Remaining Balance and the TOTAL like any other revision. On the RFA / LAA page the detail row reads
+"Supplemental #id" (code `SUP`). Its budget lines are **tagged** (`fims.budget_line_items.supplemental_revision_id` = the request that created them, `03 - alter_table/63`): COB Monitoring and RFA / LAA Monitoring show them, while the Budget Requirements (proposal) screens — the list, **View Proposal** and its Excel / print export — leave them out, because the project was never part of a proposal (see `app/routes/README.md`, `budget_req.php`). Not done yet: hiding the Originating Unit level for such a project (the tree still shows its office between the Sub-Program and the Project).
+
 ## History
 
 - First version: *Total | Fund Balance | Adjustment | Carry Over Obligation* over Type of Fund / Component / Region trees down to the account. Replaced by the

@@ -30,9 +30,9 @@ use PHPMaker2024\FIMS\DataType;
  *                       Budget Revision ever moves it — so it is also the amount "as first suggested"
  *   revision_amount     the net of ALL the approved Budget Revisions and Realignments to date, signed (a decrease, or funds a budget gave up by realignment, is negative), read
  *                       straight from budget_line_items.adjustment (BudgetLineBalanceSql::revisionExpr()) — the total of the line's rows in the ledger
- *                       fims.budget_line_item_revision_transaction, kept by a trigger on it (03 - alter_table/53). This is what revised_amount is worked out from, so it is what reconciles Approved to Revised. The COB page's Revision /
- *                       Realignment column does NOT show it — not on a parent row, not in the TOTAL; a project shows only what the LATEST approved request changed (below)
- *   latest_revision_amount / latest_realignment_amount   (not columns — the figures of that cell, worked out after the SQL by latestByLeaf(), not in the line rows) what the
+ *                       fims.budget_line_item_revision_transaction, kept by a trigger on it (03 - alter_table/53). This is what revised_amount is worked out from, so it is what reconciles Approved to Revised. It is what the COB page's (and its View modal's)
+ *                       Amendment / Realignment column shows — on a project (a line, in the modal) only, so an amendment and a realignment into the same project add up; a parent row and the TOTAL show nothing there
+ *   latest_revision_amount / latest_realignment_amount   NO LONGER SHOWN by the COB page or its View modal (they show revision_amount); still computed here and nothing reads them. (not columns — the figures, worked out after the SQL by latestByLeaf(), not in the line rows) what the
  *                       most recent approved request changed on the budget: its revision (signed) and its realignment (− on the budget that gave funds up, + on the one that
  *                       received them). "The latest" is per project (per request and PS / MOOE class under COE): the request approved last among those that touched any of its
  *                       lines, and what it did on THAT project's lines; a group's figure is the sum of its projects'. They do not add up to revision_amount — an earlier
@@ -101,7 +101,7 @@ class CobService
     /**
      * The amount columns every row, group and total carries (see the header comment for what each is): the eight of the COB Monitoring sheet,
      * then the five more the RFA / LAA Monitoring page shows (revised_computed, rfa_laa_amount, disbursement, unallocated_amount, account_payable), then the two figures of the
-     * COB page's Revision / Realignment cell (latest_revision_amount, latest_realignment_amount — worked out after the SQL, see latestByLeaf(); the SQL rows do not carry them).
+     * COB page's former "latest adjustment" cell (latest_revision_amount, latest_realignment_amount — worked out after the SQL, see latestByLeaf(); the SQL rows do not carry them; nothing shows them now).
      * The COB page, its View modal and its report name the keys they show, so the extras change nothing else there.
      */
     public const AMOUNT_KEYS = ['approved_amount', 'revision_amount', 'revised_amount', 'cba_requested', 'available_amount', 'rfa_approved', 'laa_issued', 'remaining_balance',
@@ -490,7 +490,8 @@ class CobService
             ) ?: [];
 
             $tree = $splitCoe ? $this->splitCoe($rows, $layoutBy) : $this->buildTree($rows, $this->levelsFor($layoutBy));
-            // The Revision / Realignment cell shows only what the LATEST approved request changed on each project (latestByLeaf()); a group's figure is the sum of its projects'
+            // latest_revision_amount / latest_realignment_amount: what the LATEST approved request changed on each project (latestByLeaf()), a group's figure the sum of its projects'.
+            // The COB page no longer shows them — its Amendment / Realignment cell is revision_amount, the total of all of them — so nothing reads these now.
             $tree = $this->withLatest($tree, $this->latestByLeaf($this->ledgerLeafRows($f, $scopeRcId), $splitCoe));
             $totals = $this->zeroAmounts();
             foreach ($tree as $node) {
@@ -640,6 +641,9 @@ class CobService
                 [$label, $code, $detail] = ['Revisions / realignments approved before the ledger', 'REV', ''];
             } elseif ($type === 'REVISION') {
                 [$label, $code, $detail] = ['Revision #'.$id, 'REV', $from];
+            } elseif ($type === 'SUPPLEMENTAL') {
+                // a budget line created by an approved supplemental request (a new project released by a SARO): its amount is the line's Revision Amount, and it has no From / To line
+                [$label, $code, $detail] = ['Supplemental #'.$id, 'SUP', ''];
             } elseif ($type === 'REALIGNMENT_OUT') {
                 [$label, $code, $detail] = ['Realignment #'.$id.' — out', 'REA OUT', trim($from.' → '.$to, ' →')];
             } else {
@@ -1189,8 +1193,8 @@ class CobService
                 'DB'
             ) ?: [];
 
-            // The Revision / Realignment cell shows only what the LATEST approved request changed (per project, per PS / MOOE class under COE — the same as the tree, latestByLeaf()),
-            // and each line what that request did on IT, so a project's lines add up to its figure
+            // latest_revision_amount / latest_realignment_amount per line: what the LATEST approved request changed (per project, per PS / MOOE class under COE — as latestByLeaf()), and
+            // on each line what that request did on IT. The View modal no longer shows them (it shows each line's revision_amount, the total of all), so nothing reads these now.
             $latestOf = $this->latestByLine($brn, $lineRows);
 
             // line items by project row, attachments by (program row, project code)

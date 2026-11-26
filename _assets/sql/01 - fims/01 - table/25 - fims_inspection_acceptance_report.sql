@@ -29,7 +29,12 @@ CREATE TABLE IF NOT EXISTS fims.inspection_acceptance_report (
     si_number        VARCHAR(100),                      -- Sales Invoice # (optional)
     si_date          DATE,                              -- Sales Invoice date (optional)
     line_transaction JSONB        NOT NULL DEFAULT '[]'::jsonb,   -- the PO's delivery receipts, see above
-    created_by       INTEGER,
+    delivery_accepted    BOOLEAN      NOT NULL DEFAULT FALSE,     -- set by Actions -> Delivery Acceptance (one-way); no more deliveries once TRUE; other modules can key off it
+    delivery_accepted_at TIMESTAMPTZ,
+    delivery_accepted_by INTEGER,                                 -- "Inspected By": the logged-in user (uac.users.user_id), set by the backend
+    subject_to           VARCHAR(100),                            -- "Subject to ICS/PAR", typed by the user (required when accepting)
+    inspection_notes     TEXT,                                    -- optional
+    created_by      INTEGER,
     created_at       TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by       INTEGER,
     updated_at       TIMESTAMPTZ,
@@ -42,3 +47,11 @@ COMMENT ON COLUMN fims.inspection_acceptance_report.iar_number IS 'IAR number en
 COMMENT ON COLUMN fims.inspection_acceptance_report.line_transaction IS 'Array of delivery receipts: {dr_number, delivery_date, total_amount, lines:[{account_code, account_title, amount}], items?:[{description, serial_no, amount, property_no, par_no}]}; items only when total_amount >= 50,000';
 
 CREATE INDEX IF NOT EXISTS idx_iar_line_transaction ON fims.inspection_acceptance_report USING GIN (line_transaction);
+
+-- Delivery acceptance (an older table gets the columns here; safe to re-run)
+ALTER TABLE fims.inspection_acceptance_report ADD COLUMN IF NOT EXISTS delivery_accepted    BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE fims.inspection_acceptance_report ADD COLUMN IF NOT EXISTS delivery_accepted_at TIMESTAMPTZ;
+ALTER TABLE fims.inspection_acceptance_report ADD COLUMN IF NOT EXISTS delivery_accepted_by INTEGER;
+ALTER TABLE fims.inspection_acceptance_report ADD COLUMN IF NOT EXISTS subject_to           VARCHAR(100);
+ALTER TABLE fims.inspection_acceptance_report ADD COLUMN IF NOT EXISTS inspection_notes     TEXT;
+COMMENT ON COLUMN fims.inspection_acceptance_report.delivery_accepted IS 'TRUE once the user clicked Actions -> Delivery Acceptance: the delivery of the PO is accepted, no more delivery receipts can be added';

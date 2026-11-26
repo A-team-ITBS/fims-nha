@@ -196,6 +196,11 @@ class InfraIarService
         $rows = App\ExecuteRows($sql, 'DB') ?: [];
         foreach ($rows as &$r) {
             $r['lines']         = $this->po->allocationLines($r['allocation_lines']);
+            $r['category']      = $this->categoryOf($r['lines']);   // 'CIP' | 'WIP': the group the Account Entries picker highlights for this RFA
+            foreach ($r['lines'] as &$ln) {                          // lines whose account cannot be posted as is: the form blanks them and opens the picker
+                $ln['pick'] = $this->pickGroupOf((string) ($ln['account_code'] ?? ''));
+            }
+            unset($ln);
             $rfaAmount = round((float) $r['contract_cost'], 2);   // what the RFA requests (the account entries are loaded from it and may not exceed it)
             $sug = $r['suggested_total'] !== null ? round((float) $r['suggested_total'], 2) : 0.0;
             $pro = $r['project_cost'] !== null ? round((float) $r['project_cost'], 2) : 0.0;
@@ -236,7 +241,7 @@ class InfraIarService
      * cleaned = { location, contract, date_started, completion_date_revised, contract_duration, items[] } — plus, when
      * $withEntries, allocation_id and entries[{account_code, account_title, amount}] (a new record).
      */
-    private function clean(array $body, bool $withEntries): array
+    private function clean(array $body, bool $withEntries, bool $withItems = true): array
     {
         $out = [];
         if ($withEntries) {
@@ -249,6 +254,19 @@ class InfraIarService
             $raw = $body['entries'] ?? [];
             if (!is_array($raw) || count($raw) < 1) {
                 return [null, 'Add at least one account row.'];
+            }
+            // ONE account row only, and only from the CIP / WIP lists (PoDrService::INFRA_CATEGORIES): the project is recorded either under
+            // ONE CIP account or under ONE WIP account — never several accounts, never CIP and WIP together, never any other account code.
+            // Other accounts (e.g. 1-99-02-010 Advances to Contractors) may be added beside it.
+            $allowed = array_merge(\PHPMaker2024\FIMS\Service\PoDrService::INFRA_CATEGORIES['CIP'], \PHPMaker2024\FIMS\Service\PoDrService::INFRA_CATEGORIES['WIP']);
+            $cipWip  = 0;
+            foreach (array_values($raw) as $en) {
+                if (in_array(trim((string) ($en['account_code'] ?? '')), $allowed, true)) {
+                    $cipWip++;
+                }
+            }
+            if ($cipWip > 1) {
+                return [null, 'Only one CIP or WIP account is allowed — you cannot enter several CIP / WIP accounts, or CIP and WIP together. Other accounts can still be added.'];
             }
             $entries = [];
             foreach (array_values($raw) as $i => $en) {
@@ -278,6 +296,34 @@ class InfraIarService
                 $en['account_title'] = $titles[$en['account_code']];
             }
             unset($en);
+            // An account that has sub-ledgers is never posted to directly: the amount goes under one of its sub-ledgers
+            // (e.g. 1-04-03-020 Work-in-Process Inventory -> 1-04-03-020-01 Sites and Services). Same rule as the account pickers.
+            foreach (App\ExecuteRows(
+                "SELECT c.account_code,
+                        (SELECT MIN(ch.account_code) FROM fims.chart_of_accounts ch
+                          WHERE ch.parent_account_id = c.account_id AND ch.posting_allowed AND COALESCE(ch.status, 'Active') ILIKE 'active') AS first_sl
+                   FROM fims.chart_of_accounts c
+                  WHERE c.account_code IN ({$in})
+                    AND EXISTS (SELECT 1 FROM fims.chart_of_accounts ch
+                                 WHERE ch.parent_account_id = c.account_id AND ch.posting_allowed AND COALESCE(ch.status, 'Active') ILIKE 'active')",
+                'DB'
+            ) ?: [] as $r) {
+                if ($this->pickGroupOf($r['account_code']) === 'CIP') {
+                    continue;   // a capital-asset account is refused below with the CIP message instead
+                }
+                foreach ($entries as $i => $en) {
+                    if ($en['account_code'] === $r['account_code']) {
+                        return [null, 'Account row ' . ($i + 1) . ": {$r['account_code']} {$en['account_title']} has sub-ledgers — enter the amount under one of them (e.g. {$r['first_sl']}), not under the account itself."];
+                    }
+                }
+            }
+            // A capital-asset account (building, land, leased assets improvements, investment property, …) is not recorded directly while the
+            // project is being built: the amount goes to a CIP account first (the form opens the CIP choice for such an RFA line).
+            foreach ($entries as $i => $en) {
+                if ($this->pickGroupOf($en['account_code']) === 'CIP') {
+                    return [null, 'Account row ' . ($i + 1) . ": {$en['account_code']} {$en['account_title']} is not valid here yet — record the amount under a CIP account (e.g. 1-06-99-010 CIP - Land Improvements, 1-06-99-020-01 CIP - Sites & Services)."];
+                }
+            }
             $out['entries'] = $entries;
         }
 
@@ -288,6 +334,19 @@ class InfraIarService
         $con = $this->nullable($body['contract'] ?? null);   // the Contract: typed by the user
         if ($con !== null && mb_strlen($con) > 255) {
             return [null, 'Contract must be 255 characters or fewer.'];
+        }
+        // Area in SQM / Units (total_land_area) and the TCT number: typed by the user, both optional
+        $areaRaw = str_replace(',', '', trim((string) ($body['total_land_area'] ?? '')));
+        $area    = null;
+        if ($areaRaw !== '') {
+            if (!is_numeric($areaRaw) || (float) $areaRaw < 0 || (float) $areaRaw >= 1e14) {
+                return [null, 'Area in SQM / Units must be a valid amount (0 or more).'];
+            }
+            $area = number_format((float) $areaRaw, 2, '.', '');
+        }
+        $tct = $this->nullable($body['tct_number'] ?? null);
+        if ($tct !== null && mb_strlen($tct) > 100) {
+            return [null, 'TCT number must be 100 characters or fewer.'];
         }
         $dur = $this->nullable($body['contract_duration'] ?? null);
         if ($dur !== null && mb_strlen($dur) > 100) {
@@ -305,9 +364,13 @@ class InfraIarService
             return [null, 'The completion date (revised) cannot be before the date started.'];
         }
         $out += [
-            'location' => $loc, 'contract' => $con, 'contract_duration' => $dur,
+            'location' => $loc, 'contract' => $con, 'contract_duration' => $dur, 'total_land_area' => $area, 'tct_number' => $tct,
             'date_started' => $start, 'completion_date_revised' => $end,
         ];
+
+        if (!$withItems) {
+            return [$out, null];   // an edit never touches the Statement of Work items (Actions → Add Accomplishment adds them)
+        }
 
         // Statement of Work Accomplishments: description, cost, % accomplishment — a line with nothing entered is skipped
         $items = [];
@@ -353,7 +416,7 @@ class InfraIarService
 
     private const COLS = "s.swa_id, s.swa_number, s.allocation_id, a.allocation_number AS rfa_number, a.vendor_id, s.contract,
                           TO_CHAR(s.date_started, 'YYYY-MM-DD') AS date_started, TO_CHAR(s.completion_date_revised, 'YYYY-MM-DD') AS completion_date_revised,
-                          s.contract_duration, s.line_transaction, rc.rc_name AS requesting_office";
+                          s.contract_duration, s.total_land_area, s.tct_number, s.category, s.line_transaction, rc.rc_name AS requesting_office";
 
     /**
      * The RFA number, project, program, contractor and location are NOT kept on the record (the columns were dropped): they are read live from the RFA / project / program /
@@ -398,6 +461,7 @@ class InfraIarService
         $r['accomplishment'] = self::overallPct($items);
         $r['jev_id']         = !empty($tx['jev_id']) ? (int) $tx['jev_id'] : null;
         $r['jev_no']         = !empty($tx['jev_no']) ? (string) $tx['jev_no'] : null;
+        // r['category'] is the stored column: the title of the record's one CIP / WIP account entry, set when the pro-forma JEV is submitted (linkJev)
         unset($r['line_transaction']);
 
         return $r;
@@ -423,7 +487,7 @@ class InfraIarService
     private function searchWhere(string $s): string
     {
         return "(s.swa_number ILIKE {$s} OR a.allocation_number ILIKE {$s} OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(s.line_transaction -> 0 -> 'items', '[]'::jsonb)) it WHERE it ->> 'description' ILIKE {$s})
-                           OR s.contract ILIKE {$s}
+                           OR s.contract ILIKE {$s} OR s.tct_number ILIKE {$s}
                            OR EXISTS (SELECT 1 FROM fims.vendors v WHERE v.vendor_id = a.vendor_id AND v.vendor_name ILIKE {$s})
                            OR EXISTS (SELECT 1 FROM fims.project pr WHERE pr.project_code = blk.project_code AND (pr.project_code ILIKE {$s} OR pr.project_name ILIKE {$s}))
                            OR EXISTS (SELECT 1 FROM fims.budget_req_project brp WHERE brp.project_code = blk.project_code AND brp.location ILIKE {$s}))";
@@ -438,6 +502,46 @@ class InfraIarService
 
     /** An RFA is an infrastructure one when any of its lines uses one of these accounts (or a sub-ledger of them). */
     public const INFRA_RFA_ACCOUNTS = ['1-04-03-020', '1-05-01-010', '1-05-01-020', '1-06-04-010', '1-06-09-020', '1-06-01-010', '1-06-04-990', '1-06-02-990'];
+
+    /**
+     * The RFA lines on these accounts (or a sub-ledger, e.g. 1-06-04-990-03 Other Structures - Properties Held for Rent Building) are
+     * capital assets that go through CIP; an RFA on any other infrastructure account (the Work-in-Process one) goes to WIP.
+     */
+    public const CIP_RFA_ACCOUNTS = ['1-06-04-010', '1-06-09-020', '1-06-01-010', '1-06-04-990', '1-06-02-990', '1-05-01-010', '1-05-01-020'];
+
+    /**
+     * Which group the user must choose from for an RFA line whose account is not valid as an Account Entry yet, or '' when it is fine:
+     * a capital-asset account (CIP_RFA_ACCOUNTS, e.g. 1-06-04-010 Buildings) is not posted directly — its amount goes to a CIP account;
+     * the Work-in-Process control account 1-04-03-020 has sub-ledgers — the amount goes under one of them (WIP).
+     */
+    private function pickGroupOf(string $code): string
+    {
+        if ($code === self::WIP_ACCOUNT) {
+            return 'WIP';
+        }
+        foreach (self::CIP_RFA_ACCOUNTS as $p) {
+            if ($code === $p || str_starts_with($code, $p . '-')) {
+                return 'CIP';
+            }
+        }
+
+        return '';
+    }
+
+    /** 'CIP' when any line of the RFA is on one of CIP_RFA_ACCOUNTS, else 'WIP' — which group the Account Entries picker highlights. */
+    private function categoryOf(array $lines): string
+    {
+        foreach ($lines as $ln) {
+            $code = (string) ($ln['account_code'] ?? '');
+            foreach (self::CIP_RFA_ACCOUNTS as $p) {
+                if ($code === $p || str_starts_with($code, $p . '-')) {
+                    return 'CIP';
+                }
+            }
+        }
+
+        return 'WIP';
+    }
 
     private function infraCodesSql(): string
     {
@@ -454,7 +558,7 @@ class InfraIarService
      * Work-in-Process account (1-04-03-020, or one of its sub-ledgers). One row per project (one record per RFA): the JEV's book, the office, project, location, contractor, contract,
      * the three contract costs (read live) and the physical accomplishment (the items' % added up).
      */
-    public function workInProcess(int $page = 1, int $limit = 10, string $search = ''): array
+    public function workInProcess(int $page = 1, int $limit = 10, string $search = '', string $account = ''): array
     {
         try {
             $code = $this->q(self::WIP_ACCOUNT);
@@ -463,6 +567,9 @@ class InfraIarService
                      LEFT JOIN fims.books bk ON bk.book_id = j.book_id
                      LEFT JOIN fims.settings_status js ON js.id = j.status_id";
             $where = "EXISTS (SELECT 1 FROM fims.journal_entry_voucher_lines l WHERE l.jev_id = j.jev_id AND (l.account_code = {$code} OR l.account_code LIKE {$like}))";
+            if ($account !== '') {   // a tab of the page: the projects whose stored category (set when the JEV was submitted, "code - title") is this WIP sub-ledger
+                $where .= ' AND s.category LIKE ' . $this->q($account . ' - %');
+            }
             if ($search !== '') {
                 $s      = $this->q('%' . $search . '%');
                 $where .= " AND ({$this->searchWhere($s)} OR bk.name ILIKE {$s} OR j.jev_no ILIKE {$s})";
@@ -485,14 +592,58 @@ class InfraIarService
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
+    /** The tabs of the Work in Process page: the WIP sub-ledgers (1-04-03-020-01 … -05) — [{ account_code, account_title }], by code. */
+    public function wipCategories(): array
+    {
+        try {
+            $codes = array_values(array_filter(\PHPMaker2024\FIMS\Service\PoDrService::INFRA_CATEGORIES['WIP'], fn ($c) => $c !== self::WIP_ACCOUNT));
+            $in    = implode(',', array_map(fn ($c) => $this->q($c), $codes));
+            $rows  = App\ExecuteRows("SELECT account_code, account_title FROM fims.chart_of_accounts WHERE account_code IN ({$in}) ORDER BY account_code", 'DB') ?: [];
+
+            return ['success' => true, 'data' => $rows];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /** The values of the list's two filter dropdowns, from the records that exist: { offices: [{value: rc_id, label}], contractors: [{value: vendor_id, label}] }. */
+    public function filterOptions(): array
+    {
+        try {
+            $from = "FROM {$this->t} s JOIN fims.budget_allocation a ON a.allocation_id = s.allocation_id";
+            $offices = App\ExecuteRows(
+                "SELECT DISTINCT a.requesting_rc_id AS value, COALESCE(rc.rc_name, a.requesting_rc_id) AS label
+                 {$from} LEFT JOIN fims.responsibility_code rc ON rc.rc_id = a.requesting_rc_id
+                 WHERE COALESCE(a.requesting_rc_id, '') <> '' ORDER BY label",
+                'DB'
+            ) ?: [];
+            $contractors = App\ExecuteRows(
+                "SELECT DISTINCT v.vendor_id::text AS value, v.vendor_name AS label
+                 {$from} JOIN fims.vendors v ON v.vendor_id = a.vendor_id
+                 WHERE COALESCE(v.vendor_name, '') <> '' ORDER BY label",
+                'DB'
+            ) ?: [];
+
+            return ['success' => true, 'data' => ['offices' => $offices, 'contractors' => $contractors]];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
     /** Paginated list: one row per infrastructure IAR. */
-    public function fetchAlls(int $page = 1, int $limit = 10, string $search = ''): array
+    public function fetchAlls(int $page = 1, int $limit = 10, string $search = '', string $rcId = '', string $vendorId = ''): array
     {
         try {
             $where = '1=1';
             if ($search !== '') {
                 $s     = $this->q('%' . $search . '%');
                 $where = $this->searchWhere($s);
+            }
+            if (trim($rcId) !== '') {            // filter: Regional Office/District Office (the RFA's requesting office)
+                $where .= ' AND a.requesting_rc_id = ' . $this->q(trim($rcId));
+            }
+            if (ctype_digit(trim($vendorId))) {  // filter: Contractor (the RFA's vendor)
+                $where .= ' AND a.vendor_id = ' . (int) $vendorId;
             }
             $limit  = max(1, $limit);
             $page   = max(1, $page);
@@ -568,11 +719,11 @@ class InfraIarService
             $by = $userId ? (int) $userId : 'NULL';
             App\Execute(
                 "INSERT INTO {$this->t} (swa_number, allocation_id,
-                                         contract, date_started, completion_date_revised, contract_duration, line_transaction, created_by)
+                                         contract, date_started, completion_date_revised, contract_duration, total_land_area, tct_number, line_transaction, created_by)
                  VALUES (" . implode(', ', [
                     $this->q($d['swa_number']), $aid,
                     $this->sqlOrNull($d['contract']), $this->sqlOrNull($d['date_started']), $this->sqlOrNull($d['completion_date_revised']),
-                    $this->sqlOrNull($d['contract_duration']), $this->jsonSql([['items' => $d['items'], 'lines' => $d['entries'], 'jev_id' => null, 'jev_no' => null]]), $by,
+                    $this->sqlOrNull($d['contract_duration']), $d['total_land_area'] === null ? 'NULL' : $d['total_land_area'], $this->sqlOrNull($d['tct_number']),$this->jsonSql([['items' => $d['items'], 'lines' => $d['entries'], 'jev_id' => null, 'jev_no' => null]]), $by,
                 ]) . ')',
                 'DB'
             );
@@ -608,7 +759,7 @@ class InfraIarService
         return $prefix . str_pad((string) ($max + 1), 4, '0', STR_PAD_LEFT);
     }
 
-    /** EDIT — only the contract, dates, contract duration and the Statement of Work items change; the SWA number, the RFA and the account entries are kept. */
+    /** EDIT — only the project details change (contract, area, TCT, dates, contract duration); the SWA number, the RFA, the account entries and the Statement of Work items are kept. */
     public function update(int $id, array $body, ?int $userId = null): array
     {
         try {
@@ -616,29 +767,80 @@ class InfraIarService
             if (!$cur) {
                 return ['success' => false, 'message' => 'Infrastructure IAR not found.'];
             }
-            [$d, $err] = $this->clean($body, false);   // the account entries are never changed here
+            [$d, $err] = $this->clean($body, false, false);   // neither the account entries nor the Statement of Work items are changed here
             if ($err) {
                 return ['success' => false, 'message' => $err];
             }
             $tx = $this->txOf($cur[0]['line_transaction']);
-            $entryCents = 0;
-            foreach ($tx['lines'] ?? [] as $en) {
-                $entryCents += (int) round((float) ($en['amount'] ?? 0) * 100);
-            }
-            $itemCents = $this->itemsCents($d['items']);
-            if ($itemCents > $entryCents) {
-                return ['success' => false, 'message' => 'The total cost of the Statement of Work Accomplishments (' . number_format($itemCents / 100, 2) . ') may not exceed the total of the Account Entries (' . number_format($entryCents / 100, 2) . ').'];
-            }
+            $d['items'] = array_values(array_filter($tx['items'] ?? [], 'is_array'));   // kept as they are
             $by = $userId ? (int) $userId : 'NULL';
             App\Execute(
                 "UPDATE {$this->t} SET contract = " . $this->sqlOrNull($d['contract'])
                 . ', date_started = ' . $this->sqlOrNull($d['date_started']) . ', completion_date_revised = ' . $this->sqlOrNull($d['completion_date_revised'])
-                . ', contract_duration = ' . $this->sqlOrNull($d['contract_duration']) . ', line_transaction = ' . $this->jsonSql([['items' => $d['items'], 'lines' => $tx['lines'] ?? [], 'jev_id' => $tx['jev_id'] ?? null, 'jev_no' => $tx['jev_no'] ?? null]])
+                . ', contract_duration = ' . $this->sqlOrNull($d['contract_duration'])
+                . ', total_land_area = ' . ($d['total_land_area'] === null ? 'NULL' : $d['total_land_area']) . ', tct_number = ' . $this->sqlOrNull($d['tct_number'])
+                . ', line_transaction = ' . $this->jsonSql([['items' => $d['items'], 'lines' => $tx['lines'] ?? [], 'jev_id' => $tx['jev_id'] ?? null, 'jev_no' => $tx['jev_no'] ?? null]])
                 . ", updated_by = {$by}, updated_at = CURRENT_TIMESTAMP WHERE swa_id = " . (int) $id,
                 'DB'
             );
 
             return ['success' => true, 'message' => "Infrastructure record {$cur[0]['swa_number']} updated."];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Actions → Add Accomplishment: appends ONE Statement of Work item (description, cost, % accomplishment) to a record without opening the
+     * whole edit. Same limits as a save: the items' total cost may not exceed the Account Entries total, and their % adds up to 100 at most.
+     * Returns the totals so the dialog can show them: { entries_total, items_cost, accomplishment }.
+     */
+    public function addAccomplishment(int $id, array $body, ?int $userId = null): array
+    {
+        try {
+            $cur = App\ExecuteRows("SELECT swa_id, swa_number, line_transaction FROM {$this->t} WHERE swa_id = " . (int) $id, 'DB');
+            if (!$cur) {
+                return ['success' => false, 'message' => 'Infrastructure IAR not found.'];
+            }
+            $desc = $this->nullable($body['description'] ?? null);
+            if ($desc === null) {
+                return ['success' => false, 'message' => 'The description is required.'];
+            }
+            $cost = $this->num($body['cost'] ?? null);
+            if ($cost === null) {
+                return ['success' => false, 'message' => 'Cost must be a valid amount.'];
+            }
+            $pct = $this->num($body['accomplishment_pct'] ?? null, 100.0000001);
+            if ($pct === null) {
+                return ['success' => false, 'message' => 'The % accomplishment must be between 0 and 100.'];
+            }
+            $tx         = $this->txOf($cur[0]['line_transaction']);
+            $items      = array_values(array_filter($tx['items'] ?? [], 'is_array'));
+            $entryCents = 0;
+            foreach ($tx['lines'] ?? [] as $en) {
+                $entryCents += (int) round((float) ($en['amount'] ?? 0) * 100);
+            }
+            $itemCents = $this->itemsCents($items) + (int) round((float) $cost * 100);
+            if ($itemCents > $entryCents) {
+                return ['success' => false, 'message' => 'The total cost of the Statement of Work Accomplishments would be ' . number_format($itemCents / 100, 2) . ', which exceeds the total of the Account Entries (' . number_format($entryCents / 100, 2) . ').'];
+            }
+            $pctHundredths = (int) round((float) $pct * 100);
+            foreach ($items as $it) {
+                $pctHundredths += (int) round((float) ($it['accomplishment_pct'] ?? 0) * 100);
+            }
+            if ($pctHundredths > 10000) {
+                return ['success' => false, 'message' => 'The % Accomplishment would add up to ' . number_format($pctHundredths / 100, 2) . '%, which may not exceed 100%.'];
+            }
+            $items[] = ['description' => $desc, 'cost' => $cost, 'accomplishment_pct' => $pct];
+            $by      = $userId ? (int) $userId : 'NULL';
+            App\Execute(
+                "UPDATE {$this->t} SET line_transaction = " . $this->jsonSql([['items' => $items, 'lines' => $tx['lines'] ?? [], 'jev_id' => $tx['jev_id'] ?? null, 'jev_no' => $tx['jev_no'] ?? null]])
+                . ", updated_by = {$by}, updated_at = CURRENT_TIMESTAMP WHERE swa_id = " . (int) $id,
+                'DB'
+            );
+
+            return ['success' => true, 'message' => "Accomplishment added to {$cur[0]['swa_number']}.",
+                    'data' => ['entries_total' => round($entryCents / 100, 2), 'items_cost' => round($itemCents / 100, 2), 'accomplishment' => round($pctHundredths / 100, 2)]];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
@@ -675,7 +877,7 @@ class InfraIarService
                 'requesting_office' => $r['requesting_office'] ?? null, 'program_name' => $r['program_name'] ?? null, 'project_code' => $r['project_code'], 'project_name' => $r['project_name'], 'location' => $r['location'], 'contractor' => $r['contractor'], 'rows' => $out, 'total' => $total,
                 'jev_id' => $r['jev_id'], 'jev_no' => $r['jev_no'],
             ]];
-        } catch (xception $e) {
+        } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
@@ -692,9 +894,21 @@ class InfraIarService
     /** Records the JEV its pro-forma was submitted as: the pro-forma cannot be submitted twice. */
     public function linkJev(int $id, int $jevId, string $jevNo): bool
     {
-        // jev_id / jev_no are recorded inside the record's line_transaction (like the IAR records them on its DR)
+        // jev_id / jev_no are recorded inside the record's line_transaction (like the IAR records them on its DR);
+        // the category column is set at the same time: the record's one CIP / WIP account entry as "account code - title" (e.g. "1-04-03-020-01 - Sites and Services")
+        $category = null;
+        $cur      = App\ExecuteRows("SELECT line_transaction FROM {$this->t} WHERE swa_id = " . (int) $id, 'DB');
+        if ($cur) {
+            $cw = array_merge(\PHPMaker2024\FIMS\Service\PoDrService::INFRA_CATEGORIES['CIP'], \PHPMaker2024\FIMS\Service\PoDrService::INFRA_CATEGORIES['WIP']);
+            foreach ($this->txOf($cur[0]['line_transaction'])['lines'] ?? [] as $en) {
+                if (in_array((string) ($en['account_code'] ?? ''), $cw, true)) {
+                    $category = (string) $en['account_code'] . ' - ' . (string) ($en['account_title'] ?? '');
+                    break;
+                }
+            }
+        }
         App\Execute(
-            "UPDATE {$this->t} SET line_transaction = jsonb_set(jsonb_set(line_transaction, '{0,jev_id}', to_jsonb(" . (int) $jevId . "::int)), '{0,jev_no}', to_jsonb(" . $this->q($jevNo) . '::text)) WHERE swa_id = ' . (int) $id,
+            "UPDATE {$this->t} SET category = " . $this->sqlOrNull($category) . ", line_transaction = jsonb_set(jsonb_set(line_transaction, '{0,jev_id}', to_jsonb(" . (int) $jevId . "::int)), '{0,jev_no}', to_jsonb(" . $this->q($jevNo) . '::text)) WHERE swa_id = ' . (int) $id,
             'DB'
         );
 

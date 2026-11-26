@@ -30,9 +30,6 @@ namespace PHPMaker2024\FIMS;
 $_sr_api = Config('API.FIMS_URL');
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 <script src="/_shared/js/searchable-select.js?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/js/searchable-select.js') ?>"></script>
 
@@ -263,7 +260,7 @@ $_sr_api = Config('API.FIMS_URL');
 
     <!-- ══════════════ VIEW MODAL ══════════════ -->
     <div id="sr-view-ov" class="nha-overlay no-print">
-        <div class="nha-modal nha-modal-lg">
+        <div class="nha-modal u-modal-lg">
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title" id="sr-view-title">Supplemental Fund Record</h3>
                 <button type="button" class="nha-modal-close" id="sr-view-close" aria-label="Close">&times;</button>
@@ -288,7 +285,7 @@ $_sr_api = Config('API.FIMS_URL');
 
     <!-- ══════════════ EXPORT MODAL ══════════════ -->
     <div id="sr-xm-ov" class="nha-overlay no-print">
-        <div class="nha-modal nha-modal-sm">
+        <div class="nha-modal u-modal-sm">
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title">Export Supplemental Fund Tracking</h3>
                 <button type="button" class="nha-modal-close" id="sr-xm-close" aria-label="Close">&times;</button>

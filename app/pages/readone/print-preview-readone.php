@@ -36,6 +36,8 @@ $_prp_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 .nha-root .prp-frame-wrap { background: #eceff1; border-radius: var(--rs, 7px); overflow: hidden; }
 .nha-root .prp-frame { display: block; width: 100%; height: 72vh; border: 0; background: #eceff1; }
 .nha-root .prp-lh-open .prp-frame { height: calc(72vh - 300px); min-height: 230px; }
+/* 'full' forms (the GCG Quarterly Report — every column on one line): u-modal-full width + a taller frame */
+.nha-root .nha-modal.prp-full .prp-frame { height: 80vh; }
 .nha-root .prp-msg { padding: 60px 20px; text-align: center; color: var(--subtle, #62657E); font-size: 13px; }
 .nha-root .prp-err {
     margin-top: 10px; padding: 8px 12px; border-radius: var(--rs, 7px);
@@ -78,12 +80,57 @@ $_prp_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 .nha-root .prp-lh-status.bad { color: #B42318; }
 .nha-root .prp-lh input[type=file] { display: none; }
 @media (max-width: 760px) { .nha-root .prp-lh-item { grid-template-columns: 36px 1fr; } }
+
+/* ── Form details (Edit Form / Form Preview tabs) — the old ACCOUNTING BIR 2307 window's look ── */
+.nha-root .prp-tabs { display: flex; border-bottom: 1px solid var(--bdr, #E4ECF2); margin: -4px 0 12px; }
+.nha-root .prp-tabs[hidden] { display: none; }
+.nha-root .prp-tab { padding: 9px 18px; font-size: 12px; font-weight: 600; border: 0; border-bottom: 2px solid transparent;
+    background: transparent; color: var(--subtle, #62657E); cursor: pointer; }
+.nha-root .prp-tab.is-on { border-bottom-color: var(--afims-heading-fill, #000E3E); color: var(--afims-heading, #000E3E); }
+.nha-root .prp-frame-wrap[hidden] { display: none; }
+.nha-root .prp-ff { height: 72vh; overflow-y: auto; font-size: 12px; }
+.nha-root .prp-ff[hidden] { display: none; }
+.nha-root .prp-ff-note { margin: 0 0 8px; padding: 8px 10px; border-radius: 6px; background: var(--surf, #F4F7FA); color: var(--subtle, #62657E); }
+.nha-root .prp-ff-legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 10px; color: var(--subtle, #62657E); font-size: 11px; }
+.nha-root .prp-ff-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; }
+.nha-root .prp-ff-legend .lg-edit { background: var(--afims-primary-soft, #E6EBF6); border: 1px solid var(--afims-primary, #0035A9); }
+.nha-root .prp-ff-legend .lg-lock { background: var(--surf, #F4F7FA); border: 1px dashed var(--afims-border-strong, #A9AAB8); }
+.nha-root .prp-ff-legend .lg-chg  { background: var(--afims-warning-soft, #FFF8DB); border: 1px solid var(--afims-warning, #FCD20F); }
+.nha-root .prp-ff-form { border: 1.5px solid var(--afims-heading-fill, #000E3E); }
+.nha-root .prp-ff-head { display: flex; align-items: center; gap: 14px; padding: 8px 12px; border-bottom: 1.5px solid var(--afims-heading-fill, #000E3E); }
+.nha-root .prp-ff-formno { text-align: center; line-height: 1.1; font-size: 10px; }
+.nha-root .prp-ff-formno b { display: block; font-size: 22px; }
+.nha-root .prp-ff-title { flex: 1; text-align: center; font-size: 15px; font-weight: 700; }
+.nha-root .prp-ff-part { padding: 4px 10px; text-align: center; font-weight: 700; background: var(--surf, #F4F7FA);
+    border-bottom: 1px solid var(--bdr, #E4ECF2); border-top: 1px solid var(--bdr, #E4ECF2); }
+.nha-root .prp-ff-line { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--bdr, #E4ECF2); }
+.nha-root .prp-ff-cell { flex: 1 1 160px; padding: 6px 10px; border-right: 1px solid var(--bdr, #E4ECF2); min-width: 0; }
+.nha-root .prp-ff-cell:last-child { border-right: 0; }
+.nha-root .prp-ff-lbl { font-size: 10.5px; font-weight: 600; color: var(--subtle, #62657E); margin-bottom: 3px; }
+.nha-root .prp-ff-no { display: inline-block; min-width: 18px; font-weight: 700; color: var(--afims-heading, #000E3E); }
+.nha-root .prp-ff-req { color: #B42318; }
+.nha-root .prp-ff input, .nha-root .prp-ff select, .nha-root .prp-ff textarea { width: 100%; padding: 5px 7px; font-size: 12px;
+    border: 1px solid var(--afims-primary, #0035A9); border-radius: 5px; background: var(--afims-primary-soft, #E6EBF6);
+    color: var(--afims-text, #1A1B21); font-family: inherit; }
+.nha-root .prp-ff textarea { resize: vertical; }
+.nha-root .prp-ff .edited { background: var(--afims-warning-soft, #FFF8DB) !important; border-color: var(--afims-warning, #FCD20F) !important; }
+.nha-root .prp-ff .is-locked input, .nha-root .prp-ff .is-locked textarea, .nha-root .prp-ff input.lock {
+    background: var(--surf, #F4F7FA); border: 1px dashed var(--afims-border-strong, #A9AAB8); color: var(--subtle, #62657E); cursor: not-allowed; }
+.nha-root .prp-ff .is-locked .prp-ff-lbl::after { content: " \1F512"; font-size: 9px; opacity: .6; }
+.nha-root .prp-ff table { width: 100%; border-collapse: collapse; }
+.nha-root .prp-ff th { padding: 5px 6px; font-size: 11px; background: var(--surf, #F4F7FA); border-bottom: 1px solid var(--bdr, #E4ECF2); text-align: left; }
+.nha-root .prp-ff td { padding: 4px 6px; border-bottom: 1px solid var(--bdr, #E4ECF2); }
+.nha-root .prp-ff .r { text-align: right; }
+.nha-root .prp-ff td.r input { text-align: right; font-family: "IBM Plex Mono", monospace; }
+.nha-root .prp-ff tfoot td { font-weight: 700; }
+.nha-root .prp-ff-warn { padding: 6px 10px; font-size: 11px; font-weight: 600; color: #B42318; background: #FDECEC; }
+.nha-root .prp-ff-back { font-size: 10.5px; color: var(--subtle, #62657E); display: inline-block; margin-top: 2px; }
 </style>
 
 <!-- ── PRINT PREVIEW MODAL ───────────────────────────── -->
 <div id="prp-root" class="nha-root">
     <div id="prp-overlay" class="nha-overlay no-print">
-        <div class="nha-modal nha-modal-lg" role="dialog" aria-modal="true" aria-labelledby="prp-title">
+        <div class="nha-modal u-modal-lg" role="dialog" aria-modal="true" aria-labelledby="prp-title">
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title" id="prp-title">Print Preview — Certificate of Budget Allocation</h3>
                 <button type="button" class="nha-modal-close" id="prp-close" aria-label="Close">&times;</button>
@@ -119,7 +166,15 @@ $_prp_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
                     </div>
                     <div class="prp-lh-status" id="prp-lh-status" role="status"></div>
                 </div>
-                <div class="prp-frame-wrap">
+                <!-- Form details panel (prp_ffOpen()) — a pdfOnly form whose PRP_TYPES entry has `prefill`: its prefilled
+                     values to check / change before printing (blue = editable, grey = locked), e.g. the BIR 2307's payee
+                     and signatory. Each change re-renders the PDF below. -->
+                <div class="prp-tabs" id="prp-tabs" role="tablist" hidden>
+                    <button type="button" class="prp-tab is-on" data-tab="edit" role="tab">Edit Form</button>
+                    <button type="button" class="prp-tab" data-tab="preview" role="tab">Form Preview</button>
+                </div>
+                <div class="prp-ff" id="prp-ff" hidden></div>
+                <div class="prp-frame-wrap" id="prp-frame-wrap">
                     <div class="prp-msg" id="prp-msg">Loading preview&hellip;</div>
                     <!-- allow-same-origin (no allow-scripts): nothing runs inside, but the
                          designer can update the header in place for instant feedback -->
@@ -130,6 +185,7 @@ $_prp_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
             <div class="nha-modal-foot">
                 <button type="button" class="nha-btn nha-btn-outline" id="prp-lh-toggle" style="margin-right:auto;" aria-expanded="false" aria-controls="prp-lh">Edit Letterhead</button>
                 <button type="button" class="nha-btn nha-btn-ghost" id="prp-cancel">Close</button>
+                <button type="button" class="nha-btn nha-btn-outline" id="prp-xlsx" hidden disabled>Export to Excel</button>
                 <button type="button" class="nha-btn nha-btn-outline" id="prp-docx" disabled>Download DOCX</button>
                 <button type="button" class="nha-btn nha-btn-primary" id="prp-pdf" disabled>Download PDF</button>
             </div>
@@ -159,13 +215,23 @@ const PRP_TYPES = {
     IAR: { title: 'Inspection and Acceptance Report',        print: 'print/iar', letterhead: false },
     LV:  { title: 'Liquidation Voucher',                     print: 'print/lv', letterhead: false },
     JEV: { title: 'Journal Entry Voucher',                   print: 'print/jev', letterhead: false, wide: true },   // A4 landscape
-    GL:  { title: 'General Ledger',                          print: 'print/gl', letterhead: false },
+    GL:  { title: 'General Ledger',                          print: 'print/gl', letterhead: false },   // NHA Form No. 11 (monthly summary per journal)
     SL:  { title: 'Subsidiary Ledger',                       print: 'print/sl', letterhead: false },
     FTLA: { title: 'Fund Transfer Letter of Advice',         print: 'print/ftla', hdrPt: 510 },
     FTLAREQ: { title: 'FTLA Request',                        print: 'print/ftlareq', hdrPt: 468 },   // the LAA release request's memo layout
     CFA: { title: 'Certified Funds Available',               print: 'print/cfa', hdrPt: 451.28 },   // funding-request memo (A4, shared memo layout)
     MEMO: { title: 'Memo Request',                           print: 'print/memo', hdrPt: 451.28 },   // the originating unit's memo (non-FMD; A4, shared memo layout)    // pdfOnly: an official PDF form — the preview shows the PDF itself; no DOCX, no letterhead editor.
     DV:  { title: 'Disbursement Voucher',                    print: 'print/dv', pdfOnly: true },
+    // payload { dv_id }; `prefill` — the details panel (prp_ffOpen()): payee + signatory prefilled from the DV / settings, editable
+    BIR2307: { title: 'BIR Form 2307 — Certificate of Creditable Tax Withheld at Source', print: 'print/bir2307', pdfOnly: true,
+               prefill: p => 'print/prefill/bir2307/' + encodeURIComponent(p.dv_id), form: 'prp_ffForm2307' },
+    // payload { fiscal_yr, employee_id } — Payroll Management → Annualization → Annualization of Income; `excel`: the modal's Export to Excel
+    ANNUALWS: { title: 'Annualization of Income', print: 'print/annualws', pdfOnly: true, excel: 'print/annualws/excel' },
+    GCG:      { title: 'GCG Quarterly Report', print: 'print/gcg', pdfOnly: true, excel: 'print/gcg/excel', full: true },
+    // payload { fiscal_yr, employee_id } — from Payroll Management → Annualization
+    BIR2316: { title: 'BIR Form 2316 — Certificate of Compensation Payment / Tax Withheld', print: 'print/bir2316', pdfOnly: true,
+               prefill: p => 'print/prefill/bir2316?year=' + encodeURIComponent(p.fiscal_yr) + '&employee_id=' + encodeURIComponent(p.employee_id),
+               form: 'prp_ffForm2316' },
 };
 let prp_type = 'CBA';
 // The print paths carry no leading "/" (the "/" is joined here, outside any quoted literal): on a sub-folder
@@ -212,7 +278,9 @@ document.addEventListener('DOMContentLoaded', () => {
     $prp('prp-cancel')?.addEventListener('click', prp_close);
     $prp('prp-pdf')?.addEventListener('click', () => prp_download('pdf'));
     $prp('prp-docx')?.addEventListener('click', () => prp_download('docx'));
+    $prp('prp-xlsx')?.addEventListener('click', () => prp_download('xlsx'));
     $prp('prp-lh-toggle')?.addEventListener('click', prp_lhToggle);
+    document.querySelectorAll('#prp-tabs .prp-tab').forEach(b => b.addEventListener('click', () => prp_ffTab(b.dataset.tab)));
 
     $prp('prp-lh-add-image')?.addEventListener('click', () => $prp('prp-lh-addfile').click());
     $prp('prp-lh-addfile')?.addEventListener('change', e => prp_lhReadPng(e.target, src =>
@@ -259,6 +327,7 @@ document.addEventListener('keydown', e => {
 function prp_setReady(ready) {
     $prp('prp-pdf').disabled  = !ready;
     $prp('prp-docx').disabled = !ready;
+    $prp('prp-xlsx').disabled = !ready;
 }
 
 function prp_showError(message) {
@@ -271,14 +340,13 @@ function prp_showError(message) {
  * opts.type — a PRP_TYPES key: 'CBA' (default), 'RFA', 'LAA', 'CAF', 'LAAREQ', 'PO', 'PR',
  * 'IAR', 'LV', 'JEV', 'FTLA', 'FTLAREQ', 'CFA', 'MEMO' or 'DV'.
  */
-/* Prints paused until their layout is settled — every caller (list menu, memo form) goes through prp_open(), so this
-   one guard keeps them from printing. RFA / LAA: an RFA / LAA can now draw from several parent CBAs (one project
-   block each) and the form still prints only the first block's project — on hold until the multi-CBA layout is
-   decided with the budget team. Remove a type from here to print it again. */
-const PRP_PAUSED = {
-    RFA: 'Printing the RFA is paused for now: an RFA can draw from several CBAs and its printed form is being updated for that.',
-    LAA: 'Printing the LAA is paused for now: an LAA can draw from several CBAs and its printed form is being updated for that.',
-};
+/* Types whose printing is paused until their layout is settled — every caller (list menu, memo form) goes through
+   prp_open(), so this one guard keeps them from printing. Nothing is paused right now. To pause a type again, add it here
+   as TYPE: 'message shown to the user'; the Print buttons (memo list, memo form) then disable themselves.
+   History: RFA and LAA were paused while an RFA / LAA that draws from several parent CBAs (one project block each) had no
+   print layout. Both are printing again — the amounts are summed across every block; an RFA prints the FIRST block's
+   project (see PrintPayloadService::allocationPayload()), an LAA prints no project at all. */
+const PRP_PAUSED = {};
 function prp_isPaused(type) { return !!PRP_PAUSED[String(type || '').toUpperCase()]; }
 
 async function prp_open(payload, opts = {}) {
@@ -297,13 +365,270 @@ async function prp_open(payload, opts = {}) {
     const pdfOnly = !!PRP_TYPES[prp_type].pdfOnly;
     const letterhead = !pdfOnly && PRP_TYPES[prp_type].letterhead !== false;   // editable letterhead?
     $prp('prp-docx').hidden = pdfOnly;
+    $prp('prp-xlsx').hidden = !PRP_TYPES[prp_type].excel;   // a form with its own Excel export (the annualization worksheet)
     $prp('prp-lh-toggle').hidden = !letterhead;
     if (!letterhead && !$prp('prp-lh').hidden) prp_lhToggle();   // close a designer left open by another form
-    const dialog = $prp('prp-overlay').querySelector('.nha-modal');   // landscape forms ('wide') get the xl modal
-    dialog.classList.toggle('nha-modal-xl', !!PRP_TYPES[prp_type].wide);
-    dialog.classList.toggle('nha-modal-lg', !PRP_TYPES[prp_type].wide);
+    // landscape forms ('wide') get u-modal-xl, a sheet as wide as the screen ('full' — the GCG Quarterly Report)
+    // u-modal-full, the rest u-modal-lg
+    const dialog = $prp('prp-overlay').querySelector('.nha-modal');
+    const full = !!PRP_TYPES[prp_type].full;
+    dialog.classList.toggle('u-modal-xl', !!PRP_TYPES[prp_type].wide && !full);
+    dialog.classList.toggle('u-modal-full', full);
+    dialog.classList.toggle('u-modal-lg', !PRP_TYPES[prp_type].wide && !full);
+    dialog.classList.toggle('prp-full', full);   // + a taller preview frame
     $prp('prp-overlay').classList.add('open');
+    if (pdfOnly && PRP_TYPES[prp_type].prefill) {   // its Edit Form tab first (prefilled values), the PDF on Form Preview
+        await prp_ffOpen();
+        return;
+    }
+    $prp('prp-tabs').hidden = true;
+    $prp('prp-ff').hidden = true;
+    $prp('prp-frame-wrap').hidden = false;
     await (pdfOnly ? prp_renderPdf() : Promise.all([letterhead ? prp_lhLoad() : null, prp_render()]));
+}
+
+/* ── Form details: Edit Form / Form Preview ──────────────────────────────────────
+ * A pdfOnly form whose PRP_TYPES entry has `prefill` (the BIR 2307) opens like the old ACCOUNTING "BIR Form 2307" window
+ * (dv-processing.php #bir2307Modal): an Edit Form tab laid out like the paper form, prefilled from the record
+ * (Bir2307PrintService::prefill()) — blue = you can fill in or change, grey dashed + lock = locked (NHA's payor details,
+ * the DV's ATC amounts), yellow = changed from the prefilled value — and a Form Preview tab with the real PDF (rendered
+ * when opened after a change). The edited values travel in the payload; nothing is saved. Download PDF works from either. */
+let prp_ffDirty = false;   // an edit since the PDF was last rendered
+let prp_ffData  = null;    // the prefill: { editable, locked, signatories }
+
+function prp_ffTab(tab) {
+    document.querySelectorAll('#prp-tabs .prp-tab').forEach(b => b.classList.toggle('is-on', b.dataset.tab === tab));
+    $prp('prp-ff').hidden = tab !== 'edit';
+    $prp('prp-frame-wrap').hidden = tab !== 'preview';
+    if (tab === 'preview' && (prp_ffDirty || !prp_pdfUrl)) {
+        prp_ffDirty = false;
+        prp_renderPdf();
+    }
+}
+
+/** "123456789000" → "123-456-789-000" (3-3-3 + up to 5); the old window's TIN typing aid. */
+function prp_ffTin(v) {
+    const d = String(v || '').replace(/\D/g, '').slice(0, 14);
+    return [d.slice(0, 3), d.slice(3, 6), d.slice(6, 9), d.slice(9)].filter(Boolean).join('-');
+}
+
+async function prp_ffOpen() {
+    const box = $prp('prp-ff');
+    $prp('prp-tabs').hidden = false;
+    prp_ffDirty = false;
+    if (prp_pdfUrl) { URL.revokeObjectURL(prp_pdfUrl); prp_pdfUrl = null; }
+    prp_ffTab('edit');
+    prp_showError('');
+    box.innerHTML = '<p class="prp-ff-note">Loading the form details…</p>';
+    try {
+        prp_ffData = (await prp_fetchJson(PRP_API + '/' + PRP_TYPES[prp_type].prefill(prp_payload), { headers: prp_headers(false) })).data;
+    } catch (e) {
+        prp_setReady(false);
+        box.innerHTML = '<p class="prp-ff-note">This form can\'t be printed.</p>';
+        prp_showError(e.message);
+        return false;
+    }
+    window[PRP_TYPES[prp_type].form](box, prp_ffData);   // the form's own Edit Form layout (prp_ffForm2307 / prp_ffForm2316)
+    prp_setReady(true);
+    return true;
+}
+
+/** The BIR 2307's Edit Form — the old ACCOUNTING dv-processing.php #bir2307Modal. */
+function prp_ffForm2307(box, data) {
+    const esc  = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const peso = n => Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const ed = data.editable || {}, lk = data.locked || {}, sigs = data.signatories || [];
+    prp_payload = Object.assign({ dv_id: prp_payload.dv_id }, ed, { descriptions: [...(ed.descriptions || [])] });
+    delete prp_payload.quarter;
+
+    const cell = (no, label, inner, opts = {}) => `<div class="prp-ff-cell ${opts.locked ? 'is-locked' : 'is-editable'}" style="${opts.style || ''}">
+        <div class="prp-ff-lbl">${no ? `<span class="prp-ff-no">${no}</span>` : ''}${label}${opts.req ? ' <span class="prp-ff-req">*</span>' : ''}</div>${inner}</div>`;
+    const inp  = (k, attrs = '') => `<input type="text" data-key="${k}" value="${esc(ed[k])}" autocomplete="off" ${attrs}>`;
+    const lock = v => `<input type="text" value="${esc(v)}" readonly tabindex="-1">`;
+    const totalBase = (lk.rows || []).reduce((s, r) => s + Number(r.tax_base || 0), 0);
+    const totalTax  = (lk.rows || []).reduce((s, r) => s + Number(r.withholding_tax || 0), 0);
+    const sigOpts = sigs.map((s, i) => `<option value="${i}">${esc(s.name)}${s.title ? ` (${esc(s.title)})` : ''}</option>`).join('');
+
+    box.innerHTML = `
+        <div class="prp-ff-note">Filled from DV ${esc(lk.dv_no)}, its tax lines and the payee record. The ATC amounts are locked to the DV so the
+            2307 always matches the DV, its journal entry and the remittance; NHA's payor details are fixed. Changes here apply to this
+            printout only.</div>
+        <div class="prp-ff-legend"><span><i class="lg-edit"></i>You can fill in or change</span><span><i class="lg-lock"></i>Locked — from the DV / NHA</span>
+            <span><i class="lg-chg"></i>Changed from the DV / payee value</span></div>
+        <div class="prp-ff-form">
+            <div class="prp-ff-head"><div class="prp-ff-formno">BIR Form No.<b>2307</b>January 2018 (ENCS)</div>
+                <div class="prp-ff-title">Certificate of Creditable Tax Withheld at Source</div></div>
+            <div class="prp-ff-line">
+                ${cell('1', 'Quarter', `<select id="prp-ff-quarter">${[1, 2, 3, 4].map(q => `<option value="${q}"${q === Number(ed.quarter) ? ' selected' : ''}>Q${q} (${['Jan–Mar', 'Apr–Jun', 'Jul–Sep', 'Oct–Dec'][q - 1]})</option>`).join('')}</select>`)}
+                ${cell('', 'For the Period — From', `<input type="date" data-key="period_from" value="${esc(ed.period_from)}">`)}
+                ${cell('', 'To', `<input type="date" data-key="period_to" value="${esc(ed.period_to)}">`)}
+            </div>
+            <div class="prp-ff-part">Part I - Payee Information</div>
+            <div class="prp-ff-line">${cell('2', 'Taxpayer Identification Number (TIN)', inp('payee_tin', 'inputmode="numeric" maxlength="17" placeholder="000-000-000-00000" data-tin="1"'), { req: true })}</div>
+            <div class="prp-ff-line">${cell('3', 'Payee\'s Name (Last Name, First Name, Middle Name for Individual OR Registered Name for Non-Individual)', inp('payee_name', 'placeholder="Registered business name"'), { req: true })}</div>
+            <div class="prp-ff-line">
+                ${cell('4', 'Registered Address', `<textarea data-key="payee_address" rows="2" placeholder="Unit/Bldg., Street, Barangay, City">${esc(ed.payee_address)}</textarea>`, { style: 'flex:4 1 300px;' })}
+                ${cell('4A', 'ZIP Code', inp('payee_zip', 'inputmode="numeric" maxlength="4" placeholder="e.g. 1101"'))}
+            </div>
+            <div class="prp-ff-part">Part II - Payor Information</div>
+            <div class="prp-ff-line">${cell('6', 'Taxpayer Identification Number (TIN)', lock(lk.payor_tin), { locked: true })}${cell('', 'Nature of Business', lock(lk.payor_nature), { locked: true })}</div>
+            <div class="prp-ff-line">${cell('7', 'Payor\'s Name (Registered Name for Non-Individual)', lock(lk.payor_name), { locked: true })}</div>
+            <div class="prp-ff-line">
+                ${cell('8', 'Registered Address', `<textarea rows="2" readonly tabindex="-1">${esc(lk.payor_address)}</textarea>`, { locked: true, style: 'flex:4 1 300px;' })}
+                ${cell('8A', 'ZIP Code', lock(lk.payor_zip), { locked: true })}
+            </div>
+            <div class="prp-ff-part">Part III - Details of Monthly Income Payments and Taxes Withheld</div>
+            <table><thead><tr><th>Income Payments Subject to Expanded Withholding Tax</th><th style="width:130px;">ATC</th>
+                <th class="r" style="width:150px;">Amount of Income Payments (Total for the Quarter, ₱)</th><th class="r" style="width:140px;">Tax Withheld for the Quarter (₱)</th></tr></thead>
+                <tbody>${(lk.rows || []).map((r, i) => `<tr>
+                    <td class="is-editable"><input type="text" data-desc="${i}" value="${esc((ed.descriptions || [])[i])}" placeholder="e.g. Purchase of office supplies" title="Description of the income payment — printed on the certificate"></td>
+                    <td class="is-locked"><input type="text" class="lock" value="${esc(r.atc_code)}${r.rate != null ? ` (${Number(r.rate)}%)` : ''}" readonly tabindex="-1" title="Locked — from the DV's tax lines"></td>
+                    <td class="r is-locked"><input type="text" class="lock" value="${peso(r.tax_base)}" readonly tabindex="-1"></td>
+                    <td class="r is-locked"><input type="text" class="lock" value="${peso(r.withholding_tax)}" readonly tabindex="-1"></td></tr>`).join('')}</tbody>
+                <tfoot><tr><td colspan="2" class="r">Total</td><td class="r">₱${peso(totalBase)}</td><td class="r">₱${peso(totalTax)}</td></tr></tfoot></table>
+            ${totalBase - Number(lk.gross || 0) > 0.005 ? `<div class="prp-ff-warn">Total tax base (₱${peso(totalBase)}) exceeds DV gross amount (₱${peso(lk.gross)})</div>` : ''}
+            <div class="prp-ff-part">Signature over Printed Name of Payor/Payor's Authorized Representative/Tax Agent</div>
+            <div class="prp-ff-line">
+                ${cell('', 'Printed Name <span style="font-weight:400;">(pre-filled — editable)</span>', `<select id="prp-ff-sig" title="Who signs for NHA — pick from the list or choose 'Enter manually'">
+                    ${sigOpts}<option value="__other__">— Enter manually —</option></select>
+                    <input type="text" id="prp-ff-sig-text" data-key="signatory_name" placeholder="Type full name" style="display:none;margin-top:4px;">
+                    <a href="#" class="prp-ff-back" id="prp-ff-sig-back" style="display:none;">← Back to list</a>`, { style: 'flex:2 1 260px;' })}
+                ${cell('', 'Title / Designation', inp('signatory_title', 'placeholder="e.g. Officer-In-Charge, Acctg. Dept."'), { style: 'flex:2 1 220px;' })}
+            </div>
+            <div class="prp-ff-line">
+                ${cell('', 'TIN of Signatory', inp('signatory_tin', 'inputmode="numeric" maxlength="17" placeholder="000-000-000" data-tin="1"'))}
+                ${cell('', 'Date Signed <span style="font-weight:400;">(not printed — the form has no box for it)</span>', `<input type="date" data-key="signatory_date" value="${esc(ed.signatory_date)}">`)}
+            </div>
+        </div>`;
+
+    // every change → the payload, the yellow "changed" mark, and a fresh PDF next time Form Preview opens
+    const changed = (el, original) => { el.classList.toggle('edited', el.value !== String(original ?? '')); prp_ffDirty = true; };
+    box.querySelectorAll('[data-key]').forEach(el => el.addEventListener('input', () => {
+        if (el.dataset.tin) el.value = prp_ffTin(el.value);
+        prp_payload[el.dataset.key] = el.value;
+        changed(el, ed[el.dataset.key]);
+    }));
+    box.querySelectorAll('[data-desc]').forEach(el => el.addEventListener('input', () => {
+        prp_payload.descriptions[Number(el.dataset.desc)] = el.value;
+        changed(el, (ed.descriptions || [])[Number(el.dataset.desc)]);
+    }));
+    // 1 Quarter → the period's first and last day (in the DV's fiscal year), as the old window
+    $prp('prp-ff-quarter').addEventListener('change', e => {
+        const q = Number(e.target.value), y = Number(lk.fiscal_year), m1 = (q - 1) * 3 + 1, pad = n => String(n).padStart(2, '0');
+        const set = (k, v) => { const el = box.querySelector(`[data-key="${k}"]`); el.value = v; el.dispatchEvent(new Event('input')); };
+        set('period_from', `${y}-${pad(m1)}-01`);
+        set('period_to', `${y}-${pad(m1 + 2)}-${pad(new Date(y, m1 + 2, 0).getDate())}`);
+        e.target.classList.toggle('edited', q !== Number(ed.quarter));
+    });
+    // signatory: pick from the list (its title / TIN fill in) or "Enter manually"
+    const sel = $prp('prp-ff-sig'), txt = $prp('prp-ff-sig-text'), back = $prp('prp-ff-sig-back');
+    const setField = (k, v) => { const el = box.querySelector(`[data-key="${k}"]`); el.value = v; prp_payload[k] = v; changed(el, ed[k]); };
+    sel.addEventListener('change', () => {
+        if (sel.value === '__other__') {
+            sel.style.display = 'none'; txt.style.display = ''; back.style.display = ''; txt.value = ''; prp_payload.signatory_name = '';
+            txt.focus(); prp_ffDirty = true;
+            return;
+        }
+        const s = sigs[Number(sel.value)] || {};
+        prp_payload.signatory_name = s.name || '';
+        sel.classList.toggle('edited', (s.name || '') !== String(ed.signatory_name ?? ''));
+        setField('signatory_title', s.title || '');
+        setField('signatory_tin', s.tin || '');
+    });
+    back.addEventListener('click', e => {
+        e.preventDefault();
+        sel.style.display = ''; txt.style.display = 'none'; back.style.display = 'none';
+        sel.value = '0'; sel.dispatchEvent(new Event('change'));
+    });
+}
+
+/**
+ * The BIR 2316's Edit Form — the old ACCOUNTING income-tax-withheld.php 2316 window: the employee's Part I details,
+ * minimum wage earner, the previous employer (Part III), the signatories and the CTC are editable; the year, the
+ * employee's name, NHA (Part II) and every amount (19–52, from the annualization) are locked. Items 23–28 follow the
+ * previous employer's figures as they're typed (the server recomputes them the same way when printing).
+ */
+function prp_ffForm2316(box, data) {
+    const esc  = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const peso = n => Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const ed = data.editable || {}, lk = data.locked || {}, am = lk.amounts || {};
+    prp_payload = Object.assign({ fiscal_yr: prp_payload.fiscal_yr, employee_id: prp_payload.employee_id }, ed);
+
+    const cell = (no, label, inner, opts = {}) => `<div class="prp-ff-cell ${opts.locked ? 'is-locked' : 'is-editable'}" style="${opts.style || ''}">
+        <div class="prp-ff-lbl">${no ? `<span class="prp-ff-no">${no}</span>` : ''}${label}</div>${inner}</div>`;
+    const inp  = (k, attrs = '') => `<input type="text" data-key="${k}" value="${esc(ed[k])}" autocomplete="off" ${attrs}>`;
+    const date = k => `<input type="date" data-key="${k}" value="${esc(ed[k])}">`;
+    const lock = v => `<input type="text" value="${esc(v)}" readonly tabindex="-1">`;
+    const amt  = (id, v) => `<input type="text" class="lock" id="prp-ff-${id}" value="${peso(v)}" readonly tabindex="-1" style="text-align:right;font-family:'IBM Plex Mono',monospace;">`;
+    const line = (...cells) => `<div class="prp-ff-line">${cells.join('')}</div>`;
+    const L = { locked: true };
+
+    box.innerHTML = `
+        <div class="prp-ff-note">Filled from ${esc(lk.employee_name)}'s ${esc(lk.year)} annualization (Payroll Management → Annualization). The amounts are
+            locked to it — correct the payroll and annualize again to change them; NHA's employer details are fixed. Changes here apply to this printout only.</div>
+        <div class="prp-ff-legend"><span><i class="lg-edit"></i>You can fill in or change</span><span><i class="lg-lock"></i>Locked — from the annualization / NHA</span>
+            <span><i class="lg-chg"></i>Changed from the prefilled value</span></div>
+        <div class="prp-ff-form">
+            <div class="prp-ff-head"><div class="prp-ff-formno">BIR Form No.<b>2316</b>September 2021 (ENCS)</div>
+                <div class="prp-ff-title">Certificate of Compensation Payment / Tax Withheld<br><small style="font-weight:400;">For Compensation Payment With or Without Tax Withheld</small></div></div>
+            ${line(cell('1', 'For the Year', lock(lk.year), L), cell('2', 'For the Period — From (MMDD)', inp('period_from', 'maxlength="4" inputmode="numeric"')), cell('', 'To (MMDD)', inp('period_to', 'maxlength="4" inputmode="numeric"')))}
+            <div class="prp-ff-part">Part I - Employee Information</div>
+            ${line(cell('3', 'Taxpayer Identification Number (TIN)', inp('employee_tin', 'inputmode="numeric" maxlength="16" placeholder="000-000-000-0000" data-tin="1"')), cell('4', 'RDO Code', inp('rdo_code', 'maxlength="5"')))}
+            ${line(cell('5', 'Employee\'s Name (Last Name, First Name, Middle Name)', lock(lk.employee_name), L))}
+            ${line(cell('6', 'Registered Address', inp('employee_address'), { style: 'flex:4 1 300px;' }), cell('6A', 'ZIP Code', inp('employee_zip', 'maxlength="4" inputmode="numeric"')))}
+            ${line(cell('6B', 'Local Home Address', inp('employee_home_address'), { style: 'flex:4 1 300px;' }), cell('6C', 'ZIP Code', inp('employee_home_zip', 'maxlength="4" inputmode="numeric"')))}
+            ${line(cell('6D', 'Foreign Address', inp('employee_foreign_address')))}
+            ${line(cell('7', 'Date of Birth', date('date_of_birth')), cell('8', 'Contact Number', inp('contact_number')))}
+            ${line(cell('9', 'Statutory Minimum Wage rate per day', inp('mwe_rate_day', 'inputmode="decimal"')), cell('10', 'Statutory Minimum Wage rate per month', inp('mwe_rate_month', 'inputmode="decimal"')),
+                   cell('11', 'Minimum Wage Earner (MWE)', `<label style="display:flex;gap:6px;align-items:center;font-weight:400;"><input type="checkbox" id="prp-ff-mwe" style="width:auto;"${ed.is_mwe ? ' checked' : ''}> whose compensation is exempt</label>`))}
+            <div class="prp-ff-part">Part II - Employer Information (Present)</div>
+            ${line(cell('12', 'Taxpayer Identification Number (TIN)', lock(lk.employer_tin), L), cell('15', 'Type of Employer', lock('Main Employer'), L))}
+            ${line(cell('13', 'Employer\'s Name', lock(lk.employer_name), L))}
+            ${line(cell('14', 'Registered Address', lock(lk.employer_address), { locked: true, style: 'flex:4 1 300px;' }), cell('14A', 'ZIP Code', lock(lk.employer_zip), L))}
+            <div class="prp-ff-part">Part III - Employer Information (Previous)</div>
+            ${line(cell('16', 'Taxpayer Identification Number (TIN)', inp('prev_employer_tin', 'inputmode="numeric" maxlength="16" placeholder="000-000-000-0000" data-tin="1"')), cell('17', 'Employer\'s Name', inp('prev_employer_name'), { style: 'flex:2 1 260px;' }))}
+            ${line(cell('18', 'Registered Address', inp('prev_employer_address'), { style: 'flex:4 1 300px;' }), cell('18A', 'ZIP Code', inp('prev_employer_zip', 'maxlength="4" inputmode="numeric"')))}
+            <div class="prp-ff-part">Part IV-A - Summary</div>
+            ${line(cell('19', 'Gross Compensation Income from Present Employer', amt('i19', am.i19), L), cell('20', 'Less: Total Non-Taxable / Exempt Compensation (38)', amt('i20', am.i20), L))}
+            ${line(cell('21', 'Taxable Compensation Income from Present Employer (52)', amt('i21', am.i21), L), cell('22', 'Add: Taxable Compensation Income from Previous Employer', inp('taxable_previous', 'inputmode="decimal" placeholder="0.00"')))}
+            ${line(cell('23', 'Gross Taxable Compensation Income', amt('i23', am.i23), L), cell('24', 'Tax Due', amt('i24', am.i24), L))}
+            ${line(cell('25A', 'Amount of Taxes Withheld — Present Employer', amt('i25a', am.i25a), L), cell('25B', 'Amount of Taxes Withheld — Previous Employer', inp('tax_withheld_previous', 'inputmode="decimal" placeholder="0.00"')))}
+            ${line(cell('26', 'Total Amount of Taxes Withheld as adjusted', amt('i26', am.i26), L), cell('27', '5% Tax Credit (PERA Act of 2008)', amt('i27', am.i27), L), cell('28', 'Total Taxes Withheld', amt('i28', am.i28), L))}
+            <div class="prp-ff-note" id="prp-ff-adj" style="margin:0;border-radius:0;">${Number(am.adjustment) > 0.5 ? `Still to withhold (December): ₱${peso(am.adjustment)}` : (Number(am.adjustment) < -0.5 ? `Over-withheld — to refund: ₱${peso(-am.adjustment)}` : 'Withheld tax equals the tax due.')}</div>
+            <div class="prp-ff-part">Part IV-B - Details of Compensation Income</div>
+            ${line(cell('34', '13th Month Pay and Other Benefits (≤ ₱90,000)', amt('i34', am.i34), L), cell('35', 'De Minimis Benefits', amt('i35', am.i35), L))}
+            ${line(cell('36', 'SSS, GSIS, PHIC, Pag-IBIG Contributions and Union Dues', amt('i36', am.i36), L), cell('37', 'Salaries and Other Forms of Compensation (non-taxable — PERA)', amt('i37', am.i37), L))}
+            ${line(cell('38', 'Total Non-Taxable / Exempt Compensation Income', amt('i38', am.i38), L))}
+            ${line(cell('39', 'Basic Salary (taxable, less contributions)', amt('i39', am.i39), L), cell('48', '13th Month Pay and Other Benefits (over ₱90,000)', amt('i48', am.i48), L), cell('52', 'Total Taxable Compensation Income', amt('i52', am.i52), L))}
+            <div class="prp-ff-part">Signatures</div>
+            ${line(cell('53', 'Present Employer / Authorized Agent — Printed Name <span style="font-weight:400;">(pre-filled — editable)</span>', inp('employer_signatory'), { style: 'flex:2 1 260px;' }), cell('', 'Date Signed', date('date_signed')))}
+            ${line(cell('54', 'Employee — Printed Name', inp('employee_signatory'), { style: 'flex:2 1 260px;' }), cell('', 'Date Signed', date('date_signed_2')))}
+            ${line(cell('', 'CTC / Valid ID No. of Employee', inp('ctc_no')), cell('', 'Place of Issue', inp('ctc_place')), cell('', 'Date Issued', date('ctc_date')), cell('', 'Amount Paid, if CTC', inp('ctc_amount', 'inputmode="decimal"')))}
+        </div>`;
+
+    // items 23–28 follow the previous employer's figures (as the server computes them): 23 = 21 + 22; 24/26/28 = tax on 23
+    const TAX = [[8000000, 2202500, 0.35], [2000000, 402500, 0.30], [800000, 102500, 0.25], [400000, 22500, 0.20], [250000, 0, 0.15]];
+    const tax = x => { for (const [o, b, r] of TAX) if (x > o) return Math.round((b + (x - o) * r) * 100) / 100; return 0; };
+    const num = v => Number(String(v || '').replace(/,/g, '')) || 0;
+    const recalc = () => {
+        const i23 = Math.round((Number(am.i21) + num(prp_payload.taxable_previous)) * 100) / 100, i24 = tax(i23);
+        const adj = Math.round((i24 - Number(am.i25a) - num(prp_payload.tax_withheld_previous)) * 100) / 100;
+        $prp('prp-ff-i23').value = peso(i23);
+        ['i24', 'i26', 'i28'].forEach(k => { $prp('prp-ff-' + k).value = peso(i24); });
+        $prp('prp-ff-adj').textContent = adj > 0.5 ? `Still to withhold (December): ₱${peso(adj)}` : (adj < -0.5 ? `Over-withheld — to refund: ₱${peso(-adj)}` : 'Withheld tax equals the tax due.');
+    };
+    const changed = (el, original) => { el.classList.toggle('edited', el.value !== String(original ?? '')); prp_ffDirty = true; };
+    box.querySelectorAll('[data-key]').forEach(el => el.addEventListener('input', () => {
+        if (el.dataset.tin) el.value = prp_ffTin(el.value);
+        prp_payload[el.dataset.key] = el.value;
+        changed(el, ed[el.dataset.key]);
+        if (el.dataset.key === 'taxable_previous' || el.dataset.key === 'tax_withheld_previous') recalc();
+    }));
+    $prp('prp-ff-mwe').addEventListener('change', e => {
+        prp_payload.is_mwe = e.target.checked;
+        e.target.closest('label').classList.toggle('edited', e.target.checked !== !!ed.is_mwe);
+        prp_ffDirty = true;
+    });
 }
 
 /* ── Module record → print payload ─────────────────────────────────────────────
@@ -325,8 +650,39 @@ function prp_dvPayload(dv) {
             ...(dv.deductions || []).map(d => ({ description: (d.name || 'Deduction') + pct(d.rate), amount: d.deduction_amount })),
             ...(dv.atc_lines || []).map(a => ({ description: ('Withholding tax ' + (a.atc_code || '')).trim() + pct(a.rate), amount: a.withholding_tax })),
         ],
-        accounting_entries: (dv.jev?.lines || []).map(l => ({ account_code: l.account_code, debit: l.debit, credit: l.credit })),
+        accounting_entries: prp_dvEntriesWithObligation(dv),
     };
+}
+
+/**
+ * The DV's accounting entries (its SETUP JEV lines) with Section B's OBLIGATION column filled: the obligating document is
+ * the DV's linked RFA, so every DEBIT line (what the DV charges) carries an RFA number (allocation_number; its reference
+ * no. while it has none) — the RFA whose lines have that account (the same code, or an SL under it), or, when none does
+ * (e.g. PERA on a payroll DV whose RFA lists only Salaries — the DV is still funded by it), all of the DV's RFAs.
+ * Credit lines — the payables and cash — stay blank, as on a hand-filled DV. With no debit lines yet (the entry isn't
+ * made), the RFA number prints on a row of its own.
+ */
+function prp_dvEntriesWithObligation(dv) {
+    const rfas = (dv.rfas || []).map(r => {
+        let lines = r.line_transaction;
+        if (typeof lines === 'string') { try { lines = JSON.parse(lines); } catch (e) { lines = []; } }
+        const codes = (Array.isArray(lines) ? lines : []).map(l => String(l?.account_code || '').trim()).filter(Boolean);
+        return { no: String(r.allocation_number || r.request_referrence_no || '').trim(), codes };
+    }).filter(r => r.no);
+    const entries = (dv.jev?.lines || []).map(l => ({ obligation: '', account_code: l.account_code, debit: l.debit, credit: l.credit }));
+    if (!rfas.length) return entries;
+
+    const isDebit = e => Number(e.debit) > 0;
+    const covers  = (code, acct) => acct !== '' && (acct === code || acct.startsWith(code + '-'));
+    const all     = [...new Set(rfas.map(r => r.no))].join(', ');
+    entries.forEach(e => {
+        if (!isDebit(e)) return;
+        const acct = String(e.account_code || '').trim();
+        const nos  = rfas.filter(r => r.codes.some(c => covers(c, acct))).map(r => r.no);
+        e.obligation = nos.length ? [...new Set(nos)].join(', ') : all;
+    });
+    if (!entries.some(isDebit)) entries.unshift({ obligation: all, account_code: '', debit: 0, credit: 0 });
+    return entries;
 }
 
 /**
@@ -375,11 +731,12 @@ function prp_jevFromDv(dv, jev) {
 }
 
 /**
- * One account's ledger card (the General Ledger page's GET /general_ledger/ledger?account_code=… response:
- * { account { account_code, account_title }, debit_normal, data [{ posting_date, debit, credit, doc_ref_no }] })
- * → the GENERAL LEDGER sheet, printed as its monthly summary (GeneralLedgerPrintService). `opts` (optional):
- * fiscal_year (the page's Fiscal Year filter), opening_balance (the "Jan 1 Balance" — the system has no
- * brought-forward balance, so none by default), entity_name, sheet_no (blank: filled in by hand).
+ * One GL account's ledger for one fiscal year and one book (the General Ledger page's GET /general_ledger/ledger?account_code=
+ * …&fiscal_yr=…&book_id=… response: { account { account_code, account_title }, debit_normal, data [{ posting_date, jev_no,
+ * doc_ref_no, debit, credit }] } — the GL account with its SL accounts' postings rolled in) → the GENERAL LEDGER sheet,
+ * NHA Form No. 11 (GeneralLedgerPrintService): the monthly summary per journal. The journal of each posting and the
+ * Beginning Balance (the book's Opening Balance) are worked out server-side. `opts`: fiscal_year, book_id, fund (the
+ * book's name), sheet_no (blank: filled in by hand).
  */
 function prp_glPayload(resp, opts = {}) {
     const a = (resp && resp.account) || {};
@@ -388,23 +745,49 @@ function prp_glPayload(resp, opts = {}) {
         account_title: a.account_title || '',
         debit_normal: resp && resp.debit_normal !== false,
         fiscal_year: opts.fiscal_year || '',
-        opening_balance: opts.opening_balance ?? '',
-        entity_name: opts.entity_name || '',
+        book_id: opts.book_id || '',
+        fund: opts.fund || '',
         sheet_no: opts.sheet_no || '',
         lines: ((resp && resp.data) || []).map(l => ({
-            posting_date: l.posting_date, debit: l.debit, credit: l.credit, doc_ref_no: l.doc_ref_no || '',
+            posting_date: l.posting_date, jev_no: l.jev_no || '', doc_ref_no: l.doc_ref_no || '', debit: l.debit, credit: l.credit,
         })),
+    };
+}
+
+/**
+ * One GL account with the SL accounts under it (the General Ledger page's GET /general_ledger/ledger-sl?account_code=…
+ * &fiscal_yr=…&book_id=… response: { account { account_code, account_title }, debit_normal, sub_ledgers [{ sl
+ * { account_code, account_title }, data }] }; each data row { posting_date, jev_no, doc_ref_no, description, debit,
+ * credit }) → the SUBSIDIARY LEDGER sheets (SubsidiaryLedgerPrintService, type SL), one per SL account. The server
+ * leaves out SLs with nothing in the book and year, fills each posting's month, particulars and FOLIO from its JEV, the
+ * beginning balance from the Opening Balances, and the bank / account no. for a bank account's SL. The GL account's own
+ * postings (not through an SL) are not an SL — they are on the General Ledger sheet. `opts`: fund (the book's name),
+ * book_id, fiscal_year.
+ */
+function prp_glSlPayload(resp, opts = {}) {
+    const a = (resp && resp.account) || {};
+    const lines = rows => (rows || []).map(l => ({
+        posting_date: l.posting_date, jev_no: l.jev_no || '', doc_ref_no: l.doc_ref_no || '',
+        particulars: l.description || '', debit: l.debit, credit: l.credit,
+    }));
+    return {
+        gl_account_code: a.account_code || '',
+        gl_account_title: a.account_title || '',
+        fund: opts.fund || '',
+        book_id: opts.book_id || '',
+        fiscal_year: opts.fiscal_year || '',
+        debit_normal: resp && resp.debit_normal !== false,
+        ledgers: ((resp && resp.sub_ledgers) || []).map(s => ({ sl_code: s.sl?.account_code || '', sl_name: s.sl?.account_title || '', lines: lines(s.data) })),
     };
 }
 
 /**
  * One SL account's ledger card (the Subsidiary Ledger page's GET /general_ledger/subsidiary-ledger?sl_code=… response:
  * { master { account_code, account_title, account_type }, debit_normal, data [{ posting_date, jev_no, doc_ref_no,
- * description, debit, credit }] }) → the SUBSIDIARY LEDGER sheet, one line per posting (SubsidiaryLedgerPrintService).
- * An SL is a child account in the Chart of Accounts: master = the SL account; its parent (the sheet's GL Account
- * Name / Account Code) is looked up server-side. Still reads the older { sl_code, sl_name, account_code } master.
- * `opts` (optional): fund (the Book filter's name), fiscal_year, entity_name, bank_account_no, opening_balance,
- * gl_account_code / gl_account_title (skip the lookup), sl_detail_name.
+ * description, debit, credit }] }) → one SUBSIDIARY LEDGER sheet (SubsidiaryLedgerPrintService). The GL account (the
+ * SL's parent), the month / particulars / FOLIO of each posting and the beginning balance are filled server-side.
+ * Still reads the older { sl_code, sl_name, account_code } master. `opts`: fund (the Book filter's name), book_id,
+ * fiscal_year, opening_balance (overrides the lookup), gl_account_code / gl_account_title (skip the lookup).
  */
 function prp_slPayload(resp, opts = {}) {
     const m = (resp && resp.master) || {};
@@ -414,19 +797,16 @@ function prp_slPayload(resp, opts = {}) {
     return {
         sl_code: m.sl_code || m.account_code || '',
         sl_name: m.sl_name || m.account_title || '',
-        sl_detail_name: opts.sl_detail_name || '',
         gl_account_code: opts.gl_account_code || (legacy ? m.account_code || '' : ''),
         gl_account_title: opts.gl_account_title || ctl.account_title || '',
-        bank_account_no: opts.bank_account_no || '',
-        entity_name: opts.entity_name || '',
         fund: opts.fund || '',
+        book_id: opts.book_id || '',
         fiscal_year: opts.fiscal_year || '',
         debit_normal: resp && resp.debit_normal !== false,
         opening_balance: opts.opening_balance ?? '',
         lines: data.map(l => ({
-            posting_date: l.posting_date, debit: l.debit, credit: l.credit,
-            particulars: l.description || l.doc_ref_no || '',
-            ref: l.jev_no || l.doc_ref_no || '',
+            posting_date: l.posting_date, jev_no: l.jev_no || '', doc_ref_no: l.doc_ref_no || '',
+            particulars: l.description || '', debit: l.debit, credit: l.credit,
         })),
     };
 }
@@ -599,13 +979,16 @@ function prp_close() {
 }
 
 async function prp_download(format) {
-    const btn = $prp(format === 'pdf' ? 'prp-pdf' : 'prp-docx');
+    const btn = $prp({ pdf: 'prp-pdf', docx: 'prp-docx', xlsx: 'prp-xlsx' }[format]);
     const label = btn.textContent;
     prp_showError('');
     prp_setReady(false);
     btn.textContent = 'Generating…';
     try {
-        const json = await prp_request(format);
+        // Excel: the form's own export endpoint (PRP_TYPES[…].excel) with the same payload; PDF / DOCX: the print endpoint
+        const json = format === 'xlsx'
+            ? await prp_fetchJson(PRP_API + '/' + PRP_TYPES[prp_type].excel, { method: 'POST', headers: prp_headers(true), body: JSON.stringify(prp_payload) })
+            : await prp_request(format);
         const bin = atob(json.data);
         const bytes = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);

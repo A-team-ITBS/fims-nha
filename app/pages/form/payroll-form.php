@@ -31,7 +31,7 @@
     #pyr-overlay { display:none;position:fixed;inset:0;z-index:9100;
         background:rgba(15,32,69,.6);align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px); }
     #pyr-overlay.open { display:flex; }
-    #pyr-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;width:100%;max-width:720px;
+    #pyr-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;
         max-height:92vh;display:flex;flex-direction:column;overflow:hidden;
         box-shadow:0 32px 80px rgba(0,0,0,.28);font-family:'IBM Plex Sans',sans-serif;
         animation:pyrIn .2s ease; }
@@ -146,7 +146,7 @@
 </style>
 
 <div id="pyr-overlay">
-    <div id="pyr-card">
+    <div class="u-modal-md" id="pyr-card">
 
         <div id="pyr-header">
             <div id="pyr-header-info">
@@ -186,6 +186,26 @@
                         </select>
                         <p class="pyr-hint" id="pyr-side-hint">Decides how the item posts to its account.</p>
                     </div>
+                </div>
+                <div class="pyr-group full">
+                    <label class="pyr-label" for="pyr-tax-treatment">Tax Treatment <span class="pyr-hint" style="display:inline;">(year-end tax annualization / BIR 2316)</span></label>
+                    <select class="pyr-input" id="pyr-tax-treatment">
+                        <option value="NONE">Not part of it — loans, payables, employer shares</option>
+                        <option value="TAXABLE">Taxable compensation — basic pay, RA / TA, differentials</option>
+                        <option value="NON_TAXABLE">Non-taxable compensation — PERA</option>
+                        <option value="DE_MINIMIS">De minimis benefit — exempt up to its limit (De Minimis Limits)</option>
+                        <option value="BENEFIT_90K">13th month &amp; other benefits (exempt up to ₱90,000 / year)</option>
+                        <option value="CONTRIBUTION">Mandatory contribution / union dues — GSIS, PhilHealth, Pag-IBIG</option>
+                        <option value="WITHHOLDING_TAX">Tax withheld on compensation</option>
+                    </select>
+                    <p class="pyr-hint">On a Deduction it takes away from pay (e.g. leave without pay) unless it is a contribution or tax withheld; on a Refund it adds back to pay, or reduces the contribution / tax withheld.</p>
+                </div>
+                <div class="pyr-group full" id="pyr-de-minimis-wrap" hidden>
+                    <label class="pyr-label" for="pyr-de-minimis">De Minimis Benefit <span class="req">*</span></label>
+                    <select class="pyr-input" id="pyr-de-minimis">
+                        <option value="">— Select benefit —</option>
+                    </select>
+                    <p class="pyr-hint">Its limit is exempt; anything above it counts toward the ₱90,000 13th month &amp; other benefits. Limits are edited under De Minimis Limits on this page.</p>
                 </div>
                 <div class="pyr-group full">
                     <label class="pyr-label" for="pyr-item-name">Item Name <span class="req">*</span></label>

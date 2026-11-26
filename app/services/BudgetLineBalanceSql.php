@@ -170,7 +170,7 @@ final class BudgetLineBalanceSql
         return [
             'approved_amount' => "COALESCE({$li}.suggested_amount, 0)",
             // Revision / Realignment: the ledger total — ALL the approved revisions and realignments to date, together — which is what Revised is built on (the same number as
-            // budget_line_items.adjustment). The COB page's Revision / Realignment column shows only the LATEST adjustment of a project, worked out after the SQL — see CobService.
+            // budget_line_items.adjustment). The COB page's (and its View modal's) Amendment / Realignment column shows this same total.
             'revision_amount' => self::revisionExpr($li),
             'revised_amount' => $revised,
             'reserved_amount' => $reserved,

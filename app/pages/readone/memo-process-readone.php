@@ -56,7 +56,7 @@
 .mpr-overlay { display:none;position:fixed;inset:0;z-index:9060;padding:16px;box-sizing:border-box;align-items:center;justify-content:center;
     background:rgba(15,32,69,.55);font-family:'IBM Plex Sans',sans-serif; }
 .mpr-overlay.open { display:flex; }
-.mpr-modal { display:flex;flex-direction:column;width:100%;max-width:920px;max-height:100%;overflow:hidden;border-radius:14px;
+.mpr-modal { display:flex;flex-direction:column;max-height:100%;overflow:hidden;border-radius:14px;
     background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-text, #1A1B21);box-shadow:0 24px 64px rgba(0,0,0,.35); }
 .mpr-hdr { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;
     background:var(--afims-heading-fill, #000E3E);color:#fff; }
@@ -160,7 +160,7 @@ html.afims-dark[data-bs-theme="dark"] .mpr-docs a { color:var(--afims-primary-te
 
 <!-- ── MEMO REQUEST: DETAILS MODAL (View / Process) ───────── -->
 <div id="mpr-overlay" class="mpr-overlay">
-    <div class="mpr-modal" role="dialog" aria-modal="true" aria-labelledby="mpr-title">
+    <div class="mpr-modal u-modal-lg" role="dialog" aria-modal="true" aria-labelledby="mpr-title">
         <div class="mpr-hdr">
             <h3 class="mpr-title" id="mpr-title"><span id="mpr-title-text">Process Memo Request</span><span class="mpr-ref" id="mpr-ref"></span><span class="mpr-status" id="mpr-status"></span></h3>
             <button type="button" class="mpr-close" id="mpr-close" aria-label="Close">&times;</button>
@@ -600,13 +600,11 @@ function mpr_printEntries() {
     if (!mpr_row) return [];
     const type = String(mpr_row.allocation_type || '').toUpperCase();
     if (!['CBA', 'RFA', 'LAA'].includes(type)) return [];
-    // The CBA / RFA / LAA forms are for FMD users and administrators to print (the API refuses everyone else too): for anyone
-    // else there is no "Print <type>" entry. An RFA's CAFs below stay printable, so for them the button remains with the CAFs
-    // alone; a CBA / LAA has nothing else to print, so there is no button.
+    // The CBA / RFA / LAA forms and an RFA's CAFs are for FMD users and administrators to print (the API refuses everyone else
+    // too): for anyone else there is nothing to print, so no Print button at all.
+    if (!(MRQ_IS_FMD || MRQ_IS_ADMIN)) return [];
     const entries = [];
-    if (MRQ_IS_FMD || MRQ_IS_ADMIN) {
-        entries.push({ label: `Print ${type}`, sub: '', run: () => mrq_printAllocation(mpr_row.allocation_id) });
-    }
+    entries.push({ label: `Print ${type}`, sub: '', run: () => mrq_printAllocation(mpr_row.allocation_id) });
     if (type === 'RFA') {
         const many = mpr_cafs.length > 1;
         mpr_cafs.forEach((c, i) => entries.push({

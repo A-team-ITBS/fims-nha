@@ -264,7 +264,7 @@ $_bpr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 
 <!-- ── BUDGET PROCESSING MODAL ───────────────────────────── -->
 <div id="bpr-overlay" class="nha-overlay">
-    <div class="nha-modal nha-modal-xl" role="dialog" aria-modal="true" aria-labelledby="bpr-title">
+    <div class="nha-modal u-modal-xl" role="dialog" aria-modal="true" aria-labelledby="bpr-title">
         <div class="nha-modal-hdr">
             <h3 class="nha-modal-title" id="bpr-title">Submission Ref. No. <span class="bpr-ref" id="bpr-ref"></span></h3>
             <button type="button" class="nha-modal-close" id="bpr-close" aria-label="Close">&times;</button>

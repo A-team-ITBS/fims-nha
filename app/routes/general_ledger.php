@@ -117,7 +117,9 @@ $app->get('/general_ledger/ledger', function ($request, $response, $args) use ($
         $result      = $GeneralLedgerService->fetchGeneralLedger(
             $accountCode !== '' ? $accountCode : null,
             $glIntOrNull($params['fiscal_yr'] ?? null),
-            $glIntOrNull($params['book_id'] ?? null)
+            $glIntOrNull($params['book_id'] ?? null),
+            $glIntOrNull($params['month'] ?? null),
+            trim((string) ($params['fund'] ?? '')) ?: null
         );
 
         return $response->withJson($result, $result['success'] ? 200 : 400);
@@ -147,6 +149,50 @@ $app->get('/general_ledger/ledger-sl', function ($request, $response, $args) use
         return $response->withJson($result, $result['success'] ? 200 : 400);
     } catch (\Exception $e) {
         LogError('GET /general_ledger/ledger-sl ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+// General Ledger page tree (GL → SL → sub-SL, with rolled-up totals) and one account's own postings (lazy, on click).
+// See GeneralLedgerService::fetchLedgerTree() / fetchAccountPostings(). Optional: fiscal_yr, book_id.
+$app->get('/general_ledger/tree', function ($request, $response, $args) use ($GeneralLedgerService, $glIntOrNull) {
+    try {
+        $params = $request->getQueryParams();
+        $result = $GeneralLedgerService->fetchLedgerTree($glIntOrNull($params['fiscal_yr'] ?? null), $glIntOrNull($params['book_id'] ?? null), $glIntOrNull($params['month'] ?? null), trim((string) ($params['fund'] ?? '')) ?: null);
+
+        return $response->withJson($result, $result['success'] ? 200 : 500);
+    } catch (\Exception $e) {
+        LogError('GET /general_ledger/tree ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+$app->get('/general_ledger/funds', function ($request, $response, $args) use ($GeneralLedgerService) {
+    try {
+        $result = $GeneralLedgerService->fetchFunds();
+
+        return $response->withJson($result, $result['success'] ? 200 : 500);
+    } catch (\Exception $e) {
+        LogError('GET /general_ledger/funds ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+$app->get('/general_ledger/postings', function ($request, $response, $args) use ($GeneralLedgerService, $glIntOrNull) {
+    try {
+        $params      = $request->getQueryParams();
+        $accountCode = trim((string) ($params['account_code'] ?? ''));
+        if ($accountCode === '') {
+            return $response->withJson(['success' => false, 'message' => 'account_code is required.'], 400);
+        }
+        $result = $GeneralLedgerService->fetchAccountPostings($accountCode, $glIntOrNull($params['fiscal_yr'] ?? null), $glIntOrNull($params['book_id'] ?? null), $glIntOrNull($params['month'] ?? null), trim((string) ($params['fund'] ?? '')) ?: null);
+
+        return $response->withJson($result, $result['success'] ? 200 : 400);
+    } catch (\Exception $e) {
+        LogError('GET /general_ledger/postings ' . $e->getMessage());
 
         return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
     }

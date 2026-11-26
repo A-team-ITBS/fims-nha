@@ -321,9 +321,10 @@ class GeneralLedgerService
         $uid   = $userId > 0 ? (string) $userId : 'NULL';
         $row   = App\ExecuteRow(
             "INSERT INTO {$this->tableJev}
-                (jev_no, dv_id, fiscal_yr, book_id, jev_type, source_module, doc_ref_no, total_debit, total_credit, status_id, created_by)
+                (jev_no, dv_id, fiscal_yr, book_id, jev_type, source_module, doc_ref_no, particulars, total_debit, total_credit, status_id, created_by)
              VALUES (" . $this->str($jevNo) . ", {$dvId}, " . $this->intOrNull($setupJev['fiscal_yr']) . ', '
                 . $this->intOrNull($setupJev['book_id']) . ", 'PAYMENT', 'TREASURY', " . $this->str($docRefNo) . ', '
+                . $this->str("Payment via {$docRefNo}") . ', '
                 . (float) $amount . ', ' . (float) $amount . ", {$startId}, {$uid})
              RETURNING jev_id",
             'DB'
@@ -591,6 +592,22 @@ class GeneralLedgerService
             }
             $whereSql = implode(' AND ', $where);
 
+            // Source of the per-account totals. One fiscal year → the view as is (that year's GL activity + that
+            // year's opening balance). "All Years" → the view would add EVERY year's opening balance on top of the
+            // whole GL, double-counting a carried-forward balance (FY2027's opening = FY2026's closing). So build
+            // the cumulative figure directly: all GL activity + only the EARLIEST opening balance per book/account.
+            $source = $fiscalYr !== null
+                ? $this->tableViewTrialBalance
+                : "(SELECT c.account_id, x.book_id, SUM(x.debit) AS total_debit, SUM(x.credit) AS total_credit
+                    FROM (SELECT account_code, book_id, debit, credit FROM fims.general_ledger
+                          UNION ALL
+                          SELECT ob.account_code, ob.book_id, ob.debit, ob.credit
+                          FROM fims.opening_balances ob
+                          WHERE ob.fiscal_yr = (SELECT MIN(o2.fiscal_yr) FROM fims.opening_balances o2
+                                                WHERE o2.book_id = ob.book_id AND o2.account_code = ob.account_code)) x
+                    JOIN {$this->tableCoa} c ON c.account_code = x.account_code
+                    GROUP BY c.account_id, x.book_id)";
+
             // Roll SL/child postings up into their GL account. An SL account (e.g. the Chart of
             // Accounts page's "Add Sub-Ledger" action) is only ever created under a parent that is
             // ITSELF already posting_allowed — chart-of-accounts-page.php's coa_addSL() only offers
@@ -616,7 +633,7 @@ class GeneralLedgerService
                      SELECT gl_of.gl_account_id,
                             SUM(v.total_debit)  AS total_debit,
                             SUM(v.total_credit) AS total_credit
-                     FROM {$this->tableViewTrialBalance} v
+                     FROM {$source} v
                      JOIN gl_of ON gl_of.leaf_id = v.account_id
                      WHERE {$whereSql}
                      GROUP BY gl_of.gl_account_id
@@ -634,12 +651,21 @@ class GeneralLedgerService
                  ORDER BY gl.account_code",
                 'DB'
             ) ?: [];
+            // Balance method: one net figure per account — on the debit side if debits exceed credits,
+            // otherwise on the credit side (the other side stays 0). Gross activity is not shown.
+            foreach ($data as &$row) {
+                $net                = round((float) $row['total_debit'] - (float) $row['total_credit'], 2);
+                $row['total_debit']  = $net > 0 ? $net : 0.0;
+                $row['total_credit'] = $net < 0 ? -$net : 0.0;
+            }
+            unset($row);
+            // Every account is listed, including those that net to zero (fully paid) or have no postings yet.
             $totalDebit  = round(array_sum(array_column($data, 'total_debit')), 2);
             $totalCredit = round(array_sum(array_column($data, 'total_credit')), 2);
 
             $this->attachAccountGroups($data);
 
-            return ['success' => true, 'data' => $data, 'total_debit' => $totalDebit, 'total_credit' => $totalCredit, 'balanced' => $totalDebit === $totalCredit];
+            return ['success' => true, 'data' => $data, 'total_debit' => $totalDebit, 'total_credit' => $totalCredit, 'balanced' => abs($totalDebit - $totalCredit) < 0.005];
         } catch (\Exception $e) {
             App\LogError('GeneralLedgerService::fetchTrialBalance ' . $e->getMessage());
 
@@ -701,7 +727,7 @@ class GeneralLedgerService
      * $accountCode omitted/blank: every posted account's ledger card at once (see
      * fetchAllGeneralLedgers()) — the page's default view before one account is picked.
      */
-    public function fetchGeneralLedger(?string $accountCode, ?int $fiscalYr = null, ?int $bookId = null): array
+    public function fetchGeneralLedger(?string $accountCode, ?int $fiscalYr = null, ?int $bookId = null, ?int $month = null, ?string $fund = null): array
     {
         try {
             if ($accountCode === null || trim($accountCode) === '') {
@@ -729,6 +755,7 @@ class GeneralLedgerService
                 $where[] = 'v.book_id = ' . (int) $bookId;
             }
             $signV = $debitNormal ? '(v.debit - v.credit)' : '(v.credit - v.debit)';
+            $where[] = '1 = 1' . $this->periodFundSql($month, $fund, 'v.');
             $data = App\ExecuteRows(
                 $this->glRollupCte() . "
                  SELECT v.gl_id, v.posting_date, v.jev_no, v.dv_no, v.doc_ref_no, v.sl_code, v.sl_name, v.debit, v.credit, v.reference_no, v.description, v.reversed_gl_id,
@@ -743,6 +770,7 @@ class GeneralLedgerService
                 'DB'
             ) ?: [];
 
+            $this->attachJournalInfo($data);
             $totalDebit  = round(array_sum(array_column($data, 'debit')), 2);
             $totalCredit = round(array_sum(array_column($data, 'credit')), 2);
 
@@ -773,12 +801,21 @@ class GeneralLedgerService
      */
     private function glRollupCte(): string
     {
-        return "WITH gl_of AS (
-                    SELECT c.account_id AS leaf_id,
-                           CASE WHEN c.parent_account_id IS NULL
-                                  OR EXISTS (SELECT 1 FROM {$this->tableCoa} k WHERE k.parent_account_id = c.account_id)
-                                THEN c.account_id ELSE c.parent_account_id END AS gl_account_id
-                    FROM {$this->tableCoa} c
+        // Same GL definition as fetchTrialBalance() / fetchLedgerTree(): climb from every account through postable
+        // parents; the highest one reached is its GL account — so an SL's sub-SL postings roll up to the GL as well.
+        return "WITH RECURSIVE climb AS (
+                    SELECT account_id AS leaf_id, account_id, parent_account_id, 0 AS depth
+                    FROM {$this->tableCoa}
+                    UNION ALL
+                    SELECT climb.leaf_id, p.account_id, p.parent_account_id, climb.depth + 1
+                    FROM climb
+                    JOIN {$this->tableCoa} p ON p.account_id = climb.parent_account_id
+                    WHERE p.posting_allowed = TRUE
+                ),
+                gl_of AS (
+                    SELECT DISTINCT ON (leaf_id) leaf_id, account_id AS gl_account_id
+                    FROM climb
+                    ORDER BY leaf_id, depth DESC
                 )";
     }
 
@@ -895,6 +932,233 @@ class GeneralLedgerService
             App\LogError('GeneralLedgerService::fetchGlSubLedgers ' . $e->getMessage());
 
             return ['success' => false, 'message' => 'Failed to fetch the sub-ledgers of this account.'];
+        }
+    }
+
+    /**
+     * Tags each posting line (rows with jev_no / dv_no) with `journal` — the journal it belongs to: GJ, CKDJ, ADADJ or CRDJ
+     * (same rule as the General Ledger print, GeneralLedgerPrintService::journals()) — and, for a check disbursement, the
+     * DV's `check_no` / `check_date`. Used by the ledger preview's REF and Check No. / Check Date columns.
+     */
+    private function attachJournalInfo(array &$rows): void
+    {
+        if (!$rows) {
+            return;
+        }
+        $jevNos  = array_values(array_unique(array_filter(array_column($rows, 'jev_no'))));
+        $journal = GeneralLedgerPrintService::journals($jevNos);
+        $dvNos   = array_values(array_unique(array_filter(array_column($rows, 'dv_no'))));
+        $checks  = [];
+        if ($dvNos) {
+            $list = implode(',', array_map(fn ($n) => $this->str($n), $dvNos));
+            foreach (App\ExecuteRows("SELECT dv_number, check_number, check_date FROM {$this->tableChecks} WHERE dv_number IN ({$list}) ORDER BY check_id", 'DB') ?: [] as $c) {
+                $checks[$c['dv_number']] = $c;   // latest check of the DV wins
+            }
+        }
+        foreach ($rows as &$r) {
+            $j = $journal[$r['jev_no'] ?? '']['journal'] ?? 'GJ';
+            $r['journal'] = in_array($j, ['GJ', 'CKDJ', 'ADADJ', 'CRDJ'], true) ? $j : 'GJ';
+            $r['jev_particulars'] = $journal[$r['jev_no'] ?? '']['particulars'] ?? '';   // the JEV's particulars, else its DV's
+            $c = ($r['journal'] === 'CKDJ') ? ($checks[$r['dv_no'] ?? ''] ?? null) : null;
+            $r['check_no']   = $c['check_number'] ?? null;
+            $r['check_date'] = $c['check_date'] ?? null;
+        }
+        unset($r);
+    }
+
+    /**
+     * Period (month 1-12) and Fund (the DV's fund_source) filters of the General Ledger page, as an ` AND …` fragment on
+     * fims.v_journals ($a = column prefix, e.g. 'v.'). Fund applies to JEVs raised from a DV with that fund_source.
+     */
+    private function periodFundSql(?int $month, ?string $fund, string $a = ''): string
+    {
+        $sql = '';
+        if ($month !== null) {
+            $sql .= " AND EXTRACT(MONTH FROM {$a}posting_date) = " . (int) $month;
+        }
+        if ($fund !== null && trim($fund) !== '') {
+            $sql .= " AND {$a}jev_no IN (SELECT j.jev_no FROM {$this->tableJev} j JOIN {$this->tableDv} d ON d.dv_id = j.dv_id WHERE d.fund_source = " . $this->str($fund) . ')';
+        }
+        return $sql;
+    }
+
+    /** Distinct DV fund sources — the General Ledger page's Fund filter. */
+    public function fetchFunds(): array
+    {
+        try {
+            $rows = App\ExecuteRows("SELECT DISTINCT fund_source FROM {$this->tableDv} WHERE fund_source IS NOT NULL AND fund_source <> '' ORDER BY fund_source", 'DB') ?: [];
+
+            return ['success' => true, 'data' => array_column($rows, 'fund_source')];
+        } catch (\Exception $e) {
+            App\LogError('GeneralLedgerService::fetchFunds ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to fetch the funds.'];
+        }
+    }
+
+    /**
+     * General Ledger page tree — the chart-of-accounts hierarchy in display order (depth-first, siblings by code):
+     *   kind 'group' : a classification header above a GL account (1-01 Cash and Cash Equivalents …), totals = its GL accounts'.
+     *   kind 'gl'    : a GL account with postings anywhere under it (same GL definition as fetchTrialBalance(): the highest
+     *                  ancestor still reached through an unbroken chain of postable parents).
+     *   kind 'sl'    : every account under a GL account, to any depth (SL, sub-SL …) — listed even with no postings.
+     * Every node carries rolled-up debit/credit of its whole subtree and `own_count` (postings made straight to it).
+     * Transactions are fetched lazily per account — see fetchAccountPostings().
+     */
+    public function fetchLedgerTree(?int $fiscalYr = null, ?int $bookId = null, ?int $month = null, ?string $fund = null): array
+    {
+        try {
+            $where = '';
+            if ($fiscalYr !== null) {
+                $where .= ' AND fiscal_yr = ' . (int) $fiscalYr;
+            }
+            if ($bookId !== null) {
+                $where .= ' AND book_id = ' . (int) $bookId;
+            }
+            $where .= $this->periodFundSql($month, $fund);
+            $coa = App\ExecuteRows(
+                "SELECT account_id, account_code, account_title, account_type, parent_account_id, posting_allowed
+                 FROM {$this->tableCoa} ORDER BY account_code",
+                'DB'
+            ) ?: [];
+            $posted = App\ExecuteRows(
+                "SELECT account_code, COUNT(*) AS n, SUM(debit) AS d, SUM(credit) AS c
+                 FROM {$this->tableViewJournals} WHERE 1 = 1 {$where} GROUP BY account_code",
+                'DB'
+            ) ?: [];
+
+            $byId = [];
+            $children = [];
+            foreach ($coa as $a) {
+                $byId[$a['account_id']] = $a;
+                $children[(string) ($a['parent_account_id'] ?? '')][] = $a['account_id'];
+            }
+            $isTrue = fn ($v) => $v === true || $v === 't' || $v === 1 || $v === '1';
+            $glOf = function ($id) use ($byId, $isTrue) {
+                while (($p = $byId[$id]['parent_account_id'] ?? null) !== null && isset($byId[$p]) && $isTrue($byId[$p]['posting_allowed'])) {
+                    $id = $p;
+                }
+                return $id;
+            };
+            $idByCode = [];
+            foreach ($coa as $a) {
+                $idByCode[$a['account_code']] = $a['account_id'];
+            }
+
+            // own postings per account, then rolled up to every ancestor (ancestors above the GL become 'group' rows)
+            $own = [];
+            $sum = [];
+            $glIds = [];
+            foreach ($posted as $p) {
+                $id = $idByCode[$p['account_code']] ?? null;
+                if ($id === null) {
+                    continue;
+                }
+                $own[$id] = (int) $p['n'];
+                $glIds[$glOf($id)] = true;
+                for ($cur = $id; $cur !== null && isset($byId[$cur]); $cur = $byId[$cur]['parent_account_id'] ?? null) {
+                    $sum[$cur]['d'] = ($sum[$cur]['d'] ?? 0) + (float) $p['d'];
+                    $sum[$cur]['c'] = ($sum[$cur]['c'] ?? 0) + (float) $p['c'];
+                }
+            }
+
+            // GL membership: which accounts are SL/sub-SL of a GL with activity
+            $slOf = [];
+            foreach ($coa as $a) {
+                $g = $glOf($a['account_id']);
+                if ($g !== $a['account_id'] && isset($glIds[$g])) {
+                    $slOf[$a['account_id']] = $g;
+                }
+            }
+            // group headers = ancestors of a shown GL
+            $groupIds = [];
+            foreach (array_keys($glIds) as $g) {
+                for ($cur = $byId[$g]['parent_account_id'] ?? null; $cur !== null && isset($byId[$cur]); $cur = $byId[$cur]['parent_account_id'] ?? null) {
+                    $groupIds[$cur] = true;
+                }
+            }
+
+            $out = [];
+            $walk = function ($id, int $depth) use (&$walk, &$out, $byId, $children, $glIds, $groupIds, $slOf, $own, $sum) {
+                $kind = isset($glIds[$id]) ? 'gl' : (isset($groupIds[$id]) ? 'group' : (isset($slOf[$id]) ? 'sl' : null));
+                if ($kind === null) {
+                    return;
+                }
+                $a = $byId[$id];
+                $d = round($sum[$id]['d'] ?? 0, 2);
+                $c = round($sum[$id]['c'] ?? 0, 2);
+                $kids = array_values(array_filter($children[(string) $id] ?? [], fn ($k) => isset($glIds[$k]) || isset($groupIds[$k]) || isset($slOf[$k])));
+                $out[] = [
+                    'account_id'   => $id,
+                    'parent_id'    => $a['parent_account_id'],
+                    'account_code' => $a['account_code'],
+                    'account_title' => $a['account_title'],
+                    'account_type' => $a['account_type'],
+                    'kind'         => $kind,
+                    'depth'        => $depth,
+                    'has_children' => (bool) $kids,
+                    'own_count'    => $own[$id] ?? 0,
+                    'debit_normal' => in_array($a['account_type'], self::DEBIT_NORMAL_TYPES, true),
+                    'total_debit'  => $d,
+                    'total_credit' => $c,
+                    'balance'      => round($d - $c, 2),
+                ];
+                foreach ($kids as $k) {
+                    $walk($k, $depth + 1);
+                }
+            };
+            foreach ($children[''] ?? [] as $rootId) {
+                $walk($rootId, 0);
+            }
+
+            return ['success' => true, 'data' => $out];
+        } catch (\Exception $e) {
+            App\LogError('GeneralLedgerService::fetchLedgerTree ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to fetch the ledger tree.'];
+        }
+    }
+
+    /**
+     * Postings made straight to ONE account (not its sub-accounts), oldest first, with a running balance signed by the
+     * account's normal side. Same line shape as fetchGeneralLedger()'s `data`. Used by the tree's lazy transaction rows.
+     */
+    public function fetchAccountPostings(string $accountCode, ?int $fiscalYr = null, ?int $bookId = null, ?int $month = null, ?string $fund = null): array
+    {
+        try {
+            $account = App\ExecuteRow(
+                "SELECT account_code, account_title, account_type FROM {$this->tableCoa} WHERE account_code = " . $this->str($accountCode),
+                'DB'
+            );
+            if (!$account) {
+                return ['success' => false, 'message' => "Account code '{$accountCode}' does not exist in the chart of accounts."];
+            }
+            $debitNormal = in_array($account['account_type'], self::DEBIT_NORMAL_TYPES, true);
+            $sign  = $debitNormal ? '(debit - credit)' : '(credit - debit)';
+            $where = '';
+            if ($fiscalYr !== null) {
+                $where .= ' AND fiscal_yr = ' . (int) $fiscalYr;
+            }
+            if ($bookId !== null) {
+                $where .= ' AND book_id = ' . (int) $bookId;
+            }
+            $where .= $this->periodFundSql($month, $fund);
+            $rows = App\ExecuteRows(
+                "SELECT gl_id, posting_date, jev_no, dv_no, doc_ref_no, debit, credit, reference_no, description, reversed_gl_id,
+                        SUM({$sign}) OVER (ORDER BY posting_date, gl_id) AS running_balance
+                 FROM {$this->tableViewJournals}
+                 WHERE account_code = " . $this->str($accountCode) . " {$where}
+                 ORDER BY posting_date, gl_id",
+                'DB'
+            ) ?: [];
+
+            $this->attachJournalInfo($rows);
+
+            return ['success' => true, 'debit_normal' => $debitNormal, 'data' => $rows];
+        } catch (\Exception $e) {
+            App\LogError('GeneralLedgerService::fetchAccountPostings ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to fetch the postings.'];
         }
     }
 

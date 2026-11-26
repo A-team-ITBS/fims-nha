@@ -30,9 +30,7 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
 
     #ftlm-card {
         background: var(--afims-surface, #FFFFFF);
-        border-radius: 16px;
-        width: 96vw;
-        max-width: 1060px;
+        border-radius: 16px;
         max-height: 94vh;
         display: flex;
         flex-direction: column;
@@ -42,7 +40,6 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
         animation: ftlmSlideIn .22s ease;
         transition: max-width .2s ease;
     }
-    #ftlm-card.ftlm-wide { max-width: 1200px; }
 
     @keyframes ftlmSlideIn {
         from { opacity: 0; transform: translateY(20px) scale(.98); }
@@ -393,13 +390,12 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
     @media (max-width: 800px) {
         #ftlm-preview-panel { display: none; }
         #ftlm-form-panel { flex: 1; border-right: none; }
-        #ftlm-card { max-width: 600px; }
         #ftlm-card .ftlm-grid-2 { grid-template-columns: 1fr; }
     }
 </style>
 
 <div id="ftlm-overlay" role="dialog" aria-modal="true" aria-labelledby="ftlm-title">
-    <div id="ftlm-card">
+    <div class="u-modal-xl" id="ftlm-card">
 
         <!-- Header -->
         <div id="ftlm-header">
@@ -525,7 +521,7 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                         <div class="ftlm-fg">
                             <label class="ftlm-label" for="ftlm_from_bank_account_id">Destination Bank</label>
                             <select class="form-control" id="ftlm_from_bank_account_id" name="to_bank_account_id" disabled
-                                    onchange="ftlm_updateFundSourceDisplay(); ftlm_schedulePreviewUpdate();">
+                                    onchange="ftlm_updateFundSourceDisplay(); ftlm_refreshBankExclusion(); ftlm_schedulePreviewUpdate();">
                                 <option value="">Loading…</option>
                             </select>
                         </div>
@@ -546,7 +542,7 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                     <div class="ftlm-grid-2" id="ftlm-single-debit-wrap">
                         <div class="ftlm-fg">
                             <label class="ftlm-label" for="ftlm_from_source_bank_account_id">Debit (Source) Bank Account</label>
-                            <select class="form-control" id="ftlm_from_source_bank_account_id" disabled onchange="ftlm_schedulePreviewUpdate()">
+                            <select class="form-control" id="ftlm_from_source_bank_account_id" disabled onchange="ftlm_refreshBankExclusion(); ftlm_schedulePreviewUpdate();">
                                 <option value="">Loading…</option>
                             </select>
                         </div>
@@ -1233,6 +1229,26 @@ function ftlm_bankOptsHtml(banks, { excludeId = '', matchBankName = '', currentV
         rows.map(b => `<option value="${b.bank_account_id}">${b.bank_name} — ${b.account_name} (${b.account_number})</option>`).join('');
 }
 
+// Single-debit mode's own Destination Bank (#ftlm_from_bank_account_id) and
+// Debit/Source Bank (#ftlm_from_source_bank_account_id) — same "can't be its
+// own From and To" rule ftlm_bankOptsHtml()'s excludeId already enforces for
+// each multi-debit row, just applied to this pair of top-level selects
+// instead. Rebuilds both option lists off each other's CURRENT value, then
+// restores each select's own value (replacing innerHTML drops the browser's
+// selection) — call after loading banks, after either select changes, and
+// after an existing record's values are filled in (ftlm_setDebitAccounts()).
+function ftlm_refreshBankExclusion() {
+    const fromSel   = ftlm$('ftlm_from_bank_account_id');
+    const sourceSel = ftlm$('ftlm_from_source_bank_account_id');
+    if (!fromSel || !sourceSel || !ftlm_banks.length) return;
+    const fromVal   = fromSel.value;
+    const sourceVal = sourceSel.value;
+    fromSel.innerHTML   = ftlm_bankOptsHtml(ftlm_banks, { excludeId: sourceVal, currentValue: fromVal });
+    sourceSel.innerHTML = ftlm_bankOptsHtml(ftlm_banks, { excludeId: fromVal, currentValue: sourceVal });
+    fromSel.value   = fromVal;
+    sourceSel.value = sourceVal;
+}
+
 // "1 DV per account" — same ftlm_dvOptions list (loaded in full by
 // ftlm_loadDvOptions(), status=FOR_TREASURY) used for both the single-debit DV
 // select (#ftlm_dv_number) and each multi-debit row's own DV select below.
@@ -1264,9 +1280,9 @@ async function ftlm_loadBankAccounts() {
     try {
         const resFrom = await ftlm_fetch('ftla/bank-accounts');
         ftlm_banks = resFrom.data || [];
-        const opts = ftlm_bankOptsHtml(ftlm_banks);
-        if (fromSel)   { fromSel.innerHTML   = opts; fromSel.disabled   = false; }
-        if (sourceSel) { sourceSel.innerHTML = opts; sourceSel.disabled = false; }
+        ftlm_refreshBankExclusion();
+        if (fromSel)   fromSel.disabled   = false;
+        if (sourceSel) sourceSel.disabled = false;
         ftlm_updateFundSourceDisplay();
         ftlm_renderDebitRows();   // re-render any rows added before banks finished loading
     } catch (e) {
@@ -1366,6 +1382,7 @@ function ftlm_onDebitDvChange(idx, dvNo) {
         if (dv && dv.net_amount) {
             ftlm_debitRows[idx].amount = ftlm_parseAmount(String(dv.net_amount));
         }
+        ftlm_autoFillRfaFromDv(dvNo);
     }
     ftlm_renderDebitRows();
     ftlm_schedulePreviewUpdate();
@@ -1467,6 +1484,7 @@ function ftlm_setDebitAccounts(rows) {
         if (sel) sel.value = ftlm_debitRows[0].bank_account_id;
         ftlm_debitRows = [];
     }
+    ftlm_refreshBankExclusion();
     ftlm_renderDebitRows();
 }
 
@@ -1600,7 +1618,36 @@ function ftlm_recalcDvAmount() {
     if (dv && dv.net_amount) {
         ftlm_setAmount(ftlm_parseAmount(String(dv.net_amount)));
     }
+    ftlm_autoFillRfaFromDv(dvNo);
     ftlm_schedulePreviewUpdate();
+}
+
+// Auto-fills the RFA Number field from whichever DV was just picked (single-
+// debit #ftlm_dv_number above, or a multi-debit row's own DV select — see
+// ftlm_onDebitDvChange()) — resolves via GET /ftla/dv-rfa
+// (FtlaService::getRfaForDv(), fims.budget_allocation.dv_id). Still a plain
+// editable select afterward ("auto-fill, not lock" — same convention as
+// every other auto-fill in this project): only sets the field when a match
+// is actually found, and only back-fills #ftlm_rfa_date while it's still
+// empty. LAA has no equivalent auto-fill — see getRfaForDv()'s own comment
+// for why (RFA and LAA are sibling allocation types with no link between
+// them; LAA stays a manual pick).
+async function ftlm_autoFillRfaFromDv(dvNo) {
+    dvNo = (dvNo || '').trim();
+    if (!dvNo) return;
+    try {
+        const json = await ftlm_fetch(`ftla/dv-rfa?dv_no=${encodeURIComponent(dvNo)}`);
+        const rfa = json.data;
+        if (!rfa) return;
+        ftlm_ensureSelectOption('ftlm_rfa_number', rfa.allocation_number);
+        const idEl = ftlm$('ftlm_rfa_id');
+        if (idEl) idEl.value = rfa.allocation_id || '';
+        const dateEl = ftlm$('ftlm_rfa_date');
+        if (dateEl && !dateEl.value && rfa.created_at) dateEl.value = String(rfa.created_at).slice(0, 10);
+        ftlm_schedulePreviewUpdate();
+    } catch (e) {
+        console.error('[FTLM] RFA auto-fill:', e.message);
+    }
 }
 
 // Restores an existing FTLA's DV(s) on edit-load — single-debit: the one

@@ -47,7 +47,8 @@ class PrintService
     ];
 
     // Printed forms: the service that builds each one (model() + html()), its DOCX
-    // generator (scripts/), paper (+ 'orientation', default portrait) and PDF font.
+    // generator (scripts/), paper (+ 'orientation', default portrait — a form whose layout depends on its data, like the
+    // Balance Sheet, sets `orientation` in its model instead, which wins) and PDF font.
     // Add a new form here.
     public const DOCS = [
         'CBA' => ['service' => CbaPrintService::class, 'script' => 'gen_cba_docx.js', 'paper' => 'A4',    'font' => 'Times-Roman'],
@@ -60,14 +61,23 @@ class PrintService
         'IAR' => ['service' => IarPrintService::class, 'script' => 'gen_iar_docx.js', 'paper' => 'letter', 'font' => 'Times-Roman'],
         'LV'  => ['service' => LvPrintService::class, 'script' => 'gen_lv_docx.js', 'paper' => 'legal', 'font' => 'Times-Roman'],
         'JEV' => ['service' => JevPrintService::class, 'script' => 'gen_jev_docx.js', 'paper' => 'A4', 'orientation' => 'landscape', 'font' => 'Helvetica'],
-        'GL'  => ['service' => GeneralLedgerPrintService::class, 'script' => 'gen_gl_docx.js', 'paper' => 'letter', 'font' => 'Helvetica'],   // one account's ledger card, monthly summary
-        'SL'  => ['service' => SubsidiaryLedgerPrintService::class, 'script' => 'gen_sl_docx.js', 'paper' => 'letter', 'font' => 'Times-Roman'],   // one SL master's ledger card, every posting
+        'GL'  => ['service' => GeneralLedgerPrintService::class, 'script' => 'gen_gl_docx.js', 'paper' => 'letter', 'font' => 'Helvetica'],   // NHA Form No. 11: one GL account, one book, one year — monthly summary per journal
+        'SL'  => ['service' => SubsidiaryLedgerPrintService::class, 'script' => 'gen_sl_docx.js', 'paper' => 'letter', 'font' => 'Times-Roman'],   // Subsidiary Ledger: a sheet per SL (every posting)
+        'BS'  => ['service' => BalanceSheetPrintService::class, 'paper' => 'A4', 'font' => 'Helvetica'],   // Balance Sheet — html / pdf only; the view's columns decide portrait / landscape; payload { lines, columns, rows, fiscal_yr, view }
+        'IS'  => ['service' => IncomeStatementPrintService::class, 'paper' => 'A4', 'font' => 'Helvetica'],   // Income Statement — the Balance Sheet's layout (html / pdf only; orientation from the model); payload { lines, columns, rows, fiscal_yr, view }
+        'SC'  => ['service' => StatementOfChangesPrintService::class, 'paper' => 'A4', 'font' => 'Helvetica'],   // Statement of Changes in Net Assets/Equity — the Balance Sheet's layout (html / pdf only); payload { lines, columns, rows, fiscal_yr }
+        'CF'  => ['service' => CashFlowPrintService::class, 'paper' => 'A4', 'font' => 'Helvetica'],   // Statement of Cash Flows — the Balance Sheet's layout with a blank Note column (html / pdf only); payload { lines, columns, rows, fiscal_yr }
+        'TB'  => ['service' => TrialBalancePrintService::class, 'paper' => 'A4', 'font' => 'Helvetica'],   // Trial Balance report — html / pdf only (no 'script' = no DOCX), payload { rows, as_of, book_name, fiscal_yr }
         'FTLA' => ['service' => FtlaPrintService::class, 'script' => 'gen_ftla_docx.js', 'paper' => 'A4', 'font' => 'Helvetica'],
         'FTLAREQ' => ['service' => FtlaRequestPrintService::class, 'script' => 'gen_laareq_docx.js', 'paper' => 'letter', 'font' => 'Helvetica'],   // the LAA release request's memo layout
         'CFA' => ['service' => CfaPrintService::class, 'script' => 'gen_laareq_docx.js', 'paper' => 'A4', 'font' => 'Helvetica'],   // funding-request memo, the shared memo layout
         'MEMO' => ['service' => MemoRequestPrintService::class, 'script' => 'gen_laareq_docx.js', 'paper' => 'A4', 'font' => 'Helvetica'],   // the originating unit's memo request (non-FMD), the shared memo layout        // PDF-only forms ('pdf_only'): an official PDF form filled by the service's own
         // pdf() — no HTML / DOCX layout and no letterhead (the form has its own).
         'DV'  => ['service' => DvPrintService::class, 'pdf_only' => true],
+        'BIR2307' => ['service' => Bir2307PrintService::class, 'pdf_only' => true],   // a DV's Certificate of Creditable Tax Withheld at Source — payload { dv_id }
+        'BIR2316' => ['service' => Bir2316PrintService::class, 'pdf_only' => true],   // an employee's Certificate of Compensation Payment / Tax Withheld — payload { fiscal_yr, employee_id }
+        'ANNUALWS' => ['service' => AnnualizationPrintService::class, 'pdf_only' => true],   // an employee's annualization worksheet (client template) — payload { fiscal_yr, employee_id }; Excel: POST /print/annualws/excel
+        'GCG' => ['service' => GcgReportPrintService::class, 'pdf_only' => true],   // GCG Quarterly Report (client template GCG_Quarterly_Template_Preview.xlsx) — payload { fiscal_yr, period Q1–Q4 }; Excel: POST /print/gcg/excel
     ];
 
     public static function isDocument(string $doc): bool
@@ -107,6 +117,9 @@ class PrintService
         if (!empty($cfg['pdf_only']) && $format !== 'pdf') {
             return ['success' => false, 'message' => 'The ' . $doc . ' prints as PDF only.', 'httpCode' => 400];
         }
+        if ($format === 'docx' && empty($cfg['script'])) {   // a form registered without a DOCX generator
+            return ['success' => false, 'message' => 'The ' . $doc . ' has no DOCX version (HTML or PDF only).', 'httpCode' => 400];
+        }
         try {
             $model = $this->model($doc, $payload);
         } catch (\InvalidArgumentException $e) {
@@ -126,7 +139,7 @@ class PrintService
         }
 
         $bytes = $format === 'pdf'
-            ? GlobalService::renderPdf($this->html($doc, $model, 'print'), $cfg['paper'], $cfg['font'], $cfg['orientation'] ?? 'portrait',
+            ? GlobalService::renderPdf($this->html($doc, $model, 'print'), $cfg['paper'], $cfg['font'], $model['orientation'] ?? $cfg['orientation'] ?? 'portrait',
                 $model['pdf_running_header'] ?? null)
             : self::renderDocx($cfg['script'], $model);
         if ($bytes === null) {
@@ -201,6 +214,64 @@ class PrintService
     public static function repoRoot(): string
     {
         return dirname(__DIR__, 2);
+    }
+
+    /**
+     * An official PDF form (an AcroForm template in _shared/template/, e.g. the BIR 2307) filled with $fields by pdftk
+     * fill_form and flattened; $pages keeps only those pages ("1", "1-2"; null = all). Returns the PDF bytes, or null
+     * (logged). Every field is written, blanks too, so a template's default values are cleared. pdftk works on a temp copy
+     * of the template: read straight from a mounted folder (the Docker dev setup) each call took 20 s+.
+     * FDF strings are plain "(…)" in Windows-1252 ("₱" → "P"), as the old generators — UTF-16 hex strings leave
+     * pdftk-java's multiline fields blank.
+     */
+    public static function fillPdfForm(string $template, array $fields, ?string $pages = null): ?string
+    {
+        $src = self::repoRoot() . '/_shared/template/' . $template;
+        if (!is_file($src)) {
+            App\LogError("PrintService::fillPdfForm: template {$template} missing");
+
+            return null;
+        }
+        $tmp   = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'form_' . bin2hex(random_bytes(8));
+        $files = ['form' => $tmp . '_form.pdf', 'fdf' => $tmp . '.fdf', 'filled' => $tmp . '_filled.pdf', 'out' => $tmp . '_out.pdf'];
+        $esc   = static fn ($v) => str_replace(['\\', '(', ')', "\r"], ['\\\\', '\\(', '\\)', ''], $v);
+        $lines = [];
+        foreach ($fields as $name => $value) {
+            $value   = str_replace('₱', 'P', (string) ($value ?? ''));
+            $value   = @iconv('UTF-8', 'Windows-1252//TRANSLIT', $value) ?: $value;
+            $lines[] = '<< /T (' . $esc((string) $name) . ') /V (' . $esc($value) . ') >>';
+        }
+        $pdftk = static function (array $args) use ($template): bool {
+            $bin = getenv('PDFTK_PATH') ?: (strncasecmp(PHP_OS, 'WIN', 3) === 0 ? 'C:/Program Files (x86)/PDFtk Server/bin/pdftk.exe' : 'pdftk');
+            exec(escapeshellarg($bin) . ' ' . implode(' ', array_map('escapeshellarg', $args)) . ' 2>&1', $out, $code);
+            if ($code !== 0) {
+                App\LogError("PrintService::fillPdfForm ({$template}): pdftk " . ($args[1] ?? '') . ' failed: ' . implode(' ', $out));
+            }
+
+            return $code === 0;
+        };
+        try {
+            if (!copy($src, $files['form'])
+                || file_put_contents($files['fdf'], "%FDF-1.2\n1 0 obj\n<< /FDF << /Fields [\n" . implode("\n", $lines)
+                    . "\n] >> >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n") === false
+                || !$pdftk([$files['form'], 'fill_form', $files['fdf'], 'output', $files['filled'], 'flatten'])) {
+                return null;
+            }
+            $result = $files['filled'];
+            if ($pages !== null) {
+                if (!$pdftk([$files['filled'], 'cat', $pages, 'output', $files['out']])) {
+                    return null;
+                }
+                $result = $files['out'];
+            }
+            $bytes = file_get_contents($result);
+
+            return ($bytes === false || $bytes === '') ? null : $bytes;
+        } finally {
+            foreach ($files as $f) {
+                @unlink($f);
+            }
+        }
     }
 
     public static function text(mixed $v): string
@@ -366,7 +437,8 @@ class PrintService
         }
     }
 
-    private static function imageDataUri(string $file): ?string
+    /** An image under _shared/images/ as a data URI (the PDF has no remote images); null when the file is missing. */
+    public static function imageDataUri(string $file): ?string
     {
         $path = self::repoRoot() . '/_shared/images/' . $file;
 

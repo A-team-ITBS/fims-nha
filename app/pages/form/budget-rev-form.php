@@ -32,7 +32,6 @@ try {
    styled here, so the form looks the same wherever it is included. */
 
 /* a wide modal for the two budget-line cards and the arrow between them */
-.nha-root #brv-overlay .nha-modal.brv-modal-wide { max-width: 1120px; }
 
 /* The modal is a flex column (header · scrolling body · footer) capped at 90vh, but this form's body and footer sit INSIDE a <form>.
    The form has to be the flex item that passes the height on; left as a plain block it just grows past the modal, which clips it —
@@ -254,6 +253,65 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-cancel {
 }
 html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save { color: #FFFFFF; background: #3861BC; border-color: #3861BC; }
 html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not([disabled]) { background: #2E59B8; }
+
+/* ── Supplemental tab: a NEW project released by a SARO ──
+   The Amendment / Realignment steps and the Supplemental panel are two <fieldset>s; setType() hides AND disables the one that is not on, so the
+   required fields of the hidden tab never block the submit. The layout of the Project block follows the Budget Proposal form's project card. */
+.nha-root #brv-overlay fieldset.brv-fs { border: 0; padding: 0; margin: 0; min-width: 0; }
+.nha-root #brv-overlay fieldset.brv-fs[hidden] { display: none; }
+.nha-root .brv-sp-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-bottom: 14px; }
+@media (min-width: 768px) { .nha-root .brv-sp-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.nha-root .brv-sp-saro {
+    margin-top: 12px; padding: 10px 14px; font-size: 13px; line-height: 1.5;
+    background: var(--blue-bg, #E6EBF6); border: 1px solid var(--navy-bdr, #E6EBF6); border-left: 4px solid var(--afims-heading-fill, #000E3E); border-radius: 4px 10px 10px 4px;
+}
+.nha-root .brv-sp-saro[hidden] { display: none; }
+.nha-root .brv-sp-saro-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.nha-root .brv-sp-saro-sub { color: var(--subtle, #62657E); }
+.nha-root .brv-sp-blk {
+    padding: 14px; background: var(--surf, #F4F7FA); border: 1px solid var(--bdr, #E4ECF2); border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(15, 32, 69, .08);
+}
+.nha-root .brv-sp-blk-hd {
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding-bottom: 14px; margin-bottom: 14px;
+    border-bottom: 1px solid var(--bdr, #E4ECF2);
+}
+@media (min-width: 768px) { .nha-root .brv-sp-blk-hd { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); } }
+.nha-root .brv-sp-blk + .brv-sp-blk { margin-top: 14px; }
+/* "Project 2 · Remove project" — only shown while the request has more than one project */
+.nha-root .brv-sp-blk-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.nha-root .brv-sp-blk-bar[hidden] { display: none; }
+.nha-root .brv-sp-blk-no { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--sec, #62657E); }
+.nha-root .brv-sp-rmproj {
+    padding: 4px 10px; border: 1px solid var(--red-txt, #8F222D); border-radius: 6px; background: var(--afims-surface, #FFFFFF);
+    color: var(--red-txt, #8F222D); font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.nha-root .brv-sp-rmproj:hover { background: var(--red-bg, #FAE1E3); }
+.nha-root .brv-sp-add-project { margin-top: 14px; }
+.nha-root .brv-sp-grand {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding: 10px 14px;
+    font-size: 13px; background: var(--blue-bg, #E6EBF6); border: 1px solid var(--navy-bdr, #E6EBF6); border-radius: 8px;
+}
+.nha-root .brv-sp-grand[hidden] { display: none; }
+.nha-root .brv-sp-grand strong { font-variant-numeric: tabular-nums; }
+.nha-root .brv-sp-lit { overflow-x: auto; background: var(--afims-surface, #FFFFFF); border: 1px solid var(--bdr, #E4ECF2); border-radius: 10px; }
+.nha-root .brv-sp-tbl { width: 100%; min-width: 620px; border-collapse: collapse; table-layout: fixed; }
+.nha-root .brv-sp-tbl th {
+    height: 34px; padding: 0 8px; text-align: left; white-space: nowrap; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--sec, #62657E); background: var(--surf, #F4F7FA); border-bottom: 2px solid var(--bdr, #E4ECF2);
+}
+.nha-root .brv-sp-tbl td { padding: 6px; vertical-align: middle; border-bottom: 1px solid var(--bdr, #E4ECF2); }
+.nha-root .brv-sp-tbl tfoot td { padding: 8px; font-size: 12.5px; font-weight: 700; border-bottom: 0; background: var(--surf, #F4F7FA); }
+.nha-root .brv-sp-tbl .brv-in { padding: 6px 9px; font-size: 12.5px; border-radius: 6px; }
+.nha-root .brv-sp-tbl textarea.brv-in { min-height: 32px; height: 32px; resize: vertical; line-height: 1.3; }
+.nha-root .brv-sp-tbl .brv-sp-amt { text-align: right; font-variant-numeric: tabular-nums; }
+.nha-root .brv-sp-tbl .brv-sp-sum { text-align: right; font-variant-numeric: tabular-nums; }
+.nha-root .brv-sp-tbl .brv-sp-x { text-align: center; }
+.nha-root .brv-sp-rm { width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent; color: var(--red, #DC3545); font-size: 18px; line-height: 1; cursor: pointer; }
+.nha-root .brv-sp-rm:hover { background: var(--red-bg, #FAE1E3); }
+.nha-root .brv-sp-add { margin-top: 12px; width: 100%; justify-content: center; }
+.nha-root .brv-sp-note { margin-top: 8px; font-size: 12px; font-weight: 600; color: var(--red-txt, #8F222D); }
+.nha-root .brv-sp-note[hidden] { display: none; }
 </style>
 
 <!-- The wrapper makes the modal styles apply wherever this form is included
@@ -263,7 +321,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
 
 <!-- ── ADD / EDIT MODAL ─────────────────────────────────── -->
 <div id="brv-overlay" class="nha-overlay">
-    <div class="nha-modal nha-modal-md brv-modal-wide">
+    <div class="nha-modal brv-modal-wide u-modal-xl">
         <div class="nha-modal-hdr">
             <h3 class="nha-modal-title" id="brv-modal-title">Add Budget Amendment Request</h3>
             <button type="button" class="nha-modal-close" id="brv-modal-close" aria-label="Close">&times;</button>
@@ -280,9 +338,13 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                 <div class="nha-tabs brv-type-tabs" id="brv-type-tabs" role="tablist" aria-label="What are you filing?">
                     <button type="button" class="nha-tab active" role="tab" aria-selected="true" data-type="REVISION">Amendment</button>
                     <button type="button" class="nha-tab" role="tab" aria-selected="false" data-type="REALIGNMENT">Realignment</button>
+                    <button type="button" class="nha-tab" role="tab" aria-selected="false" data-type="SUPPLEMENTAL">Supplemental</button>
                 </div>
 
                 <p class="brv-intro" id="brv-intro"></p>
+
+                <!-- Amendment / Realignment: steps 1 and 2. A <fieldset> so the Supplemental tab can disable all of it (setType) — disabled fields are not validated. -->
+                <fieldset id="brv-std" class="brv-fs">
 
                 <!-- ── 1 · the budget lines: From → To (a Revision has no To line) ── -->
                 <section class="brv-step">
@@ -471,6 +533,54 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                         <textarea class="brv-in" id="brv-reason" rows="3" placeholder="Explain why this budget needs to be amended"></textarea>
                     </div>
                 </section>
+
+                </fieldset><!-- /#brv-std -->
+
+                <!-- ── SUPPLEMENTAL: a NEW project released by a SARO — shown (and enabled) by setType('SUPPLEMENTAL'); filled by the script at the bottom of this file (window.brvSupp).
+                     No Project Code field: the code is generated when the request is approved (BudgetRevisionService::approveSupplemental()). ── -->
+                <fieldset id="brv-supp" class="brv-fs" hidden disabled>
+
+                    <section class="brv-step">
+                        <h4 class="brv-step-hd">Program &amp; SARO <span class="brv-step-sub">Pick the program and the SARO DBM released the projects under. Only this year's SAROs (FY <?php echo date('Y'); ?>) are listed, and picking a Program or Sub-Program narrows them to the SAROs tagged to it.</span></h4>
+
+                        <div class="brv-sp-row">
+                            <div class="brv-fld">
+                                <label class="brv-lbl" for="brv-sp-program">Program <span class="brv-req">*</span></label>
+                                <select class="brv-in" id="brv-sp-program" required><option value="">Loading…</option></select>
+                            </div>
+                            <div class="brv-fld">
+                                <label class="brv-lbl" for="brv-sp-subprogram">Sub-Program <span class="brv-optional">(optional)</span></label>
+                                <select class="brv-in" id="brv-sp-subprogram"><option value="">— None —</option></select>
+                            </div>
+                        </div>
+
+                        <div class="brv-fld">
+                            <label class="brv-lbl" for="brv-sp-saro">SARO <span class="brv-req">*</span></label>
+                            <select class="brv-in" id="brv-sp-saro" required><option value="">Loading…</option></select>
+                        </div>
+                        <div class="brv-sp-saro" id="brv-sp-saro-card" hidden></div>
+                        <div class="brv-hint" id="brv-sp-hint"></div>
+                    </section>
+
+                    <section class="brv-step">
+                        <h4 class="brv-step-hd">Projects <span class="brv-step-sub">The new projects this SARO funds — none of them is in the approved COB. Add a project for each one the SARO covers; they all go under the program above.</span></h4>
+
+                        <!-- one block per project (built by the script at the bottom of this file): its name, location and its own line items -->
+                        <div id="brv-sp-projects"></div>
+                        <datalist id="brv-sp-accounts"></datalist>
+                        <button type="button" class="nha-btn nha-btn-ghost brv-sp-add brv-sp-add-project" id="brv-sp-add-project">+ Add Project</button>
+
+                        <!-- the total of every project's line items: what is checked against the SARO's amount (shown once there is more than one project) -->
+                        <div class="brv-sp-grand" id="brv-sp-grand" hidden><span>Total of all projects</span><strong id="brv-sp-total">0.00</strong></div>
+                        <div class="brv-sp-note" id="brv-sp-note" hidden></div>
+
+                        <div class="brv-fld brv-reason-fld">
+                            <label class="brv-lbl" for="brv-sp-reason">Reason <span class="brv-optional">(optional)</span></label>
+                            <textarea class="brv-in" id="brv-sp-reason" rows="2" placeholder="Anything FMD should know about these projects"></textarea>
+                        </div>
+                    </section>
+
+                </fieldset><!-- /#brv-supp -->
             </div>
             <div class="nha-modal-foot">
                 <button type="button" class="nha-btn nha-btn-ghost" id="brv-cancel">Cancel</button>
@@ -518,6 +628,11 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
    From Amount is disabled: it always follows the picked From line. Picking a
    From line fills it with that line's current amount; clearing the line
    clears it.
+
+   Originating unit: a Realignment stays within the From line's originating unit, so the To picker's Originating Unit filter cannot be
+   changed — it follows the From side (the picked From line's office, else the unit picked in the From filter) and is locked to it
+   (syncToUnit()). Until the From side has a unit the To filter is free; a To line of another unit does not stay. UI only — the server
+   (BudgetRevisionService) still accepts a realignment into another office's line.
 
    Year: there is no Year filter. The From picker offers the budget lines of the CURRENT year only (CURRENT_YEAR, the server's date). A
    Realignment moves funds only within one fiscal year, so the To picker offers the From line's year — the current year until a From line
@@ -571,6 +686,10 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             reasonPh: 'Explain why this budget needs to be realigned',
         },
     };
+    // SUPPLEMENTAL has its own panel (#brv-supp, window.brvSupp): only the intro is used; the rest keeps the (hidden) Amendment wording so setType never meets an undefined text.
+    TYPE_TEXT.SUPPLEMENTAL = Object.assign({}, TYPE_TEXT.REVISION, {
+        intro: "Record the additional projects DBM released a SARO for — projects that are not in the approved COB. One request can carry several projects. Saving files it as Saved, and you can still edit it; choose Process in its Actions menu to submit it for review (after that it cannot be edited). Once it is approved the projects are added to the budget, and their amounts go to the Amendment column of the COB, not to the Approved Amount.",
+    });
 
     // Only a line of an Approved budget request may be revised or receive funds (status compared ignoring case and spaces,
     // the same rule BudgetLineItemService::fetchApproved() uses for the Memo Request form's COBs)
@@ -720,10 +839,11 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     };
 
     /* ── searchable dropdown helper ────────────────────────────────────── */
-    function combo({ input, list, clear, items, query, empty, onPick, onType, onClear, onBlur }) {
+    // locked: () => true while the field is held to a value it may not change — it never opens, and has no × to clear it
+    function combo({ input, list, clear, items, query, empty, onPick, onType, onClear, onBlur, locked = () => false }) {
         let shown = [], active = -1;
         const isOpen = () => !list.hidden;
-        const syncClear = () => { if (clear) clear.hidden = !input.value; };
+        const syncClear = () => { if (clear) clear.hidden = !input.value || locked(); };
 
         function render() {
             shown = items(query());
@@ -761,7 +881,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                 list.appendChild(li);
             }
         }
-        function open()  { render(); list.hidden = false; input.setAttribute('aria-expanded', 'true'); }
+        function open()  { if (locked()) return; render(); list.hidden = false; input.setAttribute('aria-expanded', 'true'); }
         function close() { list.hidden = true; input.setAttribute('aria-expanded', 'false'); active = -1; }
         function setActive(i) {
             const opts = list.querySelectorAll('.brv-opt');
@@ -838,16 +958,19 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                  (the To picker: only on the Realignment tab — call sync() when that changes)
        onSelect  (line, { autofill }) after the selection changed
        onClear   the user pressed × on the field (runs just before the selection is cleared)
-       year      () => the fiscal year whose budget lines this picker offers (the current year unless told otherwise) */
-    function makePicker(ids, { exclude = () => null, required = false, requiredMsg = '', onSelect = () => {}, onClear = () => {}, year = () => CURRENT_YEAR } = {}) {
+       year      () => the fiscal year whose budget lines this picker offers (the current year unless told otherwise)
+       onUnitChange  the Originating Unit filter was picked or cleared by the user (the From picker tells the To picker, see syncToUnit())
+       It also answers unit() — the originating unit it is narrowed to — and lockUnit(unit | null), which holds its Originating Unit
+       filter to a given unit (the user can no longer open, type in or clear it) or lets it go again. */
+    function makePicker(ids, { exclude = () => null, required = false, requiredMsg = '', onSelect = () => {}, onClear = () => {}, year = () => CURRENT_YEAR, onUnitChange = () => {} } = {}) {
         const isRequired = typeof required === 'function' ? required : () => required;
         const pe = {};
         Object.keys(ids).forEach(k => { pe[k] = $(ids[k]); });
 
         // unit: null | { key, label, full } (key = the originating office's rc_id) · program: null | { code, label, full }
         // project: null | { code, label, full, program }
-        // selected: the picked budget line or null
-        const P = { unit: null, program: null, project: null, selected: null };
+        // selected: the picked budget line or null · unitLocked: the unit was imposed (lockUnit()) and cannot be changed here
+        const P = { unit: null, program: null, project: null, selected: null, unitLocked: false };
 
         // every line this picker may offer: the approved lines of ITS year, less the one it must not offer (and what is the same budget line item as it)
         const baseRows = () => {
@@ -943,8 +1066,8 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                 const all = baseRows().length;
                 pe.hint.textContent = all ? `Showing ${matchRows().length} of ${all} budget lines` : `No approved budget lines for ${year()}`;
             }
-            // "Clear filters" shows only while a filter is on
-            pe.reset.hidden = !(P.unit || P.program || P.project);
+            // "Clear filters" shows only while a filter is on — a locked unit does not count: clearing it is not allowed
+            pe.reset.hidden = !((P.unit && !P.unitLocked) || P.program || P.project);
         }
 
         // The native "pick one" message while the field is required and nothing is picked; none otherwise (a hidden, optional field must
@@ -957,7 +1080,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         // project — shown exactly as picking them in the filter bar would, and applied the same way (they narrow the list; "Clear filters"
         // drops them). A line with no program / project leaves that filter empty.
         function syncFiltersTo(l) {
-            P.unit    = l.rcId ? { key: l.rcId, label: l.office || l.rcId, full: withName(l.rcId, l.office) } : null;
+            if (!P.unitLocked) P.unit = l.rcId ? { key: l.rcId, label: l.office || l.rcId, full: withName(l.rcId, l.office) } : null;   // a locked unit stays
             P.program = l.programCode ? { code: l.programCode, label: withName(l.programCode, l.programName), full: withName(l.programCode, l.programName) } : null;
             P.project = l.projectCode ? { code: l.projectCode, label: l.projectCode, full: withName(l.projectCode, l.projectName), program: l.programCode } : null;
             showUnit(); showProgram(); showProject();
@@ -970,6 +1093,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         function select(line, opts = {}) {
             const ex = exclude();
             if (line && ex && sameItem(line, ex)) line = null;   // never the same budget line item as the other picker
+            if (line && P.unitLocked && P.unit && line.rcId !== P.unit.key) line = null;   // never a line of another originating unit than the locked one
             P.selected = line || null;
             pe.id.value = line ? keyOf(line) : '';   // the budget line's id
             pe.reqIn.value = line ? inputLabel(line) : '';
@@ -999,9 +1123,10 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         // it neither fills in nor clears Program or Project.
         const unCombo = combo({
             input: pe.unIn, list: pe.unList, clear: pe.unClear, items: unitItems, query: unQuery,
-            onPick: it => { P.unit = { key: it.key, label: it.label, full: it.full }; showUnit(); refresh(); },
-            onClear: () => { P.unit = null; showUnit(); refresh(); },
+            onPick: it => { if (P.unitLocked) return; P.unit = { key: it.key, label: it.label, full: it.full }; showUnit(); refresh(); onUnitChange(); },
+            onClear: () => { if (P.unitLocked) return; P.unit = null; showUnit(); refresh(); onUnitChange(); },
             onBlur: () => showUnit(),
+            locked: () => P.unitLocked,
         });
 
         const prCombo = combo({
@@ -1043,23 +1168,51 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             onBlur: () => { pe.reqIn.value = P.selected ? inputLabel(P.selected) : ''; },
         });
 
-        // Drop every filter. The picked budget line, if any, is left alone.
+        // Drop every filter. The picked budget line, if any, is left alone — and so is a locked unit, which is not the user's to drop.
         function clearFilters() {
-            P.unit = null; P.program = null; P.project = null;
+            if (!P.unitLocked) P.unit = null;
+            P.program = null; P.project = null;
             showUnit(); showProgram(); showProject();
             [unCombo, prCombo, pjCombo].forEach(c => { c.close(); c.syncClear(); });
             refresh();
+            onUnitChange();
         }
         pe.reset.addEventListener('click', clearFilters);
 
+        // The originating unit this picker is narrowed to: its picked line's own office — a line preselected for Edit has no filters
+        // set, so the line is what says — else its Originating Unit filter, else null.
+        function unit() {
+            const l = P.selected;
+            if (l && l.rcId) return { key: l.rcId, label: l.office || l.rcId, full: withName(l.rcId, l.office) };
+            return P.unit;
+        }
+
+        // Hold the Originating Unit filter to `u` ({ key, label, full }): it shows that unit and can no longer be opened, typed in or
+        // cleared, and "Clear filters" leaves it alone. null lets it go — the unit that was imposed goes with it. `why` is the tooltip.
+        function lockUnit(u, why = '') {
+            if (u) {
+                // moved to ANOTHER unit: the Program / Project filters were chosen against the old one, so they start over (left alone they
+                // would hide every line of the new unit — e.g. the program of the To line that just had to go)
+                if (P.unit && P.unit.key !== u.key) { P.program = null; P.project = null; showProgram(); showProject(); prCombo.syncClear(); pjCombo.syncClear(); }
+                P.unit = { key: u.key, label: u.label, full: u.full }; P.unitLocked = true;
+            }
+            else if (P.unitLocked) { P.unit = null; P.unitLocked = false; }
+            else return;   // nothing was locked: nothing to let go
+            pe.unIn.disabled = P.unitLocked;
+            pe.unIn.parentElement.title = P.unitLocked ? why : '';
+            unCombo.close(); showUnit(); unCombo.syncClear();
+            refresh();
+        }
+
         // filters + pick back to empty
         function reset() {
+            lockUnit(null);   // a form reset lets the unit go too
             clearFilters();
             reqCombo.close();
             select(null);
         }
 
-        return { select, selected: () => P.selected, refresh, reset, sync: syncRequired };
+        return { select, selected: () => P.selected, refresh, reset, sync: syncRequired, unit, lockUnit };
     }
 
     /* ── the two pickers ───────────────────────────────────────────────── */
@@ -1078,10 +1231,13 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             if (line && autofill) el.from.value = amtText(amountOf(line));   // From Amount (disabled) = its current amount
             if (toPicker) toPicker.refresh();   // the To list no longer offers the From line, and follows its year
             dropToIfOtherYear();                // a Realignment's To line has to be in the From line's fiscal year
+            syncToUnit();                       // ... and in the From line's originating unit
             updateChange();
         },
         // From Amount follows the From line, so clearing the line clears it too
         onClear: () => { el.from.value = ''; },
+        // an Originating Unit picked (or cleared) in the From filter carries over to the To picker
+        onUnitChange: () => syncToUnit(),
     });
     toPicker = makePicker(TO_IDS, {
         exclude: () => fromPicker && fromPicker.selected(),
@@ -1104,6 +1260,23 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     function dropToIfOtherYear() {
         const to = toPicker.selected();
         if (to && String(to.fy) !== toYear()) toPicker.select(null);   // a To line of another year cannot stay
+    }
+
+    /* ── which originating unit ─────────────────────────────────────────────────────────────────────────────────────────────────
+       A Realignment moves funds within the From line's originating unit, so the To picker's Originating Unit filter is not the user's
+       to choose: it follows the From side — the From line's own office once one is picked, else the unit picked in the From filter — and is
+       locked to it (greyed, no list, no ×). Until the From side has a unit the To filter is free; clearing the From unit frees it again. A To
+       line of another unit does not stay (returns true when it was dropped). The server does not enforce this: it only decides what the form offers. */
+    function dropToIfOtherUnit() {
+        const to = toPicker.selected(), u = fromPicker.unit();
+        if (to && u && to.rcId !== u.key) { toPicker.select(null); return true; }
+        return false;
+    }
+
+    function syncToUnit() {
+        if (!fromPicker || !toPicker) return;
+        toPicker.lockUnit(fromPicker.unit(), "Locked to the From budget line's originating unit — a realignment stays within one originating unit");
+        dropToIfOtherUnit();
     }
 
     // The From line may not be left with a negative balance. Its current amount is its remaining balance and approving sets it to To Amount, so it can go down as far as
@@ -1150,6 +1323,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         const f = amtRaw(el.from.value), t = amtRaw(el.to.value);   // without the thousands commas
         const from = fromPicker.selected(), to = toPicker.selected();
         el.to.setCustomValidity('');   // set again below when the amounts are invalid
+        if (type === 'SUPPLEMENTAL') { el.change.hidden = true; return; }   // no budget line, no From → To amounts
         const show = (cls, text, invalid) => {
             el.change.hidden = false;
             el.change.className = 'brv-change' + (cls ? ' ' + cls : '');
@@ -1192,9 +1366,13 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
        the modal (brvForm.setType) and reads it back from #brv-type when it saves. */
     const tabs = Array.from(document.querySelectorAll('#brv-type-tabs .nha-tab'));
     function setType(next) {
-        type = next === 'REALIGNMENT' ? 'REALIGNMENT' : 'REVISION';
-        const re = type === 'REALIGNMENT', t = TYPE_TEXT[type];
+        type = next === 'REALIGNMENT' ? 'REALIGNMENT' : next === 'SUPPLEMENTAL' ? 'SUPPLEMENTAL' : 'REVISION';
+        const re = type === 'REALIGNMENT', supp = type === 'SUPPLEMENTAL', t = TYPE_TEXT[type];
         $('brv-type').value = type;
+        // Supplemental: the budget-line steps are hidden and DISABLED (a disabled fieldset's fields are not validated, so their required inputs never block the
+        // submit), and the Supplemental panel is shown and enabled instead — the other way round on the other two tabs
+        $('brv-std').hidden = supp;   $('brv-std').disabled = supp;
+        $('brv-supp').hidden = !supp; $('brv-supp').disabled = !supp;
         tabs.forEach(b => {
             const on = b.dataset.type === type;
             b.classList.toggle('active', on);
@@ -1293,9 +1471,14 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         // A saved line is looked up among ALL lines, so a request filed against another year's line still opens with it.
         setBudgetLine: (fromId, toId) => ready.then(() => {
             const find = v => (v === '' || v == null ? null : (S.allLines.find(l => keyOf(l) === String(v)) || null));
-            fromPicker.select(find(fromId));
-            toPicker.select(find(toId));
+            fromPicker.select(find(fromId));   // (locks the To picker's Originating Unit to the From line's)
+            const to = find(toId), u = fromPicker.unit();
+            const otherUnit = !!(to && u && to.rcId !== u.key);   // a saved Realignment into another originating unit: the To picker refuses it (select())
+            toPicker.select(to);
             dropToIfOtherYear();   // a saved Realignment across two years (filed before the same-year rule) loses its To line here — it must be picked again
+            if (otherUnit && typeof window.brv_toast === 'function') {
+                window.brv_toast("The saved To budget line belongs to another originating unit than the From line, so it was cleared — pick the To line again.", 'warning');
+            }
             updateChange();
         }),
         // Re-fetch the budget requests — a line's amount changes when a revision is approved.
@@ -1314,6 +1497,359 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             }
         },
     };
+})();
+</script>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   Supplemental tab (#brv-supp) — NEW projects released by a SARO and not in the approved COB.
+
+   The user picks the Program (and, optionally, the Sub-Program) and the SARO — shared by every project of the request — then adds the projects: each has a name,
+   an optional location and its own line items (a chart-of-accounts entry, particulars and an amount each). "+ Add Project" adds another block; a block can be
+   removed while there is more than one. The total of ALL the projects' line items is what is held to the SARO's amount. There is NO Project Code field — the code
+   of each project is generated when the request is approved (BudgetRevisionService::approveSupplemental()), so nothing here asks for or shows one.
+
+   Lists (fetched once, the first time the tab is opened): GET /program/all, /sub_program/all, /fund_tracking/list?type=SARO&fiscal_year=<this year> (only
+   this year's SAROs are offered; a saved request whose SARO is of another year still shows that SARO when it is opened for Edit) and
+   /chart_of_accounts/all?postable_only=1&for_budget_proposal=1 (the accounts a budget proposal may use). Picking a SARO whose sub-program is known fills
+   the program in, when none is picked yet. The fiscal year is not asked for: the server takes it from the SARO.
+
+   The host page (budget-revision-page.php) uses it through window.brvSupp:
+     ready()     → promise, resolves once the lists are loaded
+     reset()     → empties the panel (the form's reset event does it too)
+     fill(row)   → shows a saved request (the row read from /budget_revision/read/{id}, with its projects[] and their items[]) for Edit
+     payload()   → the body to save with: { request_type: 'SUPPLEMENTAL', fund_tracking_id, program_code, sub_program_code, projects[{ project_name, location, items[] }], reason }
+     validate()  → '' or the message of what is wrong (the server checks everything again)
+══════════════════════════════════════════════════════════════════════════ */
+(function () {
+    const $ = id => document.getElementById(id);
+    const BASE = '<?php echo $_brv_form_api; ?>';
+    // The SARO dropdown lists only this year's SAROs (fims.fund_tracking.fiscal_year = this year, by the server's date — the same CURRENT_YEAR the budget-line pickers use).
+    const CURRENT_YEAR = '<?php echo date('Y'); ?>';
+    const peso = v => '₱ ' + Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const amtRaw = s => String(s ?? '').replace(/,/g, '').trim();
+    const amtText = v => (v === '' || v === null || v === undefined || isNaN(Number(v)) ? '' : Number(v).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    const round2 = n => Math.round(n * 100) / 100;
+
+    const program = $('brv-sp-program'), sub = $('brv-sp-subprogram'), saro = $('brv-sp-saro'), card = $('brv-sp-saro-card');
+    const projs = $('brv-sp-projects'), total = $('brv-sp-total'), grand = $('brv-sp-grand'), note = $('brv-sp-note'), hint = $('brv-sp-hint'), accounts = $('brv-sp-accounts');
+
+    // the lists, and the accounts looked up both ways (the label the user sees ↔ the account id the request stores)
+    // extra: the SARO of a request opened for Edit when it is not on this year's list (an earlier year's, or deleted since) — kept apart so it never joins the list for the next request
+    const S = { programs: [], subs: [], saros: [], extra: null, ready: false, byLabel: new Map(), byId: new Map(), loading: null };
+    const NO_SARO_YET = `There is no SARO for FY ${CURRENT_YEAR} in Fund Tracking yet.`;
+    const acctLabel = a => `${a.account_code} — ${a.account_title}`;
+
+    // The API wants the JWT PHPMaker puts on the page (ew.API_JWT_TOKEN), as the host page's own requests send it.
+    function authHeaders() {
+        const h = {};
+        if (typeof ew !== 'undefined' && ew.API_JWT_TOKEN) h[ew.API_JWT_AUTHORIZATION_HEADER || 'X-Authorization'] = 'Bearer ' + ew.API_JWT_TOKEN;
+        return h;
+    }
+    async function getList(url) {
+        const res = await fetch(url, { credentials: 'same-origin', headers: authHeaders() });
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json || !json.success) throw new Error((json && json.message) || 'HTTP ' + res.status);
+        return json.data ?? [];
+    }
+
+    function registerAccount(a) {
+        const label = acctLabel(a);
+        S.byLabel.set(label, a);
+        S.byId.set(String(a.account_id), a);
+        return label;
+    }
+
+    async function load() {
+        hint.textContent = 'Loading programs, SAROs and accounts…';
+        try {
+            const [programs, subs, saros, accts] = await Promise.all([
+                getList(BASE + '/program/all'),
+                getList(BASE + '/sub_program/all'),
+                getList(BASE + '/fund_tracking/list?type=SARO&fiscal_year=' + CURRENT_YEAR + '&limit=1000'),
+                getList(BASE + '/chart_of_accounts/all?postable_only=1&for_budget_proposal=1'),
+            ]);
+            S.programs = programs; S.subs = subs; S.saros = saros;
+            program.innerHTML = '<option value="">Select a program</option>' + programs.map(p =>
+                `<option value="${esc(p.program_code)}">${esc(p.program_code)} — ${esc(p.program_name)}</option>`).join('');
+            fillSaros('');
+            accounts.innerHTML = '';
+            accts.forEach(a => { accounts.insertAdjacentHTML('beforeend', `<option value="${esc(registerAccount(a))}"></option>`); });
+            S.ready = true;
+            hint.textContent = saros.length ? '' : NO_SARO_YET;
+        } catch (e) {
+            S.loading = null;   // asked again the next time the tab is opened
+            hint.textContent = 'Could not load the lists: ' + e.message;
+            if (typeof window.brv_toast === 'function') window.brv_toast('Could not load the Supplemental form’s lists: ' + e.message, 'error');
+        }
+    }
+    function ensureLoaded() {
+        if (!S.loading) S.loading = load();
+        return S.loading;
+    }
+
+    /* ── program / sub-program / SARO ── */
+    function fillSubs(programCode, keep = '') {
+        const list = programCode ? S.subs.filter(s => s.program_code === programCode) : [];
+        sub.innerHTML = '<option value="">— None —</option>' + list.map(s =>
+            `<option value="${esc(s.sub_program_code)}">${esc(s.sub_program_code)} — ${esc(s.sub_program_name)}</option>`).join('');
+        sub.value = list.some(s => s.sub_program_code === keep) ? keep : '';
+    }
+    const findSaro = id => S.saros.find(s => String(s.id) === String(id)) || (S.extra && String(S.extra.id) === String(id) ? S.extra : null);
+    const selSaro = () => findSaro(saro.value);
+    const saroOption = s => `<option value="${esc(s.id)}">${esc(s.saro_id)}${s.fiscal_year ? ' — FY ' + esc(s.fiscal_year) : ''}${Number(s.amount) > 0 ? ' — ' + peso(s.amount) : ''}</option>`;
+
+    // The Program and the Sub-Program narrow the SAROs. A SARO is tied to a program only through its sub-program (fims.fund_tracking.sub_program holds a sub-program
+    // code), so a picked Sub-Program keeps the SAROs of that sub-program, and a Program alone keeps those of any of its sub-programs. A SARO with no sub-program
+    // is only listed while neither is picked.
+    function saroMatches(s) {
+        if (!sub.value && !program.value) return true;
+        const code = String(s.sub_program ?? '').trim();
+        if (sub.value) return code === sub.value;
+        const sp = S.subs.find(x => x.sub_program_code === code);
+        return !!sp && sp.program_code === program.value;
+    }
+    // Rebuilds the SARO dropdown from this year's SAROs that fit the Program / Sub-Program; $keepId (a request's own SARO, when it is opened for Edit) is listed even when it does not fit.
+    // Returns how many SAROs are listed.
+    function fillSaros(keepId = '') {
+        const list = S.saros.filter(saroMatches);
+        const kept = keepId ? findSaro(keepId) : null;
+        if (kept && !list.includes(kept)) list.push(kept);
+        saro.innerHTML = '<option value="">Select a SARO</option>' + list.map(saroOption).join('');
+        return list.length;
+    }
+    // The Program / Sub-Program changed: narrow the SAROs. The SARO that was picked stays only if it still fits — otherwise it is cleared, with its card.
+    function refreshSaros() {
+        const cur = selSaro();
+        const keep = cur && saroMatches(cur) ? String(cur.id) : '';
+        const n = fillSaros(keep);
+        saro.value = keep;
+        renderSaro();
+        updateTotal();
+        if (S.ready && S.saros.length) hint.textContent = n === 0 ? `No SARO for FY ${CURRENT_YEAR} is tagged to this ${sub.value ? 'sub-program' : 'program'}.` : '';
+    }
+    // "2015-12-23" → "12-23-2015", as a SARO is written ("SARO NO. … dtd. 12-23-2015")
+    const fmtDate = d => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || '')); return m ? `${m[2]}-${m[3]}-${m[1]}` : ''; };
+
+    function renderSaro() {
+        const s = selSaro();
+        card.hidden = !s;
+        if (!s) return;
+        const dt = fmtDate(s.date);
+        card.innerHTML = `<div class="brv-sp-saro-top"><span class="nha-bdg nha-bdg-blue">SARO</span> <strong>SARO NO. ${esc(s.saro_id)}${dt ? ' dtd. ' + esc(dt) : ''}</strong></div>`
+            + `<div class="brv-sp-saro-sub">${s.fiscal_year ? 'FY ' + esc(s.fiscal_year) + ' · ' : ''}Released through Fund Tracking</div>`
+            + (Number(s.amount) > 0 ? `<div>SARO amount <strong>${peso(s.amount)}</strong></div>` : '');
+    }
+
+    program.addEventListener('change', () => { fillSubs(program.value); refreshSaros(); });
+    sub.addEventListener('change', refreshSaros);
+    saro.addEventListener('change', () => {
+        // a SARO that names a known sub-program tells the program too — filled in only while none is picked (the list then narrows to that program's SAROs, this one still in it)
+        const s = selSaro();
+        const sp = s && s.sub_program ? S.subs.find(x => x.sub_program_code === String(s.sub_program).trim()) : null;
+        if (sp && !program.value) { program.value = sp.program_code; fillSubs(sp.program_code, sp.sub_program_code); refreshSaros(); return; }
+        renderSaro();
+        updateTotal();
+    });
+
+    /* ── projects, and the line items of each ── */
+    const blocks = () => Array.from(projs.querySelectorAll('.brv-sp-blk'));
+    const rowsOf = blk => Array.from(blk.querySelectorAll('.brv-sp-items tr'));
+    let blockSeq = 0;   // makes the ids that tie each block's labels to its inputs unique
+
+    function checkAccount(input) {
+        const label = input.value.trim(), a = S.byLabel.get(label);
+        input.dataset.id = a ? String(a.account_id) : '';
+        input.setCustomValidity(label !== '' && !a ? 'Pick an account from the list.' : '');
+    }
+    const rowAmount = tr => { const n = Number(amtRaw(tr.querySelector('.brv-sp-amt').value)); return isNaN(n) ? 0 : n; };
+    const blockTotal = blk => round2(rowsOf(blk).reduce((sum, tr) => sum + rowAmount(tr), 0));
+    // the total of every project's line items — what is held to the SARO's amount
+    const itemsTotal = () => round2(blocks().reduce((sum, blk) => sum + blockTotal(blk), 0));
+
+    function updateTotal() {
+        blocks().forEach(blk => { blk.querySelector('.brv-sp-subtotal').textContent = amtText(blockTotal(blk)) || '0.00'; });
+        const t = itemsTotal(), s = selSaro(), cap = s ? Number(s.amount) : 0;
+        total.textContent = amtText(t) || '0.00';
+        grand.hidden = blocks().length < 2;   // with one project its own total is the total
+        if (s && cap > 0 && t > cap + 0.004) {
+            note.hidden = false;
+            note.textContent = `The total (${peso(t)}) is more than the SARO's amount (${peso(cap)}).`;
+        } else {
+            note.hidden = true;
+            note.textContent = '';
+        }
+    }
+
+    function addRow(blk, prefill) {
+        const p = prefill || {};
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td><input type="text" class="brv-in brv-sp-acct" list="brv-sp-accounts" autocomplete="off" placeholder="Type to search…" aria-label="Account" required></td>'
+            + '<td><textarea class="brv-in brv-sp-part" rows="1" placeholder="Particulars" aria-label="Particulars" required></textarea></td>'
+            + '<td><input type="text" inputmode="decimal" class="brv-in brv-sp-amt" autocomplete="off" placeholder="0.00" aria-label="Amount" required></td>'
+            + '<td class="brv-sp-x"><button type="button" class="brv-sp-rm" title="Remove line item" aria-label="Remove line item">&times;</button></td>';
+        const acct = tr.querySelector('.brv-sp-acct'), amt = tr.querySelector('.brv-sp-amt');
+        if (p.label) acct.value = p.label;
+        if (p.particulars) tr.querySelector('.brv-sp-part').value = p.particulars;
+        if (p.amount !== undefined && p.amount !== '') amt.value = amtText(p.amount);
+        acct.addEventListener('input', () => checkAccount(acct));
+        acct.addEventListener('change', () => checkAccount(acct));
+        amt.addEventListener('input', () => { amt.value = amt.value.replace(/[^0-9.,]/g, ''); updateTotal(); });
+        amt.addEventListener('blur', () => { const r = amtRaw(amt.value); if (r !== '' && !isNaN(Number(r))) amt.value = amtText(r); updateTotal(); });
+        tr.querySelector('.brv-sp-rm').addEventListener('click', () => {
+            if (rowsOf(blk).length > 1) { tr.remove(); }
+            else { acct.value = ''; amt.value = ''; tr.querySelector('.brv-sp-part').value = ''; checkAccount(acct); }   // a project's last line item is emptied, not removed
+            updateTotal();
+        });
+        blk.querySelector('.brv-sp-items').appendChild(tr);
+        checkAccount(acct);
+        return tr;
+    }
+
+    // "Project 1", "Project 2" … and the Remove button, which only shows while there is more than one project
+    function renumber() {
+        const list = blocks();
+        list.forEach((blk, i) => {
+            blk.querySelector('.brv-sp-blk-no').textContent = 'Project ' + (i + 1);
+            blk.querySelector('.brv-sp-blk-bar').hidden = list.length < 2;
+        });
+    }
+
+    // One project block: its name, location and its own table of line items. $prefill = { name, location, items: [{ label, particulars, amount }] } (a saved project, for Edit).
+    function addProject(prefill) {
+        const p = prefill || {}, n = ++blockSeq;
+        const blk = document.createElement('div');
+        blk.className = 'brv-sp-blk';
+        blk.innerHTML = '<div class="brv-sp-blk-bar"><span class="brv-sp-blk-no"></span><button type="button" class="brv-sp-rmproj" aria-label="Remove this project">Remove project</button></div>'
+            + '<div class="brv-sp-blk-hd">'
+            +   '<div class="brv-fld"><label class="brv-lbl" for="brv-sp-name-' + n + '">Project <span class="brv-req">*</span></label>'
+            +     '<input type="text" class="brv-in brv-sp-name" id="brv-sp-name-' + n + '" maxlength="255" autocomplete="off" placeholder="Enter the name of the new project" required></div>'
+            +   '<div class="brv-fld"><label class="brv-lbl" for="brv-sp-loc-' + n + '">Location <span class="brv-optional">(optional)</span></label>'
+            +     '<input type="text" class="brv-in brv-sp-loc" id="brv-sp-loc-' + n + '" maxlength="255" autocomplete="off" placeholder="e.g. Brgy. San Jose, Quezon City"></div>'
+            + '</div>'
+            + '<div class="brv-sp-lit"><table class="brv-sp-tbl">'
+            +   '<thead><tr><th style="width:36%;">Account Code - Account Name</th><th style="width:38%;">Particulars</th><th style="width:20%;text-align:right;">Amount</th><th style="width:6%;"></th></tr></thead>'
+            +   '<tbody class="brv-sp-items"></tbody>'
+            +   '<tfoot><tr><td colspan="2">Total</td><td class="brv-sp-sum brv-sp-subtotal">0.00</td><td></td></tr></tfoot>'
+            + '</table></div>'
+            + '<button type="button" class="nha-btn nha-btn-ghost brv-sp-add brv-sp-additem">+ Add Line Item</button>';
+        blk.querySelector('.brv-sp-name').value = p.name || '';
+        blk.querySelector('.brv-sp-loc').value = p.location || '';
+        blk.querySelector('.brv-sp-additem').addEventListener('click', () => { addRow(blk).querySelector('.brv-sp-acct').focus(); });
+        blk.querySelector('.brv-sp-rmproj').addEventListener('click', () => {
+            if (blocks().length < 2) return;   // the request keeps at least one project
+            blk.remove();
+            renumber();
+            updateTotal();
+        });
+        projs.appendChild(blk);
+        (p.items && p.items.length ? p.items : [null]).forEach(it => addRow(blk, it));
+        renumber();
+        updateTotal();
+        return blk;
+    }
+    $('brv-sp-add-project').addEventListener('click', () => {
+        const blk = addProject();
+        if (blk.scrollIntoView) blk.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        blk.querySelector('.brv-sp-name').focus();
+    });
+
+    /* ── the host page's hooks ── */
+    function reset() {
+        S.extra = null;
+        program.value = '';
+        fillSubs('');
+        if (S.ready) { fillSaros(''); hint.textContent = S.saros.length ? '' : NO_SARO_YET; }   // this year's whole list again (before the first load there is nothing to list)
+        saro.value = '';
+        renderSaro();
+        $('brv-sp-reason').value = '';
+        projs.innerHTML = '';
+        addProject();
+    }
+
+    async function fill(row) {
+        await ensureLoaded();
+        const savedSaro = String(row.supp_fund_tracking_id ?? '');
+        S.extra = null;
+        if (savedSaro && !S.saros.some(s => String(s.id) === savedSaro)) {
+            // a SARO that is not on this year's list (an earlier year's, or deleted since) still shows on the request that was filed against it
+            S.extra = { id: row.supp_fund_tracking_id, saro_id: row.supp_saro_no || ('#' + savedSaro), fiscal_year: row.supp_fiscal_yr, amount: row.supp_saro_amount, date: row.supp_saro_date, sub_program: '' };
+        }
+        program.value = row.supp_program_code || '';
+        fillSubs(program.value, row.supp_sub_program_code || '');
+        fillSaros(savedSaro);   // narrowed by that program / sub-program, but never without the request's own SARO
+        saro.value = savedSaro;
+        renderSaro();
+        if (S.ready && S.saros.length) hint.textContent = '';
+        $('brv-sp-reason').value = row.reason || '';
+        projs.innerHTML = '';
+        (row.projects || []).forEach(pr => {
+            addProject({
+                name: pr.project_name, location: pr.location,
+                items: (pr.items || []).map(it => {
+                    // an account that is no longer offered (inactive since) still shows on the item that was saved with it
+                    const a = S.byId.get(String(it.account_id)) || { account_id: it.account_id, account_code: it.account_code || it.account_id, account_title: it.account_title || '' };
+                    return { label: registerAccount(a), particulars: it.particulars, amount: it.amount };
+                }),
+            });
+        });
+        if (!blocks().length) addProject();
+        updateTotal();
+    }
+
+    function payload() {
+        return {
+            request_type: 'SUPPLEMENTAL',
+            fund_tracking_id: saro.value,
+            program_code: program.value,
+            sub_program_code: sub.value,
+            projects: blocks().map(blk => ({
+                project_name: blk.querySelector('.brv-sp-name').value.trim(),
+                location: blk.querySelector('.brv-sp-loc').value.trim(),
+                items: rowsOf(blk).map(tr => ({
+                    account_id: tr.querySelector('.brv-sp-acct').dataset.id || '',
+                    particulars: tr.querySelector('.brv-sp-part').value.trim(),
+                    amount: amtRaw(tr.querySelector('.brv-sp-amt').value),
+                })),
+            })),
+            reason: $('brv-sp-reason').value.trim(),
+        };
+    }
+
+    function validate() {
+        const list = blocks();
+        if (!list.length) return 'Add at least one project.';
+        const names = new Map();   // lower-cased name → its number: two projects of one name would be merged into one when the request is approved
+        for (let p = 0; p < list.length; p++) {
+            const blk = list[p], pre = list.length > 1 ? `Project ${p + 1}: ` : '';
+            const name = blk.querySelector('.brv-sp-name').value.trim();
+            if (!name) return pre + 'enter the name of the project.';
+            const key = name.toLowerCase();
+            if (names.has(key)) return `Project ${p + 1}: "${name}" is already the name of project ${names.get(key)} of this request — give each project its own name.`;
+            names.set(key, p + 1);
+
+            const rows = rowsOf(blk);
+            if (!rows.length) return pre + 'Add at least one line item.';
+            for (let i = 0; i < rows.length; i++) {
+                const n = i + 1, tr = rows[i];
+                if (!tr.querySelector('.brv-sp-acct').dataset.id) return `${pre}Line item ${n}: select a chart of accounts entry from the list.`;
+                if (!(Number(amtRaw(tr.querySelector('.brv-sp-amt').value)) > 0)) return `${pre}Line item ${n}: the amount must be more than zero.`;
+            }
+        }
+        const s = selSaro(), t = itemsTotal();
+        if (s && Number(s.amount) > 0 && t > Number(s.amount) + 0.004) return `The total (${peso(t)}) is more than the SARO's amount (${peso(s.amount)}).`;
+        return '';
+    }
+
+    $('brv-type-tabs').addEventListener('click', e => {
+        const b = e.target.closest('.nha-tab');
+        if (b && b.dataset.type === 'SUPPLEMENTAL') ensureLoaded();
+    });
+    $('brv-form').addEventListener('reset', () => setTimeout(reset, 0));
+    reset();
+
+    window.brvSupp = { ready: ensureLoaded, reset, fill, payload, validate };
 })();
 </script>
 

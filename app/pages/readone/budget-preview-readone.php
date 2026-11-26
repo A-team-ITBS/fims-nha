@@ -203,7 +203,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root .bpv-doc-open { color: var(--afi
 
 <!-- ── BUDGET PREVIEW MODAL ──────────────────────────────── -->
 <div id="bpv-overlay" class="nha-overlay">
-    <div class="nha-modal nha-modal-xl" role="dialog" aria-modal="true" aria-labelledby="bpv-title">
+    <div class="nha-modal u-modal-xl" role="dialog" aria-modal="true" aria-labelledby="bpv-title">
         <div class="nha-modal-hdr">
             <h3 class="nha-modal-title" id="bpv-title">Submission Ref. No. <span class="bpv-ref" id="bpv-ref"></span><span class="bpv-status" id="bpv-status"></span></h3>
             <button type="button" class="nha-modal-close" id="bpv-close" aria-label="Close">&times;</button>

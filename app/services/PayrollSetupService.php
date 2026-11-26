@@ -24,6 +24,103 @@ class PayrollSetupService
     private string $tableCoa = 'fims.chart_of_accounts';
 
     public const CATEGORIES = ['EARNING', 'DEDUCTION', 'REFUND', 'EMPLOYER_SHARE'];
+    // how an item counts in the year-end tax annualization (fims.payroll_items.tax_treatment — 01 - table/48)
+    public const TAX_TREATMENTS = ['TAXABLE', 'NON_TAXABLE', 'DE_MINIMIS', 'BENEFIT_90K', 'CONTRIBUTION', 'WITHHOLDING_TAX', 'NONE'];
+
+    /**
+     * The de minimis link an item's save asks for: [error|null, de_minimis_id|null]. A DE_MINIMIS item must name an
+     * existing benefit (fims.payroll_de_minimis_benefits); any other treatment carries none.
+     */
+    private function deMinimisFor(string $tax, mixed $raw): array
+    {
+        if ($tax !== 'DE_MINIMIS') {
+            return [null, null];
+        }
+        $id = ctype_digit((string) $raw) ? (int) $raw : 0;
+        if ($id <= 0 || !App\ExecuteScalar("SELECT 1 FROM fims.payroll_de_minimis_benefits WHERE de_minimis_id = {$id}", 'DB')) {
+            return [['success' => false, 'message' => 'Choose which de minimis benefit this item is (its limit applies).'], null];
+        }
+
+        return [null, $id];
+    }
+
+    // ═══ De minimis benefits & limits (fims.payroll_de_minimis_benefits — 01 - table/57) ═══
+
+    /** Every de minimis benefit with its limit, and how many payroll items are linked to it. */
+    public function fetchDeMinimis(): array
+    {
+        try {
+            $rows = App\ExecuteRows(
+                "SELECT d.de_minimis_id, d.code, d.name, d.limit_amount, d.limit_per, d.sort_order, d.status, d.remarks, d.updated_at,
+                        (SELECT COUNT(*) FROM {$this->table} i WHERE i.de_minimis_id = d.de_minimis_id AND i.tax_treatment = 'DE_MINIMIS') AS items
+                   FROM fims.payroll_de_minimis_benefits d ORDER BY d.sort_order, d.name",
+                'DB'
+            ) ?: [];
+            foreach ($rows as &$r) {
+                $r['limit_amount'] = round((float) $r['limit_amount'], 2);
+                $r['annual_limit'] = round($r['limit_per'] === 'MONTH' ? $r['limit_amount'] * 12 : $r['limit_amount'], 2);
+                $r['items'] = (int) $r['items'];
+            }
+            unset($r);
+
+            return ['success' => true, 'data' => $rows];
+        } catch (\Exception $e) {
+            App\LogError('PayrollSetupService::fetchDeMinimis ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to load the de minimis limits.'];
+        }
+    }
+
+    /**
+     * Add ($id null) or update a de minimis benefit: name, limit_amount (≥ 0), limit_per (MONTH | YEAR), status, remarks;
+     * code only on add (unique, A–Z 0–9 _). Takes effect on the next Annualize.
+     */
+    public function saveDeMinimis(?int $id, array $body, int $userId = 0): array
+    {
+        try {
+            $name  = trim((string) ($body['name'] ?? ''));
+            $limit = $body['limit_amount'] ?? null;
+            $per   = strtoupper(trim((string) ($body['limit_per'] ?? 'YEAR')));
+            $st    = strtoupper(trim((string) ($body['status'] ?? 'ACTIVE')));
+            if ($name === '' || mb_strlen($name) > 150) {
+                return ['success' => false, 'message' => 'Enter the benefit name (max 150 characters).'];
+            }
+            if (!is_numeric(str_replace(',', '', (string) $limit)) || (float) str_replace(',', '', (string) $limit) < 0) {
+                return ['success' => false, 'message' => 'Enter the limit (0 or more).'];
+            }
+            if (!in_array($per, ['MONTH', 'YEAR'], true) || !in_array($st, self::STATUSES, true)) {
+                return ['success' => false, 'message' => 'limit_per must be MONTH or YEAR; status ACTIVE or INACTIVE.'];
+            }
+            $amt     = round((float) str_replace(',', '', (string) $limit), 2);
+            $remarks = trim((string) ($body['remarks'] ?? ''));
+            $by      = $this->userIdOrNull($userId);
+            if ($id === null) {
+                $code = strtoupper(preg_replace('/[^A-Za-z0-9_]+/', '_', trim((string) ($body['code'] ?? $name))));
+                $code = trim(substr($code, 0, 30), '_');
+                if ($code === '' || App\ExecuteScalar('SELECT 1 FROM fims.payroll_de_minimis_benefits WHERE code = ' . $this->str($code), 'DB')) {
+                    return ['success' => false, 'message' => "A de minimis benefit with the code '{$code}' already exists."];
+                }
+                $sort = (int) App\ExecuteScalar('SELECT COALESCE(MAX(sort_order), 0) + 10 FROM fims.payroll_de_minimis_benefits', 'DB');
+                App\Execute('INSERT INTO fims.payroll_de_minimis_benefits (code, name, limit_amount, limit_per, sort_order, status, remarks, updated_by)
+                             VALUES (' . $this->str($code) . ', ' . $this->str($name) . ", {$amt}, " . $this->str($per) . ", {$sort}, " . $this->str($st) . ', '
+                             . ($remarks === '' ? 'NULL' : $this->str($remarks)) . ', ' . ($by ?? 'NULL') . ')', 'DB');
+
+                return ['success' => true, 'message' => 'De minimis benefit added.'];
+            }
+            if (!App\ExecuteScalar("SELECT 1 FROM fims.payroll_de_minimis_benefits WHERE de_minimis_id = {$id}", 'DB')) {
+                return ['success' => false, 'message' => 'De minimis benefit not found.'];
+            }
+            App\Execute('UPDATE fims.payroll_de_minimis_benefits SET name = ' . $this->str($name) . ", limit_amount = {$amt}, limit_per = " . $this->str($per)
+                . ', status = ' . $this->str($st) . ', remarks = ' . ($remarks === '' ? 'NULL' : $this->str($remarks))
+                . ', updated_by = ' . ($by ?? 'NULL') . ", updated_at = CURRENT_TIMESTAMP WHERE de_minimis_id = {$id}", 'DB');
+
+            return ['success' => true, 'message' => 'De minimis limit saved — Annualize again to apply it.'];
+        } catch (\Exception $e) {
+            App\LogError('PayrollSetupService::saveDeMinimis ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to save the de minimis benefit.'];
+        }
+    }
     public const STATUSES   = ['ACTIVE', 'INACTIVE'];
 
     private function str(mixed $v): string
@@ -363,7 +460,15 @@ class PayrollSetupService
             $status   = strtoupper(trim((string) ($body['status'] ?? ''))) ?: 'ACTIVE';
             $account  = trim((string) ($body['account_code'] ?? ''));
             $remarks  = trim((string) ($body['remarks'] ?? ''));
+            $tax      = strtoupper(trim((string) ($body['tax_treatment'] ?? ''))) ?: 'NONE';
             $new      = is_array($body['new_accounts'] ?? null) ? $body['new_accounts'] : [];
+            if (!in_array($tax, self::TAX_TREATMENTS, true)) {
+                return ['success' => false, 'message' => 'tax_treatment must be one of: ' . implode(', ', self::TAX_TREATMENTS) . '.'];
+            }
+            [$dmErr, $deMinimisId] = $this->deMinimisFor($tax, $body['de_minimis_id'] ?? null);
+            if ($dmErr) {
+                return $dmErr;
+            }
 
             if ($code === '' || $name === '') {
                 return ['success' => false, 'message' => 'item_code and item_name are required.'];
@@ -399,8 +504,8 @@ class PayrollSetupService
             }
 
             $by      = $this->userIdOrNull($userId);
-            $columns = ['item_code', 'item_name', 'category', 'status'];
-            $values  = [$this->str($code), $this->str($name), $this->str($category), $this->str($status)];
+            $columns = ['item_code', 'item_name', 'category', 'tax_treatment', 'de_minimis_id', 'status'];
+            $values  = [$this->str($code), $this->str($name), $this->str($category), $this->str($tax), $deMinimisId ?? 'NULL', $this->str($status)];
             if ($account !== '') {
                 $columns[] = 'account_code';
                 $values[]  = $this->str($account);
@@ -478,6 +583,18 @@ class PayrollSetupService
                     }
                 }
                 $set[] = 'category = ' . $this->str($category);
+            }
+            if (array_key_exists('tax_treatment', $body)) {   // only the annualization reads it — free to change any time
+                $tax = strtoupper(trim((string) $body['tax_treatment'])) ?: 'NONE';
+                if (!in_array($tax, self::TAX_TREATMENTS, true)) {
+                    return ['success' => false, 'message' => 'tax_treatment must be one of: ' . implode(', ', self::TAX_TREATMENTS) . '.'];
+                }
+                [$dmErr, $deMinimisId] = $this->deMinimisFor($tax, $body['de_minimis_id'] ?? null);
+                if ($dmErr) {
+                    return $dmErr;
+                }
+                $set[] = 'tax_treatment = ' . $this->str($tax);
+                $set[] = 'de_minimis_id = ' . ($deMinimisId ?? 'NULL');
             }
             if (array_key_exists('status', $body)) {
                 $status = strtoupper(trim((string) $body['status']));

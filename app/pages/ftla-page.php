@@ -12,9 +12,6 @@ $apiBase = Config('API.FIMS_URL');
 $apiBaseUrl       = json_encode(rtrim((string) $apiBase, '/') . '/');
 $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
 ?>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <div id="ftla-root" class="nha-root">
@@ -181,7 +178,7 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
 
 <!-- MODAL: Status Tracking -->
 <div id="modal-status-track" class="nha-overlay" role="dialog" aria-modal="true">
-    <div class="nha-modal">
+    <div class="nha-modal u-modal-md">
         <div class="nha-modal-hdr">
             <div>
                 <div class="nha-modal-title">FTLA Status Tracking</div>
@@ -212,15 +209,6 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
 
         </div>
         <div class="nha-modal-foot">
-            <button type="button" class="nha-btn nha-btn-primary" id="btn-create-jev" style="display:none">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                    <line x1="12" y1="18" x2="12" y2="12"/>
-                    <line x1="9" y1="15" x2="15" y2="15"/>
-                </svg>
-                Create JEV
-            </button>
             <button type="button" class="nha-btn nha-btn-ghost" id="modal-status-cancel">Close</button>
 
         </div>
@@ -229,7 +217,7 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
 
 <!-- MODAL: Attachments -->
 <div id="modal-attachments" class="nha-overlay" role="dialog" aria-modal="true">
-    <div class="nha-modal nha-modal-md">
+    <div class="nha-modal u-modal-sm">
         <div class="nha-modal-hdr">
             <div>
                 <div class="nha-modal-title">Manage Attachments</div>
@@ -276,7 +264,7 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
 
 <!-- MODAL: View Documents -->
 <div id="modal-view-docs" class="nha-overlay" role="dialog" aria-modal="true" style="display:none">
-    <div class="nha-modal nha-modal-md">
+    <div class="nha-modal u-modal-sm">
         <div class="nha-modal-hdr">
             <div>
                 <div class="nha-modal-title">Uploaded Documents</div>
@@ -300,7 +288,7 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
 
 <!-- MODAL: Print / Download -->
 <div id="modal-print" class="nha-overlay" role="dialog" aria-modal="true" style="display:none">
-    <div class="nha-modal" style="max-width:560px;width:96vw;">
+    <div class="nha-modal u-modal-sm">
         <div class="nha-modal-hdr">
             <div>
                 <div class="nha-modal-title" id="modal-print-title">Fund Transfer Letter of Advice</div>
@@ -344,7 +332,7 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
      document from the FTLA bank letter itself. Print-only: nothing here is saved,
      since the real request memo is sent before any FTLA record exists. -->
 <style>
-    #modal-ftla-request .nha-modal { max-width: 1120px; width: 96vw; max-height: 92vh; display: flex; flex-direction: column; }
+    #modal-ftla-request .nha-modal { max-height: 92vh; display: flex; flex-direction: column; }
     #ftlreq-body-split { flex: 1; display: flex; overflow: hidden; min-height: 0; }
     #ftlreq-fields { flex: 1 1 380px; min-width: 0; overflow-y: auto; padding: 20px 24px; }
     #ftlreq-preview-panel {
@@ -367,7 +355,7 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
 </style>
 
 <div id="modal-ftla-request" class="nha-overlay" role="dialog" aria-modal="true" style="display:none">
-    <div class="nha-modal">
+    <div class="nha-modal u-modal-xl">
         <div class="nha-modal-hdr">
             <div>
                 <div class="nha-modal-title">FTLA Request Memo</div>
@@ -705,7 +693,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 <!-- Remarks overlay for workflow actions that require a reason -->
 <div id="ftla-remarks-overlay" style="display:none;position:fixed;inset:0;z-index:10200;background:rgba(15,32,69,.5);align-items:center;justify-content:center;padding:16px;">
-    <div style="background:var(--afims-surface, #FFFFFF);border-radius:14px;width:440px;max-width:100%;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:'IBM Plex Sans',sans-serif;">
+    <div class="u-modal-sm" style="background:var(--afims-surface, #FFFFFF);border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:'IBM Plex Sans',sans-serif;">
         <div style="background:var(--afims-heading-fill, #000E3E);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;">
             <span style="font-size:14px;font-weight:700;color:var(--afims-pure-white, #FFFFFF);" id="ftla-remarks-title">Remarks Required</span>
             <button onclick="ftla_closeRemarks()" style="background:none;border:none;color:rgba(255,255,255,.6);font-size:22px;line-height:1;cursor:pointer;">&times;</button>
@@ -824,7 +812,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.currentId = null;
             this.attachments = [];
             this._currentStep = 0;
-            this._currentFtlaData = null; // holds data for Create JEV action
 
             this._bindEvents();
             this._populateSelects(); // async — bank accounts load in background
@@ -1001,7 +988,6 @@ document.addEventListener('DOMContentLoaded', () => {
             on('modal-status-close', 'click', () => this._closeModal('modal-status-track'));
             on('modal-status-cancel', 'click', () => this._closeModal('modal-status-track'));
             on('btn-advance-status', 'click', () => this._advanceStatus());
-            on('btn-create-jev', 'click', () => this._createJevFromFtla());
             on('modal-print-close', 'click', () => this._closeModal('modal-print'));
             on('modal-print-cancel', 'click', () => this._closeModal('modal-print'));
             on('btn-download-docx', 'click', () => this._downloadDocx());
@@ -1181,13 +1167,6 @@ document.addEventListener('DOMContentLoaded', () => {
                                style="color:var(--afims-primary-text, #0035A9)">
                                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                 Download Validated FTLA
-                            </a>` : ''}
-                            ${r.status === 'VALIDATED' ? `
-                            <a class="nha-menu-item" href="javascript:void(0);"
-                               onclick="window._ftlaApp._openStatusTrack(${r.fund_transfer_id});ftl_closeMenus();"
-                               style="color:var(--afims-success-hover, #0C7539)">
-                                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-                                Prepare JEV
                             </a>` : ''}
                         </div>
                     </div>
@@ -1502,7 +1481,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const done = i < currentIdx,
                         cur = i === currentIdx;
                     const icon = done ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12"><polyline points="20 6 9 17 4 12"/></svg>` : cur ? `<svg viewBox="0 0 24 24" fill="currentColor" width="8" height="8"><circle cx="12" cy="12" r="6"/></svg>` : '';
-                    return `<div class="fims-timeline-step ${done?'done':''} ${cur?'current':''}"><div class="fims-timeline-dot">${icon}</div><div class="fims-timeline-content"><div class="fims-timeline-label">${this._esc(s.label)}</div><div class="fims-timeline-date">${this._timelineDate(d,s.key)}</div></div></div>`;
+                    return `<div class="fims-timeline-step ${done?'done':''} ${cur?'current':''}"><div class="fims-timeline-dot">${icon}</div><div class="fims-timeline-content"><div class="fims-timeline-label">${this._esc(ftla_wfMetaData[s.key]?.name || s.label)}</div><div class="fims-timeline-date">${this._timelineDate(d,s.key)}</div></div></div>`;
                 }).join('');
                 const advBtn = document.getElementById('btn-advance-status'),
                     next = FTLAPreparation.STATUSES[currentIdx + 1];
@@ -1517,12 +1496,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         advBtn.style.display = 'none';
                     }
                 }
-
-                // Show "Create JEV" button only when FTLA is finished (submitted to accounting or completed)
-                const JEV_ELIGIBLE = ['VALIDATED'];
-                const jevBtn = document.getElementById('btn-create-jev');
-                if (jevBtn) jevBtn.style.display = JEV_ELIGIBLE.includes(d.status) ? '' : 'none';
-                this._currentFtlaData = d;
 
                 this._openModal('modal-status-track');
             } catch (err) {
@@ -1567,20 +1540,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
 
-
-        _createJevFromFtla() {
-            if (typeof jevc === 'undefined' || typeof jevc.openPrefilled !== 'function') {
-                this._toast('JEV form is not available on this page.', 'error');
-                return;
-            }
-            const d = this._currentFtlaData;
-            if (!d) return;
-            this._closeModal('modal-status-track');
-            jevc.openPrefilled({
-                particulars:    d.purpose   || '',
-                fund_source_id: d.fund_source_id || null,
-            });
-        }
 
         /* ══════════════════════════════════════════════════
            ATTACHMENTS
@@ -1795,6 +1754,10 @@ document.addEventListener('DOMContentLoaded', () => {
         _statusBadge(s) {
             const meta = s ? ftla_wfMetaData[s] : null;
             const COLOR_MAP = { secondary: 'gray', primary: 'navy', info: 'teal', success: 'green', danger: 'red', warning: 'amber' };
+            // Color comes from fims.settings_status (hex); a legacy color name still maps to a badge class.
+            if (meta && /^#[0-9a-f]{6}$/i.test(meta.color || '')) {
+                return `<span class="nha-bdg" style="background:${meta.color}1F;color:${meta.color};">${meta.name || s}</span>`;
+            }
             const cls = meta ? (COLOR_MAP[meta.color] || 'gray') : 'gray';
             return `<span class="nha-bdg nha-bdg-${cls}">${meta?.name || s || '—'}</span>`;
         }
@@ -2115,6 +2078,13 @@ async function ftla_loadWorkflowMeta() {
                 ftla_wfMetaData[s.value] = s;
                 if (s.is_editable) ftla_editableStatuses.add(s.value);
             });
+            const fsel = document.getElementById('filter-status');
+            if (fsel) {
+                const keep = fsel.value;
+                fsel.innerHTML = '<option value="">All Statuses</option>' + j.data.statuses.map(s =>
+                    `<option value="${String(s.value).replace(/"/g,'&quot;')}">${String(s.name).replace(/&/g,'&amp;').replace(/</g,'&lt;')}</option>`).join('');
+                fsel.value = keep;
+            }
         }
     } catch (_) {}
 }
@@ -2154,7 +2124,7 @@ function ftla_rowActionItems(r) {
     const COLOR_STYLE = { success: 'color:#059669', primary: 'color:#0f2045', warning: 'color:#b45309', danger: 'color:#dc2626', info: 'color:#0284c7' };
     const esc = s => { const d = document.createElement('span'); d.textContent = String(s ?? ''); return d.innerHTML; };
     const items = stepData.statuses.map(st => {
-        const style = COLOR_STYLE[st.color] || '';
+        const style = /^#[0-9a-f]{6}$/i.test(st.color || '') ? `color:${st.color}` : (COLOR_STYLE[st.color] || '');
         return `<a class="nha-menu-item" href="javascript:void(0);" style="${style}"
                    data-id="${r.fund_transfer_id}"
                    data-status="${esc(st.value)}"
@@ -2301,6 +2271,3 @@ function nha_confirm(title, msg, actionLabel, actionStyle, onConfirm) {
 
 <?php include __DIR__ . '/form/ftla-form.php'; ?>
 <?php include __DIR__ . '/readone/ftla-readone.php'; ?>
-<?php /* The "Create JEV" button in the status-tracking modal degrades gracefully (see
-         _createJevFromFtla() above) when the Journal Entry Voucher form isn't on the page —
-         form/jev-form.php isn't part of this port, so its include is intentionally omitted. */ ?>

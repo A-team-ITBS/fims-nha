@@ -14,14 +14,10 @@ namespace PHPMaker2024\FIMS;
 $_pr_api = rtrim((string) Config('API.FIMS_URL'), '/');
 $_pr_api = preg_match('~/api$~', $_pr_api) ? $_pr_api : $_pr_api . '/api';
 ?>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="<?php echo GetUrl('_shared/css/nha-fims.css'); ?>?v=<?php echo @filemtime(dirname(__DIR__, 2).'/_shared/css/nha-fims.css'); ?>" />
 <style>
 #pr-root .nha-summary { grid-template-columns: repeat(4, 1fr); }
 #pr-root .pr-num { text-align: right; font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
-#pr-root .pr-modal { max-width: 640px; }
 #pr-root .pr-form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 #pr-root .pr-form .pr-full { grid-column: 1 / -1; }
 #pr-root .pr-form label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
@@ -39,8 +35,6 @@ $_pr_api = preg_match('~/api$~', $_pr_api) ? $_pr_api : $_pr_api . '/api';
 @media (max-width: 900px) { #pr-root .nha-summary { grid-template-columns: repeat(2, 1fr); } }
 #pr-root .pr-pane { display: none; }
 #pr-root .pr-pane.active { display: block; }
-#pr-root .pr-modal-xl { max-width: 1200px; width: 96%; }
-#pr-root .pr-modal-md { max-width: 760px; width: 94%; }
 #pr-root .pr-modal-body-scroll { max-height: 70vh; overflow: auto; }
 #pr-root .pr-sub { font-size: 11.5px; color: var(--afims-text-muted, #62657E); }
 #pr-root .pr-tfoot td { font-weight: 700; background: var(--afims-surface-subtle, #F4F7FA); }
@@ -86,26 +80,11 @@ $_pr_api = preg_match('~/api$~', $_pr_api) ? $_pr_api : $_pr_api . '/api';
 #pr-root .pr-cat-DEDUCTION { border-left: 3px solid var(--afims-warning, #E0A100); }
 #pr-root .pr-cat-EMPLOYER_SHARE { border-left: 3px solid var(--afims-danger, #DC3545); }
 
-/* ── Page header: copied from User Access (.app-page-header in app/fims-css/fims.css — that file is not loaded here,
-      so the rules are repeated, scoped to this page). Stays navy in dark mode too, like User Access. ── */
-#pr-root .app-page-header { position:relative;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;overflow:hidden;
-    background:linear-gradient(135deg, #000E3E 0%, #001A5E 100%);border-radius:.75rem;padding:1.5rem 1.75rem;margin-bottom:1.5rem; }
-#pr-root .app-page-header::before,
-#pr-root .app-page-header::after { content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.05);pointer-events:none; }
-#pr-root .app-page-header::before { width:180px;height:180px;top:-90px;right:80px; }
-#pr-root .app-page-header::after { width:120px;height:120px;bottom:-70px;right:-20px;background:rgba(255,255,255,.06); }
-#pr-root .app-page-header-icon { position:relative;z-index:1;flex:0 0 auto;width:3rem;height:3rem;border-radius:.5rem;
-    display:flex;align-items:center;justify-content:center;font-size:1.25rem;
-    background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#FFFFFF; }
-#pr-root .app-page-title { position:relative;z-index:1;font-size:1.6rem;font-weight:800;letter-spacing:-.01em;color:#FFFFFF;margin:0 0 .25rem; }
-#pr-root .app-page-subtitle { position:relative;z-index:1;font-size:.9rem;color:rgba(255,255,255,.75);margin:0;max-width:640px; }
-/* the Refresh / Import Payroll buttons stay on the right of the banner, above its decorative circles */
-#pr-root .app-page-header-actions { position:relative;z-index:1;margin-left:auto;display:flex;flex-wrap:wrap;gap:8px; }
 </style>
 
 <div id="pr-root" class="nha-root">
 
-    <!-- same banner as User Access (app-page-header in app/fims-css/fims.css) -->
+    <!-- same banner as User Access (app-page-header in _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
             <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.36-1.86M17 20H7m10 0v-2c0-.66-.13-1.28-.36-1.86M7 20H2v-2a3 3 0 015.36-1.86M7 20v-2c0-.66.13-1.28.36-1.86m0 0a5 5 0 019.28 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
@@ -129,6 +108,7 @@ $_pr_api = preg_match('~/api$~', $_pr_api) ? $_pr_api : $_pr_api . '/api';
     <div class="nha-tabs no-print">
         <button type="button" class="nha-tab active" data-tab="imports" onclick="pr_switchTab('imports')">Payroll Imports</button>
         <button type="button" class="nha-tab" data-tab="ytd" onclick="pr_switchTab('ytd')">Year-to-Date Report</button>
+        <button type="button" class="nha-tab" data-tab="annual" onclick="pr_switchTab('annual')">Annualization</button>
         <button type="button" class="nha-tab" data-tab="template" onclick="pr_switchTab('template')">File Template</button>
     </div>
 
@@ -201,6 +181,18 @@ $_pr_api = preg_match('~/api$~', $_pr_api) ? $_pr_api : $_pr_api . '/api';
                 <div class="nha-filter-group nha-filter-group-actions">
                     <button type="button" id="pr-y-export" class="nha-btn nha-btn-outline" disabled>Export CSV</button>
                 </div>
+                <div class="nha-filter-group">
+                    <label class="nha-filter-label" for="pr-y-gcg-period">GCG Quarter</label>
+                    <select id="pr-y-gcg-period" class="nha-filter-select">
+                        <option value="Q1">1st Quarter (Jan – Mar)</option>
+                        <option value="Q2">2nd Quarter (Apr – Jun)</option>
+                        <option value="Q3">3rd Quarter (Jul – Sep)</option>
+                        <option value="Q4">4th Quarter (Oct – Dec)</option>
+                    </select>
+                </div>
+                <div class="nha-filter-group nha-filter-group-actions">
+                    <button type="button" id="pr-y-gcg" class="nha-btn nha-btn-primary" title="GCG Quarterly Report for the fiscal year and quarter — PDF, with Export to Excel">GCG Report</button>
+                </div>
             </div>
             <p class="pr-hint" id="pr-y-note" style="margin:6px 0 0;display:none;"></p>
         </div>
@@ -231,6 +223,57 @@ $_pr_api = preg_match('~/api$~', $_pr_api) ? $_pr_api : $_pr_api . '/api';
                 </table>
             </div>
         </div>
+    </div>
+
+    <!-- ═══ TAB 3 — TAX ANNUALIZATION (year-end tax on compensation; PayrollManagementService::annualize()) ═══ -->
+    <div class="pr-pane" id="pr-pane-annual">
+        <div class="nha-filters no-print">
+            <div class="nha-filter-row">
+                <div class="nha-filter-group">
+                    <label class="nha-filter-label" for="pr-a-year">Fiscal Year</label>
+                    <select id="pr-a-year" class="nha-filter-select"></select>
+                </div>
+                <div class="nha-filter-group">
+                    <label class="nha-filter-label" for="pr-a-search">Search</label>
+                    <input type="text" id="pr-a-search" class="nha-filter-input" placeholder="Employee no. or name">
+                </div>
+                <div class="nha-filter-group nha-filter-group-actions">
+                    <button type="button" id="pr-a-run" class="nha-btn nha-btn-primary">Annualize</button>
+                    <button type="button" id="pr-a-export" class="nha-btn nha-btn-outline" disabled>Export CSV</button>
+                </div>
+            </div>
+            <p class="pr-hint" id="pr-a-note" style="margin:6px 0 0;">Annualize computes each employee's tax on the year's compensation (TRAIN table) from the imported payroll and compares it with the tax withheld. Run it again after importing or correcting a month.</p>
+        </div>
+        <div class="nha-summary" id="pr-a-kpis" style="display:none;">
+            <div class="nha-sc nha-sc-navy"><div class="nha-sc-top"><div><div class="nha-sc-label">Employees</div><div class="nha-sc-val" id="pr-a-k-emp">—</div></div></div><p class="nha-kpi-sub" id="pr-a-k-when">—</p></div>
+            <div class="nha-sc nha-sc-teal"><div class="nha-sc-top"><div><div class="nha-sc-label">Taxable Income</div><div class="nha-sc-val" id="pr-a-k-taxable">—</div></div></div><p class="nha-kpi-sub" id="pr-a-k-gross">—</p></div>
+            <div class="nha-sc nha-sc-amber"><div class="nha-sc-top"><div><div class="nha-sc-label">Tax Due vs Withheld</div><div class="nha-sc-val" id="pr-a-k-due">—</div></div></div><p class="nha-kpi-sub" id="pr-a-k-withheld">—</p></div>
+            <div class="nha-sc nha-sc-green"><div class="nha-sc-top"><div><div class="nha-sc-label">Net Adjustment</div><div class="nha-sc-val" id="pr-a-k-adj">—</div></div></div><p class="nha-kpi-sub" id="pr-a-k-status">—</p></div>
+        </div>
+        <div class="nha-table-wrap">
+            <div class="nha-tbl-scroll">
+                <table class="nha-tbl">
+                    <thead>
+                        <tr>
+                            <th>Employee</th>
+                            <th class="text-end">Months</th>
+                            <th class="text-end">Gross Compensation</th>
+                            <th class="text-end">Non-Taxable</th>
+                            <th class="text-end">Taxable Income</th>
+                            <th class="text-end">Tax Due</th>
+                            <th class="text-end">Tax Withheld</th>
+                            <th class="text-end">Adjustment</th>
+                            <th class="text-end">Print</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pr-a-tbody">
+                        <tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Open this tab to load the annualization.</span></div></td></tr>
+                    </tbody>
+                    <tfoot id="pr-a-tfoot" class="pr-tfoot"></tfoot>
+                </table>
+            </div>
+        </div>
+        <p class="pr-hint" style="margin:8px 0 0;">Non-taxable = PERA, de minimis (each up to its limit under Payroll Setup → De Minimis Limits), 13th month and other benefits up to ₱90,000, and the GSIS / PhilHealth / Pag-IBIG / union dues withheld — by each item's <b>Tax Treatment</b> in Payroll Setup. A positive adjustment is still to be withheld (December payroll); a negative one is to be refunded.</p>
     </div>
 
     <div class="pr-pane" id="pr-pane-template">
@@ -309,7 +352,7 @@ $_pr_api = preg_match('~/api$~', $_pr_api) ? $_pr_api : $_pr_api . '/api';
 
     <!-- Import modal -->
     <div id="pr-overlay" class="nha-overlay">
-        <div class="nha-modal pr-modal" role="dialog" aria-modal="true" aria-labelledby="pr-modal-title">
+        <div class="nha-modal pr-modal u-modal-md" role="dialog" aria-modal="true" aria-labelledby="pr-modal-title">
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title" id="pr-modal-title">Import Monthly Payroll</h3>
                 <button type="button" class="nha-modal-close" id="pr-close" aria-label="Close">&times;</button>
@@ -345,7 +388,6 @@ $_pr_api = preg_match('~/api$~', $_pr_api) ? $_pr_api : $_pr_api . '/api';
             </div>
             <div class="nha-modal-foot">
                 <button type="button" class="nha-btn nha-btn-outline" id="pr-cancel">Cancel</button>
-                <button type="button" class="nha-btn nha-btn-outline" id="pr-preview-btn">Preview</button>
                 <button type="button" class="nha-btn nha-btn-primary" id="pr-save" disabled>Import</button>
             </div>
         </div>
@@ -388,14 +430,22 @@ async function pr_load() {
     try {
         const json = await pr_json(await pr_authFetch('payroll-management/list?' + params));
         if (!json.success) throw new Error(json.message || 'Failed to load.');
-        pr_fillYears(json.years || []);
-        // YTD defaults to the latest year that has an import (until the user picks one)
+        pr_fillYears();
+        // YTD follows the latest imported year only when it is one of its two years (current / upcoming), until the user picks one
         if (!pr_ytdYearTouched && json.years?.length) {
             const yy = String(json.years[0]), ySel = $pr('pr-y-year');
-            if (![...ySel.options].some(o => o.value === yy)) ySel.insertAdjacentHTML('beforeend', `<option value="${yy}">${yy}</option>`);
-            const changed = ySel.value !== yy;
-            ySel.value = yy;
-            if (changed && $pr('pr-pane-ytd').classList.contains('active')) pr_loadYtd();   // the report tab is open: follow the new default year
+            if ([...ySel.options].some(o => o.value === yy) && ySel.value !== yy) {
+                ySel.value = yy;
+                if ($pr('pr-pane-ytd').classList.contains('active')) pr_loadYtd();   // the report tab is open: follow the new default year
+            }
+        }
+        // the Annualization tab follows the latest imported year only when it is one of its two years (current / upcoming)
+        if (!pr_annYearTouched && json.years?.length) {
+            const yy = String(json.years[0]), aSel = $pr('pr-a-year');
+            if ([...aSel.options].some(o => o.value === yy) && aSel.value !== yy) {
+                aSel.value = yy;
+                if ($pr('pr-pane-annual').classList.contains('active')) pr_loadAnnual();
+            }
         }
         const k = json.kpis || {};
         $pr('pr-kpi-imports').textContent = k.imports ?? 0;
@@ -434,12 +484,19 @@ async function pr_load() {
     }
 }
 
-function pr_fillYears(years) {
+/** The fiscal years every year picker in Payroll Management offers: the current year and the next one. */
+function pr_fiscalYears() {
+    const y = new Date().getFullYear();
+    return [y, y + 1];
+}
+function pr_yearOptions(sel, withAll) {
+    sel.innerHTML = (withAll ? '<option value="">All Years</option>' : '') + pr_fiscalYears().map(v => `<option value="${v}">${v}</option>`).join('');
+}
+
+function pr_fillYears() {
     const sel = $pr('pr-f-year'), cur = sel.value;
-    const now = new Date().getFullYear();
-    const all = [...new Set([...years.map(Number), now])].sort((a, b) => b - a);
-    sel.innerHTML = '<option value="">All Years</option>' + all.map(y => `<option value="${y}">${y}</option>`).join('');
-    sel.value = cur;
+    pr_yearOptions(sel, true);
+    sel.value = [...sel.options].some(o => o.value === cur) ? cur : '';
 }
 
 /** Disbursement Voucher page: ?payroll={month} opens a new DV for the month, ?dv={id} opens the DV's view. */
@@ -452,9 +509,8 @@ function pr_open() {
     const now = new Date();
     $pr('pr-month').innerHTML = PR_MONTHS.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
     $pr('pr-month').value = String(now.getMonth() + 1);
-    const y = now.getFullYear();
-    $pr('pr-year').innerHTML = [y + 1, y, y - 1, y - 2].map(v => `<option value="${v}">${v}</option>`).join('');
-    $pr('pr-year').value = String(y);
+    pr_yearOptions($pr('pr-year'), false);   // current / next fiscal year
+    $pr('pr-year').value = String(now.getFullYear());
     $pr('pr-file').value = '';
     pr_resetPreview();
     $pr('pr-overlay').classList.add('open');
@@ -562,6 +618,7 @@ function pr_switchTab(tab) {
     $pr('pr-refresh').style.display = onImports ? '' : 'none';
     if (tab === 'template') pr_loadTemplate();   // always fresh: items may have changed in Payroll Setup
     if (tab === 'ytd') pr_loadYtd();             // the report follows the filters — no Generate button
+    if (tab === 'annual') pr_loadAnnual();       // the stored result of the year; Annualize rebuilds it
 }
 function pr_closeOverlay(id) { $pr(id).classList.remove('open'); }
 const pr_name = r => [r.last_name, [r.first_name, r.middle_name].filter(Boolean).join(' ')].filter(Boolean).join(', ');
@@ -591,9 +648,8 @@ function pr_ytdNote(text) {
     n.style.display = text ? '' : 'none';
 }
 function pr_initYtdFilters() {
-    const y = new Date().getFullYear();
-    $pr('pr-y-year').innerHTML = [y + 1, y, y - 1, y - 2, y - 3, y - 4].map(v => `<option value="${v}">${v}</option>`).join('');
-    $pr('pr-y-year').value = String(y);
+    pr_yearOptions($pr('pr-y-year'), false);   // current / next fiscal year
+    $pr('pr-y-year').value = String(new Date().getFullYear());
     $pr('pr-y-month').innerHTML = '<option value="">Whole Year</option>' + PR_MONTHS.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
 }
 async function pr_loadYtd() {
@@ -789,12 +845,129 @@ async function pr_downloadTemplate() {
     }
 }
 
+/* ── Tax annualization: one row per employee of the year (fims.payroll_annualization) ── */
+let pr_annRows = [], pr_annMeta = null, pr_annSeq = 0, pr_annYearTouched = false;
+function pr_annNote(text, bad = false) {
+    const n = $pr('pr-a-note');
+    n.textContent = text;
+    n.style.color = bad ? 'var(--afims-danger, #B42318)' : '';
+}
+async function pr_loadAnnual() {
+    const year = $pr('pr-a-year').value;
+    const seq = ++pr_annSeq;
+    $pr('pr-a-tbody').innerHTML = '<tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>';
+    try {
+        const json = await pr_json(await pr_authFetch('payroll-management/annualization?year=' + encodeURIComponent(year)));
+        if (seq !== pr_annSeq) return;
+        if (!json.success) throw new Error(json.message || 'Failed to load.');
+        pr_annRows = json.data || [];
+        pr_annMeta = { year, totals: json.totals || {}, computedAt: json.computed_at, untreated: json.untreated_items || 0 };
+        const t = pr_annMeta.totals;
+        $pr('pr-a-kpis').style.display = pr_annRows.length ? '' : 'none';
+        $pr('pr-a-k-emp').textContent = t.employees ?? 0;
+        $pr('pr-a-k-when').textContent = pr_annMeta.computedAt ? 'Annualized ' + pr_date(pr_annMeta.computedAt) : '—';
+        $pr('pr-a-k-taxable').textContent = pr_peso(t.taxable_income);
+        $pr('pr-a-k-gross').textContent = 'Gross ' + pr_peso(t.gross_compensation) + ' · non-taxable ' + pr_peso(t.total_non_taxable);
+        $pr('pr-a-k-due').textContent = pr_peso(t.tax_due);
+        $pr('pr-a-k-withheld').textContent = 'Withheld ' + pr_peso(t.tax_withheld);
+        $pr('pr-a-k-adj').textContent = pr_peso(t.tax_adjustment);
+        $pr('pr-a-k-status').textContent = `${t.underpaid ?? 0} underpaid · ${t.overpaid ?? 0} overpaid`;
+        $pr('pr-a-export').disabled = !pr_annRows.length;
+        pr_annNote(!pr_annRows.length
+            ? `Not annualized yet for ${year} — click Annualize (it uses the imported payroll of ${year}).`
+            : (pr_annMeta.untreated ? `${pr_annMeta.untreated} earning / refund item(s) paid in ${year} have no Tax Treatment in Payroll Setup, so they were left out — set them, then Annualize again.` : 'Annualize again after importing or correcting a month.'),
+            !!pr_annMeta.untreated);
+        pr_renderAnnual();
+    } catch (e) {
+        if (seq !== pr_annSeq) return;
+        pr_annRows = [];
+        $pr('pr-a-kpis').style.display = 'none';
+        $pr('pr-a-tbody').innerHTML = `<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">${pr_esc(e.message)}</span></div></td></tr>`;
+        $pr('pr-a-tfoot').innerHTML = '';
+    }
+}
+function pr_renderAnnual() {
+    const q = $pr('pr-a-search').value.trim().toLowerCase();
+    const rows = pr_annRows.filter(r => (!q ||[r.employee_no, r.last_name, r.first_name, r.middle_name].some(v => String(v || '').toLowerCase().includes(q))));
+    const body = $pr('pr-a-tbody');
+    if (!rows.length) {
+        body.innerHTML = `<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">${pr_annRows.length ? 'No employee matches the filters.' : 'Nothing annualized for ' + pr_esc(pr_annMeta?.year || '') + ' yet.'}</span></div></td></tr>`;
+        $pr('pr-a-tfoot').innerHTML = '';
+        return;
+    }
+    body.innerHTML = rows.map(r => `<tr>
+        <td><div style="font-weight:600;">${pr_esc(pr_name(r))}</div><div class="pr-sub">${pr_esc(r.employee_no)}${r.tin ? ' · TIN ' + pr_esc(r.tin) : ''}</div></td>
+        <td class="pr-num">${r.months_paid}</td>${pr_amt(r.gross_compensation)}${pr_amt(r.total_non_taxable)}${pr_amt(r.taxable_income)}
+        ${pr_amt(r.tax_due)}${pr_amt(r.tax_withheld)}${pr_amt(r.tax_adjustment)}
+        <td class="text-end" style="white-space:nowrap;"><button type="button" class="nha-btn nha-btn-outline nha-btn-sm" onclick="pr_printWorksheet(${Number(r.employee_id)})" title="Annualization of Income for the year — PDF, with Export to Excel">Annualization of Income</button>
+            <button type="button" class="nha-btn nha-btn-outline nha-btn-sm" onclick="pr_print2316(${Number(r.employee_id)})" title="BIR Form 2316 — Certificate of Compensation Payment / Tax Withheld">2316</button></td></tr>`).join('');
+    const sum = k => rows.reduce((s, r) => s + Number(r[k] || 0), 0);
+    $pr('pr-a-tfoot').innerHTML = `<tr><td>Total (${rows.length})</td><td></td>${pr_amt(sum('gross_compensation'))}${pr_amt(sum('total_non_taxable'))}${pr_amt(sum('taxable_income'))}
+        ${pr_amt(sum('tax_due'))}${pr_amt(sum('tax_withheld'))}${pr_amt(sum('tax_adjustment'))}<td></td></tr>`;
+}
+/** An employee's annualization worksheet (the client's template) for the year shown — PDF preview with Export to Excel (AnnualizationPrintService). */
+/** GCG report of the Year-to-Date tab's fiscal year and the chosen period — the shared print preview (GcgReportPrintService). */
+function pr_printGcg() {
+    const year = $pr('pr-y-year').value;
+    if (!/^\d{4}$/.test(year)) { pr_ytdNote('Choose the fiscal year first.'); return; }
+    if (typeof prp_open === 'function') prp_open({ fiscal_yr: Number(year), period: $pr('pr-y-gcg-period').value }, { type: 'GCG' });
+}
+function pr_printWorksheet(employeeId) {
+    if (typeof prp_open === 'function' && pr_annMeta) prp_open({ fiscal_yr: Number(pr_annMeta.year), employee_id: employeeId }, { type: 'ANNUALWS' });
+}
+/** An employee's BIR 2316 for the year shown — the shared print preview opens on its Edit Form (Bir2316PrintService). */
+function pr_print2316(employeeId) {
+    if (typeof prp_open === 'function' && pr_annMeta) prp_open({ fiscal_yr: Number(pr_annMeta.year), employee_id: employeeId }, { type: 'BIR2316' });
+}
+async function pr_runAnnual() {
+    const year = $pr('pr-a-year').value, btn = $pr('pr-a-run');
+    if (!confirm(`Annualize ${year}? Every employee's ${year} annualization is rebuilt from the imported payroll.`)) return;
+    btn.disabled = true;
+    window.PagePreloader?.show();
+    try {
+        const json = await pr_json(await pr_authFetch('payroll-management/annualize', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year }) }));
+        if (!json.success) throw new Error(json.message || 'The annualization failed.');
+        await pr_loadAnnual();
+        pr_annNote(json.message);
+    } catch (e) {
+        pr_annNote(e.message, true);
+    } finally {
+        btn.disabled = false;
+        window.PagePreloader?.hide();
+    }
+}
+function pr_exportAnnual() {
+    if (!pr_annRows.length) return;
+    const cols = [['employee_no', 'Emp No.'], ['last_name', 'Last Name'], ['first_name', 'First Name'], ['middle_name', 'Middle Name'], ['tin', 'TIN'],
+        ['months_paid', 'Months'], ['taxable_pay', 'Taxable Pay'], ['non_taxable_pay', 'Non-Taxable Pay (PERA)'], ['de_minimis', 'De Minimis'],
+        ['de_minimis_exempt', 'De Minimis Exempt'], ['benefits', '13th Month & Other Benefits'], ['benefits_exempt', 'Benefits Exempt (≤90k)'],
+        ['contributions', 'Contributions'], ['gross_compensation', 'Gross Compensation'], ['total_non_taxable', 'Total Non-Taxable'],
+        ['taxable_income', 'Taxable Income'], ['tax_due', 'Tax Due'], ['tax_withheld', 'Tax Withheld'], ['tax_adjustment', 'Adjustment']];
+    const cell = v => /[",\n]/.test(String(v ?? '')) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v ?? '');
+    const csv = [cols.map(c => c[1]).join(',')].concat(pr_annRows.map(r => cols.map(c => cell(r[c[0]])).join(','))).join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'Tax-Annualization-' + pr_annMeta.year + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 /* ── Boot ───────────────────────────────────────────────────── */
 function pr_boot() {
     pr_initYtdFilters();
+    // Annualization: only the current and the upcoming fiscal year (default: the current one)
+    pr_yearOptions($pr('pr-a-year'), false);   // current / next fiscal year
+    $pr('pr-a-year').value = String(new Date().getFullYear());
+    $pr('pr-a-year').addEventListener('change', () => { pr_annYearTouched = true; pr_loadAnnual(); });
+    $pr('pr-a-search').addEventListener('input', pr_renderAnnual);
+    $pr('pr-a-run').addEventListener('click', pr_runAnnual);
+    $pr('pr-a-export').addEventListener('click', pr_exportAnnual);
     $pr('pr-y-year').addEventListener('change', () => { pr_ytdYearTouched = true; pr_loadYtd(); });
     $pr('pr-y-month').addEventListener('change', pr_loadYtd);
     $pr('pr-y-export').addEventListener('click', pr_exportYtd);
+    $pr('pr-y-gcg').addEventListener('click', pr_printGcg);
+    $pr('pr-y-gcg-period').value = 'Q' + Math.ceil((new Date().getMonth() + 1) / 3);
     $pr('pr-t-download').addEventListener('click', pr_downloadTemplate);
     $pr('pr-t-search').addEventListener('input', pr_renderTemplateCols);
     $pr('pr-refresh').addEventListener('click', pr_load);
@@ -804,9 +977,8 @@ function pr_boot() {
     $pr('pr-import-btn').addEventListener('click', pr_open);
     $pr('pr-close').addEventListener('click', pr_close);
     $pr('pr-cancel').addEventListener('click', pr_close);
-    $pr('pr-preview-btn').addEventListener('click', pr_preview);
     $pr('pr-save').addEventListener('click', pr_import);
-    // choosing the file / month / year previews right away (when a file is chosen)
+    // choosing the file / month / year previews right away (when a file is chosen) — no Preview button needed
     ['pr-month', 'pr-year', 'pr-file'].forEach(id => $pr(id).addEventListener('change', () => {
         pr_resetPreview();
         if ($pr('pr-file').files.length) pr_preview();
@@ -821,3 +993,7 @@ function pr_boot() {
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pr_boot);
 else pr_boot();
 </script>
+<?php
+// Annualization → each employee's BIR 2316 through the shared print preview (prp_open({ fiscal_yr, employee_id }, { type: 'BIR2316' })).
+include_once __DIR__ . '/readone/print-preview-readone.php';
+?>

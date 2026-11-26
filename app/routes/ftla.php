@@ -18,6 +18,21 @@ $ftlaUserId = static function ($request): int {
     return $userId !== null && $userId !== '' ? (int) $userId : 0;
 };
 
+// One-time backfill of FTLA JEVs for records already in a trigger status without one.
+// POST /ftla/backfill-jev  (add ?dry_run=1 to only list what would be posted).
+$app->post('/ftla/backfill-jev', function ($request, $response, $args) use ($FtlaService, $ftlaUserId) {
+    try {
+        $dryRun = !empty($request->getQueryParams()['dry_run']);
+        $result = $FtlaService->backfillJevs($ftlaUserId($request), $dryRun);
+
+        return $response->withJson($result, 200);
+    } catch (\Exception $e) {
+        LogError('POST /ftla/backfill-jev ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
 $app->get('/ftla/transfer-types', function ($request, $response, $args) use ($FtlaService) {
     try {
         $result = $FtlaService->getTransferTypes();
@@ -38,6 +53,19 @@ $app->get('/ftla/used-dv-numbers', function ($request, $response, $args) use ($F
         return $response->withJson($result, 200);
     } catch (\Exception $e) {
         LogError('GET /ftla/used-dv-numbers ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+$app->get('/ftla/dv-rfa', function ($request, $response, $args) use ($FtlaService) {
+    try {
+        $dvNo   = (string) ($request->getQueryParams()['dv_no'] ?? '');
+        $result = ['success' => true, 'data' => $FtlaService->getRfaForDv($dvNo)];
+
+        return $response->withJson($result, 200);
+    } catch (\Exception $e) {
+        LogError('GET /ftla/dv-rfa ' . $e->getMessage());
 
         return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
     }

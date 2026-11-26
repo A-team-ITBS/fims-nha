@@ -15,8 +15,17 @@ $app->get('/po-dr/list', function ($request, $response, $args) use ($PoDrService
     return $response->withJson($PoDrService->fetchAlls(
         isset($params['page']) ? (int) $params['page'] : 1,
         isset($params['limit']) ? (int) $params['limit'] : 10,
-        $params['search'] ?? ''
+        $params['search'] ?? '',
+        (string) ($params['rc_id'] ?? ''),        // filter: requesting office (responsibility_code.rc_id)
+        (string) ($params['vendor_id'] ?? ''),    // filter: supplier (vendors.vendor_id)
+        (string) ($params['date_from'] ?? ''),    // filter: PO Date from (YYYY-MM-DD)
+        (string) ($params['date_to'] ?? '')       // filter: PO Date to (YYYY-MM-DD)
     ));
+})->add($jwtMiddleware);
+
+// Values of the list's Requesting Office/Dept and Supplier filter dropdowns (those of the POs that have an IAR)
+$app->get('/po-dr/filter-options', function ($request, $response, $args) use ($PoDrService) {
+    return $response->withJson($PoDrService->filterOptions());
 })->add($jwtMiddleware);
 
 // PO picker: RFA POs of the Budget Allocation (?search= on the PO number) with PO date, office, vendor and PO amount
@@ -30,7 +39,8 @@ $app->get('/po-dr/pos', function ($request, $response, $args) use ($PoDrService)
 $app->get('/po-dr/accounts', function ($request, $response, $args) use ($PoDrService) {
     $params = $request->getQueryParams();
 
-    return $response->withJson($PoDrService->searchAccounts((string) ($params['search'] ?? ''), !empty($params['all'])));
+    // ?infra=1: the Infrastructure tab's picker — the CIP / WIP categories highlighted (see PoDrService::searchInfraAccounts())
+    return $response->withJson($PoDrService->searchAccounts((string) ($params['search'] ?? ''), !empty($params['all']), !empty($params['infra']), (string) ($params['cat'] ?? '')));
 })->add($jwtMiddleware);
 
 // Read one PO with its delivery receipts
@@ -83,6 +93,20 @@ $app->post('/po-dr/proforma-submit', function ($request, $response, $args) use (
 
         return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
     }
+})->add($jwtMiddleware);
+
+// Delivery Acceptance (Actions menu): body { po_number, subject_to, inspection_notes? } -> delivery_accepted = TRUE (one-way; no more deliveries afterwards)
+$app->post('/po-dr/accept-delivery', function ($request, $response, $args) use ($PoDrService) {
+    $body   = $request->getParsedBody() ?: [];
+    // the date and "Inspected By" come from the backend (now / the logged-in user); the user types only subject_to (ICS/PAR) and the optional notes
+    $result = $PoDrService->acceptDelivery(
+        (string) ($body['po_number'] ?? ''),
+        (int) $request->getAttribute('user_id'),
+        (string) ($body['subject_to'] ?? ''),
+        (string) ($body['inspection_notes'] ?? '')
+    );
+
+    return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));
 })->add($jwtMiddleware);
 
 // Add (po_number + lines[])

@@ -5,9 +5,6 @@ $_brv_api = Config('API.FIMS_URL');
 $_amp_api = $_brv_api;
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <style>
@@ -41,27 +38,12 @@ html.afims-dark[data-bs-theme="dark"] #amp-root .nha-code { color:#FFFFFF;backgr
 #amp-root .nha-summary { grid-template-columns: repeat(3, 1fr); }
 @media (max-width: 900px) { #amp-root .nha-summary { grid-template-columns: repeat(2, 1fr); } }
 
-/* ── Page header: copied from User Access (.app-page-header in app/fims-css/fims.css — that file is not loaded here,
-      so the rules are repeated, scoped to this page). Stays navy in dark mode too, like User Access. ── */
-#amp-root .app-page-header { position:relative;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;overflow:hidden;
-    background:linear-gradient(135deg, #000E3E 0%, #001A5E 100%);border-radius:.75rem;padding:1.5rem 1.75rem;margin-bottom:1.5rem; }
-#amp-root .app-page-header::before,
-#amp-root .app-page-header::after { content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.05);pointer-events:none; }
-#amp-root .app-page-header::before { width:180px;height:180px;top:-90px;right:80px; }
-#amp-root .app-page-header::after { width:120px;height:120px;bottom:-70px;right:-20px;background:rgba(255,255,255,.06); }
-#amp-root .app-page-header-icon { position:relative;z-index:1;flex:0 0 auto;width:3rem;height:3rem;border-radius:.5rem;
-    display:flex;align-items:center;justify-content:center;font-size:1.25rem;
-    background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#FFFFFF; }
-#amp-root .app-page-title { position:relative;z-index:1;font-size:1.6rem;font-weight:800;letter-spacing:-.01em;color:#FFFFFF;margin:0 0 .25rem; }
-#amp-root .app-page-subtitle { position:relative;z-index:1;font-size:.9rem;color:rgba(255,255,255,.75);margin:0;max-width:640px; }
-/* the Refresh / Add Record buttons stay on the right of the banner, above its decorative circles */
-#amp-root .app-page-header-actions { position:relative;z-index:1;margin-left:auto;display:flex;flex-wrap:wrap;gap:8px; }
 </style>
 
 <div id="amp-root" class="nha-root">
 
     <!-- ── HEADER ─────────────────────────────────────────── -->
-    <!-- same banner as User Access (app-page-header in app/fims-css/fims.css) -->
+    <!-- same banner as User Access (app-page-header in _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
             <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
@@ -137,8 +119,38 @@ html.afims-dark[data-bs-theme="dark"] #amp-root .nha-code { color:#FFFFFF;backgr
                     <button class="nha-filter-clear-btn" id="amp-search-clear" hidden type="button">×</button>
                 </div>
             </div>
+            <!-- searchable dropdowns (built by amp_fcBuild(); the choices come from GET /po-dr/filter-options) -->
+            <div class="nha-filter-group">
+                <label class="nha-filter-label">Requesting Office/Dept</label>
+                <div class="amp-fc" id="amp-fc-office" data-all="All offices"></div>
+            </div>
+            <div class="nha-filter-group">
+                <label class="nha-filter-label">Supplier</label>
+                <div class="amp-fc" id="amp-fc-supplier" data-all="All suppliers"></div>
+            </div>
+            <!-- PO Date range: From starts on Jan 1 of the current year, To is today (both set in amp_initDateRange(); clear a box to drop that limit) -->
+            <div class="nha-filter-group">
+                <label class="nha-filter-label" for="amp-date-from">Date From</label>
+                <input type="date" id="amp-date-from" class="nha-filter-input" title="PO Date from">
+            </div>
+            <div class="nha-filter-group">
+                <label class="nha-filter-label" for="amp-date-to">Date To</label>
+                <input type="date" id="amp-date-to" class="nha-filter-input" title="PO Date to">
+            </div>
         </div>
     </div>
+    <style>
+        .amp-fc { position:relative; min-width:230px; }
+        .amp-fc input { width:100%; box-sizing:border-box; padding-right:28px; }
+        .amp-fc-clear { position:absolute; right:6px; top:50%; transform:translateY(-50%); border:0; background:none; cursor:pointer; font-size:16px; line-height:1; color:var(--afims-text-secondary,#6b7280); padding:2px 4px; }
+        .amp-fc-list { display:none; position:absolute; z-index:60; top:calc(100% + 4px); left:0; min-width:100%; max-height:260px; overflow:auto;
+                       background:var(--afims-surface,#fff); border:1px solid var(--afims-border,#d1d5db); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); }
+        .amp-fc.open .amp-fc-list { display:block; }
+        .amp-fc-opt { padding:8px 12px; font-size:13px; cursor:pointer; white-space:nowrap; }
+        .amp-fc-opt:hover { background:var(--afims-surface-subtle,#F4F7FA); }
+        .amp-fc-opt.active { font-weight:600; color:var(--afims-primary,#1d4ed8); }
+        .amp-fc-empty { padding:8px 12px; font-size:13px; color:var(--afims-text-secondary,#6b7280); }
+    </style>
 
     <!-- ── TABLE ──────────────────────────────────────────── -->
     <div class="nha-table-wrap">
@@ -187,6 +199,15 @@ html.afims-dark[data-bs-theme="dark"] #amp-root .nha-code { color:#FFFFFF;backgr
                         <button class="nha-filter-clear-btn" id="ifr-search-clear" hidden type="button">×</button>
                     </div>
                 </div>
+                <!-- searchable dropdowns (built by ifr_fcBuild() in form/infra-iar-form.php; the choices come from GET /infra-iar/filter-options) -->
+                <div class="nha-filter-group">
+                    <label class="nha-filter-label">Regional Office/District Office</label>
+                    <div class="amp-fc" id="ifr-fc-office" data-all="All offices"></div>
+                </div>
+                <div class="nha-filter-group">
+                    <label class="nha-filter-label">Contractor</label>
+                    <div class="amp-fc" id="ifr-fc-contractor" data-all="All contractors"></div>
+                </div>
             </div>
         </div>
         <div class="nha-table-wrap">
@@ -200,13 +221,14 @@ html.afims-dark[data-bs-theme="dark"] #amp-root .nha-code { color:#FFFFFF;backgr
                             <th>Project Name</th>
                             <th>Contractor</th>
                             <th>Regional Office/District Office</th>
+                            <th>Category</th>
                             <th style="text-align:right;">Revised Contract Cost</th>
                             <th>% Accomplishment</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody id="ifr-tbody">
-                        <tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                        <tr><td colspan="10"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                     </tbody>
                 </table>
             </div>
@@ -263,9 +285,83 @@ function amp_switchTab(tab) {
     amp_syncTab();
 }
 
+/* ── Filters: Requesting Office/Dept and Supplier — searchable dropdowns ───────────────────────────── */
+const AMP_FC = { 'amp-fc-office': { param: 'rc_id', key: 'offices' }, 'amp-fc-supplier': { param: 'vendor_id', key: 'suppliers' } };
+const amp_fcSel  = { rc_id: '', vendor_id: '' };            // the chosen value of each filter ('' = all)
+let   amp_fcData = { offices: [], suppliers: [] };          // [{value, label}] from GET /po-dr/filter-options
+function amp_fcBuild() {
+    Object.entries(AMP_FC).forEach(([id, cfg]) => {
+        const wrap = $amp(id);
+        if (!wrap) return;
+        wrap.innerHTML = '<input type="text" class="nha-filter-input" autocomplete="off" placeholder="' + amp_esc(wrap.dataset.all) + '">'
+            + '<button type="button" class="amp-fc-clear" hidden title="Clear">×</button><div class="amp-fc-list"></div>';
+        const input = wrap.querySelector('input'), list = wrap.querySelector('.amp-fc-list'), clear = wrap.querySelector('.amp-fc-clear');
+        let shown = [];
+        const labelOf = v => (amp_fcData[cfg.key].find(o => String(o.value) === String(v)) || {}).label || '';
+        const sync = () => { input.value = labelOf(amp_fcSel[cfg.param]); clear.hidden = !amp_fcSel[cfg.param]; };
+        const render = () => {
+            const q = input.dataset.typing === '1' ? input.value.trim().toLowerCase() : '';     // the shown label is not a search
+            shown = amp_fcData[cfg.key].filter(o => !q || String(o.label).toLowerCase().includes(q));
+            list.innerHTML = '<div class="amp-fc-opt" data-i="-1">' + amp_esc(wrap.dataset.all) + '</div>'
+                + (shown.length ? shown.map((o, i) => '<div class="amp-fc-opt' + (String(o.value) === String(amp_fcSel[cfg.param]) ? ' active' : '') + '" data-i="' + i + '">' + amp_esc(o.label) + '</div>').join('')
+                                : '<div class="amp-fc-empty">No match</div>');
+        };
+        const choose = v => {
+            amp_fcSel[cfg.param] = v;
+            input.dataset.typing = '0'; wrap.classList.remove('open'); sync();
+            amp_page = 1; amp_load();
+        };
+        input.addEventListener('focus', () => { input.dataset.typing = '0'; input.select(); wrap.classList.add('open'); render(); });
+        input.addEventListener('click', () => { if (!wrap.classList.contains('open')) { wrap.classList.add('open'); render(); } });
+        input.addEventListener('input', () => { input.dataset.typing = '1'; wrap.classList.add('open'); render(); });
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Escape') { wrap.classList.remove('open'); sync(); input.blur(); }
+            if (e.key === 'Enter') { e.preventDefault(); if (shown.length === 1 || (input.dataset.typing === '1' && shown[0])) choose(String(shown[0].value)); }
+        });
+        input.addEventListener('blur', () => { wrap.classList.remove('open'); input.dataset.typing = '0'; sync(); });   // half-typed text goes back to the chosen value
+        list.addEventListener('mousedown', e => {
+            const opt = e.target.closest('.amp-fc-opt');
+            if (!opt) return;
+            e.preventDefault();
+            const i = Number(opt.dataset.i);
+            choose(i < 0 ? '' : String(shown[i].value));
+        });
+        clear.addEventListener('mousedown', e => { e.preventDefault(); choose(''); });
+        wrap._sync = sync;
+        sync();
+    });
+}
+async function amp_loadFilterOptions() {
+    try {
+        const res  = await fetch(`${AMP_API}/filter-options`, { credentials: 'same-origin', headers: amp_authHeaders() });
+        const json = await res.json();
+        if (json.success) {
+            amp_fcData = { offices: json.data.offices || [], suppliers: json.data.suppliers || [] };
+            Object.keys(AMP_FC).forEach(id => $amp(id)?._sync?.());
+        }
+    } catch (e) { /* the filters just stay empty */ }
+}
+
+/* PO Date range: From = Jan 1 of the current year, To = today (local date, not UTC) */
+function amp_initDateRange() {
+    const d = new Date(), pad = n => String(n).padStart(2, '0');
+    const from = $amp('amp-date-from'), to = $amp('amp-date-to');
+    if (from && !from.value) from.value = d.getFullYear() + '-01-01';
+    if (to && !to.value)     to.value   = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    [from, to].forEach(el => el?.addEventListener('change', () => {
+        if (from.value && to.value && from.value > to.value) {           // keep the range valid: move the other end
+            if (el === from) to.value = from.value; else from.value = to.value;
+        }
+        amp_page = 1; amp_load();
+    }));
+}
+
 async function amp_bootstrapLoad() {
     amp_bindEvents();
+    amp_initDateRange();
+    amp_fcBuild();
     amp_syncTab();
+    amp_loadFilterOptions();
     await amp_load();
 }
 if (document.readyState === 'loading') {
@@ -308,6 +404,10 @@ async function amp_load() {
             page   : amp_page,
             limit  : AMP_PAGE_SIZE,
         });
+        if (amp_fcSel.rc_id)     params.set('rc_id', amp_fcSel.rc_id);          // Requesting Office/Dept filter
+        if (amp_fcSel.vendor_id) params.set('vendor_id', amp_fcSel.vendor_id);  // Supplier filter
+        if ($amp('amp-date-from')?.value) params.set('date_from', $amp('amp-date-from').value);   // PO Date range
+        if ($amp('amp-date-to')?.value)   params.set('date_to', $amp('amp-date-to').value);
         const res  = await fetch(`${AMP_API}/list?${params}`, { credentials: 'same-origin', headers: amp_authHeaders() });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const json = await res.json();
@@ -342,7 +442,7 @@ function amp_renderTable(rows) {
     tbody.innerHTML = rows.map((r, i) => {
         return `<tr>
             <td class="nha-td-seq" style="vertical-align:top;">${offset + i + 1}</td>
-            <td style="vertical-align:top;white-space:nowrap;">${r.iar_number ? '<code class="nha-code">' + amp_esc(r.iar_number) + '</code>' : '—'}</td>
+            <td style="vertical-align:top;white-space:nowrap;">${r.iar_number ? '<code class="nha-code">' + amp_esc(r.iar_number) + '</code>' : '—'}${r.delivery_accepted ? '<div style="margin-top:4px;"><span style="display:inline-block;padding:1px 8px;border-radius:10px;background:#DCFCE7;color:#166534;font-size:11px;font-weight:600;" title="Delivery accepted' + (r.delivery_accepted_at ? ' on ' + amp_escAttr(r.delivery_accepted_at) : '') + '">Accepted</span></div>' : ''}</td>
             <td style="vertical-align:top;"><code class="nha-code">${amp_esc(r.po_number)}</code></td>
             <td style="vertical-align:top;white-space:nowrap;">${amp_esc(r.po_date || '—')}</td>
             <td style="vertical-align:top;">${amp_esc(r.requesting_office || '—')}</td>
@@ -371,11 +471,19 @@ function amp_renderTable(rows) {
                         <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                         Pro-forma
                     </button>
-                    <div class="iar-menu-divider"></div>
+                    ${Number(r.balance) > 0 && !r.delivery_accepted ? `<button type="button" class="iar-menu-item" onclick="amp_closeMenus();amp_addDelivery('${amp_escAttr(r.po_number)}')" title="Add another delivery receipt to this PO (balance ${money(r.balance)})">
+                        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                        Add Deliveries
+                    </button>` : ''}
+                    ${r.delivery_accepted || (r.receipts || []).every(d => d.jev_id) ? `<button type="button" class="iar-menu-item" onclick="amp_closeMenus();amp_acceptDelivery(${rows.indexOf(r)})" title="${r.delivery_accepted ? 'Show the delivery acceptance details' : 'Mark the delivery of this PO as accepted (no more deliveries can be added)'}">
+                        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                        Delivery Acceptance
+                    </button>` : ''}
+                    ${!r.delivery_accepted ? `<div class="iar-menu-divider"></div>
                     <button type="button" class="iar-menu-item" onclick="amp_closeMenus();amp_edit('${amp_escAttr(r.po_number)}')" title="Edit">
                         <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                         Edit
-                    </button>
+                    </button>` : ''}
                 </div>
             </div>
         </td>`;
@@ -447,7 +555,7 @@ function amp_viewAll(i) {
             }).join('')}</tbody>
             <tfoot><tr><td colspan="3" style="text-align:right;">Total</td><td style="text-align:right;">${money(total)}</td></tr></tfoot>
         </table></div></div>`;
-    $amp('amp-view-card').classList.remove('amp-wide');
+    $amp('amp-view-card').classList.remove('amp-wide', 'u-modal-2xl'); $amp('amp-view-card').classList.add('u-modal-xl');
     $amp('amp-view-title').textContent = 'Actual Delivery';
     $amp('amp-view-ref').textContent = r.iar_number || '';
     $amp('amp-view-overlay').classList.add('open');
@@ -502,7 +610,7 @@ async function amp_proforma(poNumber) {
             } catch (e) { /* keep the pro-forma rows */ }
         }));
         amp_renderProforma(0);
-        $amp('amp-view-card').classList.add('amp-wide');
+        $amp('amp-view-card').classList.add('amp-wide', 'u-modal-2xl'); $amp('amp-view-card').classList.remove('u-modal-xl');
         $amp('amp-view-title').textContent = 'Pro-forma JEV';
         $amp('amp-view-ref').textContent = amp_pf.iar || '';
         $amp('amp-view-overlay').classList.add('open');
@@ -813,27 +921,110 @@ function amp_renderPagination(p) {
 function amp_goTo(page) { if (page < 1) return; amp_page = page; amp_load(); }
 
 /* ── Modal ─────────────────────────────────────────────────── */
-function amp_openModal(mode, row = null) {
+function amp_openModal(mode, row = null, addDelivery = false) {   // addDelivery: another delivery receipt on a PO that already has an IAR (PO + IAR number locked)
     amp_hideErr();
     $amp('amp-mode').value = mode;
     $amp('amp-orig-po').value = row?.po_number || '';        // the PO is addressed by its current PO number
-    $amp('amp-modal-title').textContent = mode === 'edit' ? 'Edit PO Record' : 'Add PO Record';
+    $amp('amp-modal-title').textContent = mode === 'edit' ? 'Edit PO Record' : (addDelivery ? 'Add Deliveries' : 'Add PO Record');
     amp_setPoValue(row);                                     // PO picker + office / supplier / PO date / PO amount (form/dr-module-form.php)
     // IAR number (typed by the user) and the Sales Invoice details live on the PO's IAR
     $amp('amp-iar-number').value = row?.iar_number || '';
     $amp('amp-si-number').value  = row?.si_number || '';
     $amp('amp-si-date').value    = row?.si_date || '';
     amp_initDrForm(row);                                      // one delivery receipt: DR no./date, balanced entries (form/dr-module-form.php)
-    // When editing, the IAR number, DR number and delivery date identify the record: shown but not editable
+    // When editing, the IAR number, DR number and delivery date identify the record: shown but not editable.
+    // Adding a delivery to an existing PO: the PO and its IAR number are fixed (the DR number and date are new).
     ['amp-iar-number', 'amp-dr-number', 'amp-dr-date'].forEach(id => {
-        const el = $amp(id);
-        el.readOnly = mode === 'edit';
-        el.style.background = mode === 'edit' ? 'var(--afims-surface-subtle, #F4F7FA)' : '';
-        el.style.pointerEvents = mode === 'edit' ? 'none' : '';   // also blocks the date picker
-        el.tabIndex = mode === 'edit' ? -1 : 0;
+        const el = $amp(id), lock = mode === 'edit' || (addDelivery && id === 'amp-iar-number');
+        el.readOnly = lock;
+        el.style.background = lock ? 'var(--afims-surface-subtle, #F4F7FA)' : '';
+        el.style.pointerEvents = lock ? 'none' : '';   // also blocks the date picker
+        el.tabIndex = lock ? -1 : 0;
     });
+    const poEl = $amp('amp-po-number');
+    poEl.style.background = addDelivery ? 'var(--afims-surface-subtle, #F4F7FA)' : '';
+    poEl.style.cursor = addDelivery ? 'not-allowed' : '';
+    if (addDelivery) {
+        poEl.readOnly = true;                                  // the PO cannot be changed
+        amp_prefillEntries(row);                               // the RFA's lines, limited to what is left on the PO
+    }
     $amp('amp-overlay').classList.add('open');
-    if (mode === 'add') $amp('amp-po-number').focus();
+    if (mode === 'add') (addDelivery ? $amp('amp-dr-number') : poEl).focus();
+}
+
+/* Actions → Delivery Acceptance: sets delivery_accepted = TRUE on the PO's IAR (one-way; no more deliveries can be added afterwards) */
+async function amp_acceptDelivery(i) {
+    const r = amp_rows[i];
+    if (!r) return;
+    if (!window.Swal || typeof window.Swal.fire !== 'function') { amp_toast('The dialog could not be opened. Reload the page and try again.', 'error'); return; }
+    const row = (label, value) => '<div style="display:flex;gap:12px;padding:6px 0;border-bottom:1px solid #eef0f4;"><div style="width:130px;flex:none;color:#6b7280;font-size:13px;">'
+        + label + '</div><div style="flex:1;font-size:14px;white-space:pre-wrap;word-break:break-word;">' + value + '</div></div>';
+    if (r.delivery_accepted) {                               // already accepted: show the details (read-only)
+        await window.Swal.fire({
+            title: 'Delivery Acceptance', width: 520, confirmButtonText: 'Close', confirmButtonColor: '#6B7280',
+            customClass: { container: 'amp-swal' },
+            html: '<div style="text-align:left;">'
+                + row('Date', amp_esc(r.delivery_accepted_at || '—'))
+                + row('Inspected By', amp_esc(r.inspected_by || '—'))
+                + row('Subjected To', amp_esc(r.subject_to || '—'))
+                + row('Inspection Notes', amp_esc(r.inspection_notes || '—')) + '</div>',
+        });
+        return;
+    }
+    const today = new Date().toISOString().slice(0, 10), poNumber = r.po_number;
+    const field = 'width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;';
+    const ro = field + 'background:#f4f7fa;color:#5b5e73;';
+    const res0 = await window.Swal.fire({
+        title: 'Delivery Acceptance', width: 520, showCancelButton: true, focusConfirm: false,
+        confirmButtonText: 'Accept Delivery', cancelButtonText: 'Cancel', confirmButtonColor: '#16A34A', cancelButtonColor: '#6B7280',
+        reverseButtons: true, customClass: { container: 'amp-swal' },
+        html: '<div style="text-align:left;">'
+            + '<label style="font-size:13px;color:#6b7280;">Date</label><input style="' + ro + '" value="' + today + '" readonly tabindex="-1">'
+            + '<label style="font-size:13px;color:#6b7280;display:block;margin-top:10px;">Subject to ICS/PAR <span style="color:#DC3545;">*</span></label>'
+            + '<input id="amp-acc-subject" list="amp-acc-subject-list" maxlength="100" style="' + field + '" placeholder="ICS or PAR"><datalist id="amp-acc-subject-list"><option value="ICS"><option value="PAR"></datalist>'
+            + '<label style="font-size:13px;color:#6b7280;display:block;margin-top:10px;">Inspection Notes <span style="color:#9ca3af;">(optional)</span></label>'
+            + '<textarea id="amp-acc-notes" rows="3" maxlength="2000" style="' + field + 'resize:vertical;"></textarea>'
+            + '<div class="amp-cf-warn" style="margin-top:12px;"><span>&#9888;</span><span>After this, no more delivery receipts can be added to this PO and the record can no longer be edited.</span></div></div>',
+        preConfirm: () => {
+            const subject = document.getElementById('amp-acc-subject').value.trim();
+            if (!subject) { window.Swal.showValidationMessage('Subject to ICS/PAR is required.'); return false; }
+            return { subject_to: subject, inspection_notes: document.getElementById('amp-acc-notes').value.trim() };
+        },
+    });
+    if (!res0.isConfirmed) return;
+    window.PagePreloader?.show();
+    try {
+        const res  = await fetch(`${AMP_API}/accept-delivery`, {
+            method: 'POST', credentials: 'same-origin',
+            headers: amp_authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ po_number: poNumber, ...res0.value }),
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to accept the delivery.');
+        amp_toast(json.message || 'Delivery accepted.', 'success');
+        amp_load();
+    } catch (e) {
+        amp_toast(e.message, 'error');
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
+/* Actions → Add Deliveries: another delivery receipt on a PO that already has an IAR (offered while the PO balance is above 0) */
+async function amp_addDelivery(poNumber) {
+    window.PagePreloader?.show();
+    try {
+        const res  = await fetch(`${AMP_API}/read?po_number=${encodeURIComponent(poNumber)}`, { credentials: 'same-origin', headers: amp_authHeaders() });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load record.');
+        if (!(Number(json.data.balance) > 0)) throw new Error('This PO has no balance left.');
+        if (json.data.delivery_accepted) throw new Error('The delivery of this PO was already accepted.');
+        amp_openModal('add', json.data, true);
+    } catch (e) {
+        amp_toast(e.message, 'error');
+    } finally {
+        window.PagePreloader?.hide();
+    }
 }
 
 function amp_closeModal() {
@@ -891,6 +1082,7 @@ async function amp_save(ev) {
         amp_toast(json.message || 'Saved.', 'success');
         amp_closeModal();
         amp_load();
+        amp_loadFilterOptions();                               // a new PO can bring a new office / supplier
     } catch (e) {
         amp_showErr(e.message);
         amp_updateTotals();                                    // re-enables Save only while the entry is balanced

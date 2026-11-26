@@ -15,39 +15,22 @@ $_vl_api = preg_match('~/api$~', $_vl_api) ? $_vl_api : $_vl_api . '/api';
 // and colliding with it makes the framework try to render a template literally named "<dv_id>.php".
 $_vl_view = (int) ($_GET['dv'] ?? 0);
 $_vl_payroll = (int) ($_GET['payroll'] ?? 0); // Payroll Management "Create DV": payroll_period_id to open a new DV for
+$_vl_po = preg_match('/^[A-Za-z0-9 _\-\/.]{1,100}$/', (string) ($_GET['po'] ?? '')) ? (string) $_GET['po'] : ''; // Delivery Acceptance notification (GSD): the PO to open a new DV for — see vf_openForPo()
 $_vl_remittance = (int) ($_GET['remittance'] ?? 0); // Deductions & Remittances "Create Remittance DV": payroll_remittance_id
 $_vl_remit_period = preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', (string) ($_GET['remit_period'] ?? '')) ? (string) $_GET['remit_period'] : ''; // Remittance List "Remit": the month (YYYY-MM) whose withheld EWT / VAT / Penalty Tax to pay to BIR
 $_vl_remit_type = preg_match('/^[A-Za-z_]{1,20}$/', (string) ($_GET['remit_type'] ?? '')) ? strtoupper((string) $_GET['remit_type']) : ''; // EWT | VAT | PENALTY_TAX
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 <script src="/_shared/js/searchable-select.js?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/js/searchable-select.js') ?>"></script>
 
 <style>
-/* ── Page header: copied from User Access (.app-page-header in app/fims-css/fims.css — that file is not loaded here,
-      so the rules are repeated, scoped to this page). Stays navy in dark mode too, like User Access. ── */
-#vl-root .app-page-header { position:relative;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;overflow:hidden;
-    background:linear-gradient(135deg, #000E3E 0%, #001A5E 100%);border-radius:.75rem;padding:1.5rem 1.75rem;margin-bottom:1.5rem; }
-#vl-root .app-page-header::before,
-#vl-root .app-page-header::after { content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.05);pointer-events:none; }
-#vl-root .app-page-header::before { width:180px;height:180px;top:-90px;right:80px; }
-#vl-root .app-page-header::after { width:120px;height:120px;bottom:-70px;right:-20px;background:rgba(255,255,255,.06); }
-#vl-root .app-page-header-icon { position:relative;z-index:1;flex:0 0 auto;width:3rem;height:3rem;border-radius:.5rem;
-    display:flex;align-items:center;justify-content:center;font-size:1.25rem;
-    background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#FFFFFF; }
-#vl-root .app-page-title { position:relative;z-index:1;font-size:1.6rem;font-weight:800;letter-spacing:-.01em;color:#FFFFFF;margin:0 0 .25rem; }
-#vl-root .app-page-subtitle { position:relative;z-index:1;font-size:.9rem;color:rgba(255,255,255,.75);margin:0;max-width:640px; }
-/* the Refresh / Export / New DV buttons stay on the right of the banner, above its decorative circles */
-#vl-root .app-page-header-actions { position:relative;z-index:1;margin-left:auto;display:flex;flex-wrap:wrap;gap:8px; }
 </style>
 
 <div id="vl-root" class="nha-root">
 
     <!-- ── HEADER ─────────────────────────────────────────── -->
-    <!-- same banner as User Access (app-page-header in app/fims-css/fims.css) -->
+    <!-- same banner as User Access (app-page-header in _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
             <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
@@ -94,7 +77,7 @@ $_vl_remit_type = preg_match('/^[A-Za-z_]{1,20}$/', (string) ($_GET['remit_type'
                     <option value="FOR_DEPARTMENT_MANAGER">For Department Manager</option>
                     <option value="FOR_TREASURY">For Treasury</option>
                     <option value="RELEASED">Released</option>
-                    <option value="REJECTED">Rejected</option>
+                    <option value="REJECTED">Returned</option>
                     <option value="CANCELLED">Cancelled</option>
                 </select>
             </div>
@@ -171,7 +154,8 @@ const VL_BASE = <?= json_encode($_vl_api) ?>;
 const VL_API  = VL_BASE + '/voucher';
 const VL_VIEW = <?= (int) $_vl_view ?>; // dv_id to open in the view modal on load (0 = none)
 const VL_PAYROLL = <?= (int) $_vl_payroll ?>; // imported payroll month to open a new DV for on load (0 = none) — see vf_openForPayroll()
-const VL_REMITTANCE = <?= (int) $_vl_remittance ?>; // payroll remittance to open a new remittance DV for on load (0 = none) — see vf_openForRemittance()
+const VL_PO = <?= json_encode($_vl_po) ?>; // PO number to open a new DV for on load ("" = none) — see vf_openForPo()
+const VL_REMITTANCE =<?= (int) $_vl_remittance ?>; // payroll remittance to open a new remittance DV for on load (0 = none) — see vf_openForRemittance()
 const VL_REMIT_PERIOD = <?= json_encode($_vl_remit_period) ?>; // month (YYYY-MM) whose withheld tax to remit to BIR on load ("" = none) — see vf_openForDvRemit()
 const VL_REMIT_TYPE = <?= json_encode($_vl_remit_type) ?>; // EWT | VAT | PENALTY_TAX
 
@@ -197,6 +181,9 @@ async function vl_boot() {
     else if (VL_PAYROLL > 0) {
         history.replaceState(null, '', location.pathname); // a refresh after saving must not open another payroll DV
         vf_openForPayroll(VL_PAYROLL);
+    } else if (VL_PO) {
+        history.replaceState(null, '', location.pathname); // a refresh after saving must not open another DV for the PO
+        vf_openForPo(VL_PO);
     } else if (VL_REMITTANCE > 0) {
         history.replaceState(null, '', location.pathname);
         vf_openForRemittance(VL_REMITTANCE);
@@ -368,7 +355,7 @@ function vl_statusBadge(s) {
         FOR_DEPARTMENT_MANAGER: ['nha-bdg-navy', 'For Department Manager'],
         FOR_TREASURY: ['nha-bdg-teal', 'For Treasury'],
         RELEASED: ['nha-bdg-green', 'Released'],
-        REJECTED: ['nha-bdg-red', 'Rejected'],
+        REJECTED: ['nha-bdg-red', 'Returned'],
         CANCELLED: ['nha-bdg-orange', 'Cancelled'],
     };
     const [cls, label] = map[s] || ['nha-bdg-gray', s || '—'];

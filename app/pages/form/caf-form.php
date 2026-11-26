@@ -1,10 +1,13 @@
 <?php
 /**
  * CAF (Certificate as to Availability of Funds) form — a modal, opened from the RFA tab of the Memo Request list
- * (memo-req-page.php) by the "Create CAF" action of a row: window.cafModal.open(allocationId).
+ * (memo-req-page.php) by the "Create CAF" action of a row: window.cafModal.open(allocationId). Only an FMD user may create a CAF,
+ * only for an RFA whose status is Approved, and only while that RFA has no CAF yet — a superadmin is exempt from all three
+ * (applyRfa() says so on open; the API, CafService::create(), is what enforces it). After a save the page's row loses its
+ * Create CAF action (mrq_onCafCreated()).
  *
  * The same modal as the memo request form (form/budget-allocation-form.php in modal mode): the same shell (.nha-overlay /
- * .nha-modal-xl / .nha-modal-hdr / .nha-modal-body), the same number card, form sections, fields, tinted amount-line cards
+ * .nha-modal + u-modal-xl / .nha-modal-hdr / .nha-modal-body), the same number card, form sections, fields, tinted amount-line cards
  * and Cancel / Save footer — cut down to what a CAF needs, and RFA only:
  *   RFA            a DISABLED select holding just the RFA of the row that opened the modal, already SELECTED: the user finds
  *                  the RFA in the list and clicks Create CAF on it, so it is shown here, never picked. Only that one RFA is
@@ -38,7 +41,7 @@
 #caf-overlay { display:none;position:fixed;inset:0;z-index:9070;box-sizing:border-box;padding:16px;align-items:center;justify-content:center;
     background:rgba(15,32,69,.55); }
 #caf-overlay.open { display:flex; }
-#caf-overlay .nha-modal { display:flex;flex-direction:column;width:100%;max-width:1100px;max-height:90vh;overflow:hidden;
+#caf-overlay .nha-modal { display:flex;flex-direction:column;max-height:90vh;overflow:hidden;
     background:var(--afims-surface, #FFFFFF);border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.22); }
 #caf-overlay .nha-modal-hdr { display:flex;flex-shrink:0;align-items:center;justify-content:space-between;padding:16px 20px;
     background:var(--afims-heading-fill, #000E3E); }
@@ -166,7 +169,7 @@ html.afims-dark[data-bs-theme="dark"] #caf-overlay button.btn.btn-primary:focus:
      neutralised so it takes no space — the same wrapper as the memo form's modal. -->
 <div class="nha-root" style="padding:0;background:none;">
 <div id="caf-overlay" class="nha-overlay">
-    <div class="nha-modal nha-modal-xl caf-modal" role="dialog" aria-modal="true" aria-labelledby="caf-modal-title">
+    <div class="nha-modal caf-modal u-modal-xl" role="dialog" aria-modal="true" aria-labelledby="caf-modal-title">
         <div class="nha-modal-hdr">
             <h3 class="nha-modal-title" id="caf-modal-title">Create CAF</h3>
             <button type="button" class="nha-modal-close" id="caf-close" aria-label="Close">&times;</button>
@@ -424,6 +427,19 @@ html.afims-dark[data-bs-theme="dark"] #caf-overlay button.btn.btn-primary:focus:
         if (String(r.allocation_type || '').toUpperCase() !== ALLOCATION_TYPE) {
             throw new Error(`Only an RFA can have a CAF — this request is ${r.allocation_type ? 'a ' + r.allocation_type : 'not an RFA'}.`);
         }
+        // Only an FMD user may create a CAF, and only for an Approved RFA — a superadmin is exempt from both. This is the
+        // same message the API answers with (CafService::create() refuses the rest), shown before anything is filled in.
+        if (!MRQ_IS_ADMIN) {
+            if (!MRQ_IS_FMD) {
+                throw new Error('Only the Financial Management Department (FMD) can create a CAF.');
+            }
+            if (!mrq_isApproved(r)) {
+                throw new Error(`A CAF can only be created for an Approved RFA — this RFA is ${r.status_name || 'without a status'}.`);
+            }
+            if (mrq_hasCaf(r)) {
+                throw new Error('This RFA already has a CAF — an RFA can only have one.');
+            }
+        }
         rfa   = r;
         // each line's CAF Amount is its requested amount; none usable (blank / not a number) counts as 0.00 — it is locked, so
         // it must never be a value that cannot be saved
@@ -549,6 +565,8 @@ html.afims-dark[data-bs-theme="dark"] #caf-overlay button.btn.btn-primary:focus:
             setBusy(false);
             mrq_toast(json.message || 'CAF created successfully.', 'success');
             close();
+            // the RFA now has its CAF: its row in the list loses Create CAF
+            if (typeof mrq_onCafCreated === 'function') mrq_onCafCreated(payload.allocation_id);
         } catch (e) {
             setBusy(false);
             if (my === seq) showErr(e.message);   // stays open: the reason is shown above the form

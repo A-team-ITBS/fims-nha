@@ -16,11 +16,20 @@ $_ifr_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 ?>
 
 <style>
+    /* Account Code picker: the CIP / WIP categories are highlighted — a heading per group and a tinted, accented row */
+    .ifr-acct-group { padding:6px 12px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+        color:var(--afims-primary, #1d4ed8);background:var(--afims-surface-subtle, #F4F7FA);border-top:1px solid var(--afims-border, #E3E6EE); }
+    .ifr-acct-group:first-child { border-top:0; }
+    /* an entry showing the RFA's own account, which is not valid here: marked until the user chooses a CIP / WIP account */
+    .amp-input.ifr-needs-pick { border-color:var(--afims-warning, #D97706);background:rgba(217,119,6,.07);color:var(--afims-text-secondary, #5B5E73); }
+    .ifr-acct-group.ifr-acct-dim { color:var(--afims-text-muted, #62657E); }
+    .amp-combo-opt.ifr-acct-hl { border-left:3px solid var(--afims-primary, #1d4ed8);background:rgba(29,78,216,.06); }
+    .amp-combo-opt.ifr-acct-hl:hover, .amp-combo-opt.ifr-acct-hl.active { background:rgba(29,78,216,.14); }
     /* Add / Edit modal: the same shell as the PO modal (#amp-overlay) */
     #ifr-overlay { display:none;position:fixed;inset:0;z-index:9100;box-sizing:border-box;padding:16px;
         background:rgba(15,32,69,.55);align-items:center;justify-content:center;overflow-y:auto; }
     #ifr-overlay.open { display:flex; }
-    #ifr-card { display:flex;flex-direction:column;width:100%;max-width:1360px;max-height:92vh;overflow:hidden;
+    #ifr-card { display:flex;flex-direction:column;max-height:92vh;overflow:hidden;
         background:var(--afims-surface, #FFFFFF);border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.22);
         font-family:'IBM Plex Sans',sans-serif;font-size:14px;color:var(--afims-text, #1A1B21);animation:ampIn .18s ease; }
     #ifr-card *, #ifr-card *::before, #ifr-card *::after { box-sizing:border-box; }
@@ -48,9 +57,39 @@ $_ifr_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     @media (max-width:760px) { .amp-row.c3 { grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important; } }
     #ifr-variation.neg { color:var(--afims-error, #C62828); } #ifr-variation.pos { color:var(--afims-success, #1B7F3B); }
 
+    /* Add Accomplishment window: the same shell as the Add / Edit modal, a narrower card */
+    #ifr-aa-overlay { display:none;position:fixed;inset:0;z-index:9100;box-sizing:border-box;padding:16px;
+        background:rgba(15,32,69,.55);align-items:flex-start;justify-content:center;overflow-y:auto; }
+    #ifr-aa-overlay.open { display:flex; }
+    #ifr-aa-card { display:flex;flex-direction:column;width:100%;max-width:1360px;max-height:92vh;overflow:hidden;
+        background:var(--afims-surface, #FFFFFF);border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.22);
+        font-family:'IBM Plex Sans',sans-serif;font-size:14px;color:var(--afims-text, #1A1B21);animation:ampIn .18s ease; }
+    #ifr-aa-card *, #ifr-aa-card *::before, #ifr-aa-card *::after { box-sizing:border-box; }
+    #ifr-aa-card .amp-input, #ifr-aa-card .amp-combo { box-sizing:border-box !important;width:100% !important;max-width:100% !important;min-width:0 !important; }
+    #ifr-aa-card .amp-group > *, #ifr-aa-card .amp-row > * { min-width:0; }
+    #ifr-aa-header { display:flex;align-items:center;justify-content:space-between;flex-shrink:0;padding:16px 20px;background:var(--afims-heading-fill, #000E3E); }
+    #ifr-aa-close { display:flex;align-items:center;justify-content:center;width:28px;height:28px;font-size:18px;line-height:1;cursor:pointer;
+        color:var(--afims-pure-white, #FFFFFF);background:color-mix(in srgb, var(--afims-surface, #FFFFFF) 15%, transparent);
+        border:1px solid rgba(255,255,255,.25);border-radius:6px;opacity:.85; }
+    #ifr-aa-close:hover { opacity:1; }
+    #ifr-aa-err { display:none;margin:16px 22px 0;padding:8px 12px;font-size:12px;line-height:1.5;color:var(--afims-danger, #DC3545);
+        background:var(--afims-danger-soft, #FAE1E3);border:1px solid color-mix(in srgb, var(--afims-danger, #DC3545) 25%, transparent);border-radius:8px; }
+    #ifr-aa-form { display:flex;flex-direction:column;min-height:0;flex:1; }
+    #ifr-aa-body { flex:1;overflow-y:auto;padding:18px 22px; }
+    #ifr-aa-footer { display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-shrink:0;padding:14px 20px;
+        background:var(--afims-surface, #FFFFFF);border-top:1px solid var(--afims-border, #E4ECF2); }
+    #ifr-aa-footer .amp-btn { height:38px;padding:0 22px;border-radius:8px;border:1px solid var(--afims-border, #E4ECF2);
+        font-size:13px;font-weight:600;font-family:'IBM Plex Sans',sans-serif;cursor:pointer; }
+    #ifr-aa-footer .amp-btn:disabled { opacity:.5;cursor:not-allowed; }
+    #ifr-aa-footer .amp-btn-ghost { background:var(--afims-surface, #FFFFFF);color:var(--afims-text, #1A1B21); }
+    #ifr-aa-footer .amp-btn-navy { background:var(--afims-heading-fill, #000E3E);border-color:var(--afims-heading-fill, #000E3E);color:var(--afims-pure-white, #FFFFFF); }
+    #ifr-aa-old .amp-input { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-text-secondary, #5B5E73); }
+    #ifr-aa-warn { align-items:flex-start;gap:8px; }
+
     /* EDIT: only project cost, dates, duration and the statement of work can change */
     #ifr-edit-note { display:none;margin-bottom:18px;padding:10px 14px;border-radius:8px;font-size:13px;line-height:1.5;color:#92400E;background:#FEF3C7;border:1px solid #FDE68A; }
     .ifr-edit #ifr-edit-note { display:block; }
+    .ifr-edit #ifr-swa-section { display:none; }       /* the Statement of Work items are not edited here either: only the project details */
     .ifr-edit #ifr-entries-section { display:none; }   /* the Account Entries cannot be changed once the record exists: hidden while editing */
     .ifr-edit #ifr-rfa, .ifr-edit #ifr-swa { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-text-secondary, #5B5E73);cursor:not-allowed; }
 
@@ -77,7 +116,7 @@ $_ifr_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 </style>
 
 <div id="ifr-overlay">
-    <div id="ifr-card">
+    <div class="u-modal-2xl" id="ifr-card">
         <div id="ifr-header">
             <h3 class="amp-hdr-title" id="ifr-modal-title">Add Infrastructure Record</h3>
             <button type="button" id="ifr-modal-close" aria-label="Close">&times;</button>
@@ -88,8 +127,8 @@ $_ifr_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
             <div id="ifr-body">
                 <input type="hidden" id="ifr-mode" value="add">
                 <input type="hidden" id="ifr-id" value="">
-                <div id="ifr-edit-note"><strong>Editing:</strong> only the contract, dates, contract duration and the Statement of Work Accomplishments can be changed.
-                    The RFA, the SWA number and the Account Entries are locked.</div>
+                <div id="ifr-edit-note"><strong>Editing:</strong> only the project details (contract, area, TCT number, dates and contract duration) can be changed.
+                    The RFA, the SWA number, the Account Entries and the Statement of Work Accomplishments are locked — use Actions → Add Accomplishment to add work items.</div>
 
                 <!-- ── Project: the RFA (approved, Infrastructure, no PO) loads the details ── -->
                 <div class="amp-section">
@@ -147,6 +186,16 @@ $_ifr_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
                             <input type="text" class="amp-input" id="ifr-contract" maxlength="255" autocomplete="off" placeholder="Type the contract">
                         </div>
                     </div>
+                    <div class="amp-row c2">
+                        <div class="amp-group">
+                            <label class="amp-label" for="ifr-land-area">Area in SQM / Units <span class="opt">(optional)</span></label>
+                            <input type="text" inputmode="decimal" class="amp-input amp-num" id="ifr-land-area" autocomplete="off" placeholder="0.00">
+                        </div>
+                        <div class="amp-group">
+                            <label class="amp-label" for="ifr-tct">TCT Number <span class="opt">(optional)</span></label>
+                            <input type="text" class="amp-input" id="ifr-tct" maxlength="100" autocomplete="off" placeholder="Type the TCT number">
+                        </div>
+                    </div>
                     <div class="amp-row c3">
                         <div class="amp-group">
                             <label class="amp-label" for="ifr-start">Date Started</label>
@@ -182,8 +231,8 @@ $_ifr_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
                     </div>
                 </div>
 
-                <!-- ── Statement of Work Accomplishments ── -->
-                <div class="amp-section">
+                <!-- ── Statement of Work Accomplishments (hidden while editing: more items are added with Actions → Add Accomplishment) ── -->
+                <div class="amp-section" id="ifr-swa-section">
                     <h4 class="amp-section-header">Statement of Work Accomplishments <span class="opt">(description is required)</span>
                         <span class="amp-hdr-right"><button type="button" class="amp-add-btn" id="ifr-add-item">+ Add item</button></span>
                     </h4>
@@ -195,6 +244,40 @@ $_ifr_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
             <div id="ifr-footer">
                 <button type="button" class="amp-btn amp-btn-ghost" id="ifr-cancel">Cancel</button>
                 <button type="submit" class="amp-btn amp-btn-navy" id="ifr-save">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Actions → Add Accomplishment: same window design as the Add / Edit modal -->
+<div id="ifr-aa-overlay">
+    <div id="ifr-aa-card">
+        <div id="ifr-aa-header">
+            <h3 class="amp-hdr-title">Add Accomplishment</h3>
+            <button type="button" id="ifr-aa-close" aria-label="Close">&times;</button>
+        </div>
+        <div id="ifr-aa-err"></div>
+        <form id="ifr-aa-form" autocomplete="off">
+            <div id="ifr-aa-body">
+                <div class="amp-section">
+                    <h4 class="amp-section-header">Project</h4>
+                    <div class="amp-row c3">
+                        <div class="amp-group"><label class="amp-label" for="ifr-aa-swa">SWA Number</label><input type="text" class="amp-input" id="ifr-aa-swa" readonly tabindex="-1" style="font-weight:600;"></div>
+                        <div class="amp-group"><label class="amp-label" for="ifr-aa-rfa">RFA Number</label><input type="text" class="amp-input" id="ifr-aa-rfa" readonly tabindex="-1"></div>
+                        <div class="amp-group"><label class="amp-label" for="ifr-aa-project">Project Name</label><input type="text" class="amp-input" id="ifr-aa-project" readonly tabindex="-1"></div>                    </div>
+                </div>
+                <div class="amp-section">
+                    <h4 class="amp-section-header">Statement of Work Accomplishments <span class="opt">(description is required)</span></h4>
+                    <div class="ifr-itm ifr-itm-head"><span class="c c-desc">Description</span><span class="c c-cost" style="text-align:right;">Cost (₱)</span><span class="c c-pct" style="text-align:right;">% Accomplishment</span><span class="c c-x"></span></div>
+                    <div id="ifr-aa-old" class="ifr-aa-old"></div>
+                    <div id="ifr-aa-new"></div>
+                    <div class="ifr-itm-total"><span id="ifr-aa-left" style="margin-right:auto;"></span><span>Total cost <strong id="ifr-aa-cost-total">0.00</strong></span><span>Overall accomplishment <strong id="ifr-aa-pct-total">0.00%</strong></span></div>
+                    <div id="ifr-aa-warn" class="amp-cf-warn" style="margin-top:12px;display:none;"></div>
+                </div>
+            </div>
+            <div id="ifr-aa-footer">
+                <button type="button" class="amp-btn amp-btn-ghost" id="ifr-aa-cancel">Cancel</button>
+                <button type="submit" class="amp-btn amp-btn-navy" id="ifr-aa-save">Add</button>
             </div>
         </form>
     </div>
@@ -212,12 +295,71 @@ const ifr_money = v => Number(v || 0).toLocaleString('en-PH', { minimumFractionD
 const ifr_pct = v => Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
 const ifr_dash = v => (v === null || v === undefined || v === '') ? '—' : amp_esc(v);
 
+/* ── Filters: Regional Office/District Office and Contractor — searchable dropdowns (same design as the Deliveries tab; no date range here) ── */
+const IFR_FC = { 'ifr-fc-office': { param: 'rc_id', key: 'offices' }, 'ifr-fc-contractor': { param: 'vendor_id', key: 'contractors' } };
+const ifr_fcSel  = { rc_id: '', vendor_id: '' };            // the chosen value of each filter ('' = all)
+let   ifr_fcData = { offices: [], contractors: [] };        // [{value, label}] from GET /infra-iar/filter-options
+function ifr_fcBuild() {
+    Object.entries(IFR_FC).forEach(([id, cfg]) => {
+        const wrap = ifr_$(id);
+        if (!wrap) return;
+        wrap.innerHTML = '<input type="text" class="nha-filter-input" autocomplete="off" placeholder="' + amp_esc(wrap.dataset.all) + '">'
+            + '<button type="button" class="amp-fc-clear" hidden title="Clear">×</button><div class="amp-fc-list"></div>';
+        const input = wrap.querySelector('input'), list = wrap.querySelector('.amp-fc-list'), clear = wrap.querySelector('.amp-fc-clear');
+        let shown = [];
+        const labelOf = v => (ifr_fcData[cfg.key].find(o => String(o.value) === String(v)) || {}).label || '';
+        const sync = () => { input.value = labelOf(ifr_fcSel[cfg.param]); clear.hidden = !ifr_fcSel[cfg.param]; };
+        const render = () => {
+            const q = input.dataset.typing === '1' ? input.value.trim().toLowerCase() : '';     // the shown label is not a search
+            shown = ifr_fcData[cfg.key].filter(o => !q || String(o.label).toLowerCase().includes(q));
+            list.innerHTML = '<div class="amp-fc-opt" data-i="-1">' + amp_esc(wrap.dataset.all) + '</div>'
+                + (shown.length ? shown.map((o, i) => '<div class="amp-fc-opt' + (String(o.value) === String(ifr_fcSel[cfg.param]) ? ' active' : '') + '" data-i="' + i + '">' + amp_esc(o.label) + '</div>').join('')
+                                : '<div class="amp-fc-empty">No match</div>');
+        };
+        const choose = v => {
+            ifr_fcSel[cfg.param] = v;
+            input.dataset.typing = '0'; wrap.classList.remove('open'); sync();
+            ifr_page = 1; ifr_load();
+        };
+        input.addEventListener('focus', () => { input.dataset.typing = '0'; input.select(); wrap.classList.add('open'); render(); });
+        input.addEventListener('click', () => { if (!wrap.classList.contains('open')) { wrap.classList.add('open'); render(); } });
+        input.addEventListener('input', () => { input.dataset.typing = '1'; wrap.classList.add('open'); render(); });
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Escape') { wrap.classList.remove('open'); sync(); input.blur(); }
+            if (e.key === 'Enter') { e.preventDefault(); if (shown.length === 1 || (input.dataset.typing === '1' && shown[0])) choose(String(shown[0].value)); }
+        });
+        input.addEventListener('blur', () => { wrap.classList.remove('open'); input.dataset.typing = '0'; sync(); });   // half-typed text goes back to the chosen value
+        list.addEventListener('mousedown', e => {
+            const opt = e.target.closest('.amp-fc-opt');
+            if (!opt) return;
+            e.preventDefault();
+            const i = Number(opt.dataset.i);
+            choose(i < 0 ? '' : String(shown[i].value));
+        });
+        clear.addEventListener('mousedown', e => { e.preventDefault(); choose(''); });
+        wrap._sync = sync;
+        sync();
+    });
+}
+async function ifr_loadFilterOptions() {
+    try {
+        const res  = await fetch(`${IFR_API}/filter-options`, { credentials: 'same-origin', headers: amp_authHeaders() });
+        const json = await res.json();
+        if (json.success) {
+            ifr_fcData = { offices: json.data.offices || [], contractors: json.data.contractors || [] };
+            Object.keys(IFR_FC).forEach(id => ifr_$(id)?._sync?.());
+        }
+    } catch (e) { /* the filters just stay empty */ }
+}
+
 /* ── List ──────────────────────────────────────────────────── */
 async function ifr_load() {
     ifr_loaded = true;
     window.PagePreloader?.show();
     try {
         const params = new URLSearchParams({ search: ifr_$('ifr-filter-search')?.value || '', page: ifr_page, limit: IFR_PAGE_SIZE });
+        if (ifr_fcSel.rc_id)     params.set('rc_id', ifr_fcSel.rc_id);              // Regional Office/District Office filter
+        if (ifr_fcSel.vendor_id) params.set('vendor_id', ifr_fcSel.vendor_id);      // Contractor filter
         const res  = await fetch(`${IFR_API}/list?${params}`, { credentials: 'same-origin', headers: amp_authHeaders() });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const json = await res.json();
@@ -241,7 +383,7 @@ function ifr_renderTable(rows) {
     const tbody = ifr_$('ifr-tbody');
     ifr_rows = rows;
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No infrastructure records found.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No infrastructure records found.</span></div></td></tr>';
         return;
     }
     const offset = (ifr_page - 1) * IFR_PAGE_SIZE;
@@ -252,6 +394,7 @@ function ifr_renderTable(rows) {
         <td style="vertical-align:top;">${ifr_dash(r.project_name)}</td>
         <td style="vertical-align:top;">${ifr_dash(r.contractor)}</td>
         <td style="vertical-align:top;">${ifr_dash(r.requesting_office)}</td>
+        <td style="vertical-align:top;">${r.category ? amp_esc(r.category) : '<span title="Set when the pro-forma JEV is submitted" style="color:#9ca3af;">—</span>'}</td>
         <td style="vertical-align:top;text-align:right;white-space:nowrap;"><strong>${ifr_money(r.contract_cost)}</strong></td>
         <td style="vertical-align:top;white-space:nowrap;">${ifr_bar(r.accomplishment)}</td>
         <td style="white-space:nowrap;vertical-align:top;">
@@ -273,6 +416,10 @@ function ifr_renderTable(rows) {
                     <button type="button" class="iar-menu-item" onclick="amp_closeMenus();ifr_edit(${i})" title="Edit">
                         <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                         Edit
+                    </button>
+                    <button type="button" class="iar-menu-item" onclick="amp_closeMenus();ifr_addAccomplishment(${i})" title="Add Accomplishment">
+                        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                        Add Accomplishment
                     </button>
                 </div>
             </div>
@@ -306,6 +453,8 @@ function ifr_goTo(p) { if (p < 1) return; ifr_page = p; ifr_load(); }
             timer = setTimeout(() => { ifr_page = 1; ifr_load(); }, 300);
         });
         clear?.addEventListener('click', () => { search.value = ''; search.focus(); clear.hidden = true; ifr_page = 1; ifr_load(); });
+        ifr_fcBuild();
+        ifr_loadFilterOptions();
         ifr_$('ifr-modal-close')?.addEventListener('click', ifr_closeModal);
         ifr_$('ifr-cancel')?.addEventListener('click', ifr_closeModal);
         ifr_$('ifr-form')?.addEventListener('submit', ifr_save);
@@ -313,6 +462,10 @@ function ifr_goTo(p) { if (p < 1) return; ifr_page = p; ifr_load(); }
         ifr_$('ifr-add-item')?.addEventListener('click', () => { const r = ifr_addItem(); r.querySelector('.ifr-i-desc').focus(); });
         ['ifr-swa', 'ifr-start', 'ifr-end'].forEach(id => ifr_$(id)?.addEventListener('input', ifr_refresh));
         ['ifr-start', 'ifr-end'].forEach(id => ['input', 'change'].forEach(ev => ifr_$(id)?.addEventListener(ev, () => { ifr_autoDuration(); ifr_refresh(); })));
+        // Area in SQM / Units: typed with thousands separators and 2 decimals, like the amounts
+        const area = ifr_$('ifr-land-area');
+        area?.addEventListener('input', () => { area.value = amp_liveFmt(area.value, true); });
+        area?.addEventListener('blur', () => { if (area.value) area.value = amp_fmtMoney(amp_unfmt(area.value)); });
         // the duration can be typed; clearing it hands it back to the dates
         ifr_$('ifr-duration')?.addEventListener('input', () => { ifr_state.durManual = !!ifr_$('ifr-duration').value.trim(); if (!ifr_state.durManual) ifr_autoDuration(); });
     };
@@ -340,7 +493,9 @@ function ifr_view(i) {
                       vrow('Original Contract Cost', num(r.original_contract_cost)), vrow('Variation Order', ifr_signed(r.variation_order)),
                       vrow('Revised Contract Cost', num(r.contract_cost)), vrow('Contract', ifr_dash(r.contract)),
                       vrow('Date Started', ifr_dash(r.date_started)), vrow('Completion Date (Revised)', ifr_dash(r.completion_date_revised)),
-                      vrow('Contract Duration', ifr_dash(r.contract_duration)))}
+                      vrow('Contract Duration', ifr_dash(r.contract_duration)),
+                      vrow('Area in SQM / Units', r.total_land_area === null || r.total_land_area === undefined || r.total_land_area === '' ? ifr_dash(null) : amp_esc(Number(r.total_land_area).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))),
+                      vrow('TCT Number', ifr_dash(r.tct_number)))}
         </div>
         <div class="amp-vw-card"><h4 class="amp-vw-card-title">Account Entries</h4><div class="amp-vw-tblwrap"><table class="amp-v-table">
             <thead><tr><th>Account Code</th><th style="text-align:right;">Amount</th></tr></thead>
@@ -354,9 +509,126 @@ function ifr_view(i) {
         </table></div></div>`);
 }
 
+/* ── Actions → Add Accomplishment: one more Statement of Work item, in the same window design as Add / Edit (#ifr-aa-overlay) ──
+   The record's existing items are shown (read-only) above the new row; the totals and the warnings follow the new row live, and Save is blocked
+   while the new item would take the cost past the Account Entries total or the accomplishment past 100% (the server refuses it as well). */
+const ifr_aa = { row: null, entC: 0, usedC: 0, usedP: 0 };
+
+function ifr_aaHideErr() { const e = ifr_$('ifr-aa-err'); e.style.display = 'none'; e.textContent = ''; }
+function ifr_aaShowErr(m) { const e = ifr_$('ifr-aa-err'); e.textContent = m; e.style.display = 'block'; }
+function ifr_aaClose() { ifr_$('ifr-aa-overlay').classList.remove('open'); ifr_aaHideErr(); }
+
+function ifr_addAccomplishment(i) {
+    const r = ifr_rows[i];
+    if (!r) return;
+    const cents = v => Math.round((Number(v) || 0) * 100);
+    ifr_aa.row   = r;
+    ifr_aa.entC  = cents((r.entries || []).reduce((s, e) => s + Number(e.amount || 0), 0));
+    ifr_aa.usedC = cents(r.items_cost);
+    ifr_aa.usedP = cents(r.accomplishment);
+    ifr_$('ifr-aa-swa').value      = r.swa_number || '';
+    ifr_$('ifr-aa-rfa').value      = r.rfa_number || '';
+    ifr_$('ifr-aa-project').value  = r.project_name || '';
+    // the items already on the record: shown, not editable
+    const old = (r.items || []).map(it => `<div class="ifr-itm">
+        <div class="c c-desc"><input type="text" class="amp-input" readonly tabindex="-1" value="${amp_attrEsc(it.description || '')}"></div>
+        <div class="c c-cost"><input type="text" class="amp-input amp-num" readonly tabindex="-1" value="${amp_attrEsc(amp_fmtMoney(it.cost))}"></div>
+        <div class="c c-pct"><input type="text" class="amp-input amp-num" readonly tabindex="-1" value="${amp_attrEsc(amp_fmtMoney(it.accomplishment_pct))}"></div>
+        <div class="c c-x"></div></div>`).join('');
+    ifr_$('ifr-aa-old').innerHTML = old;
+    ifr_$('ifr-aa-new').innerHTML = `<div class="ifr-itm">
+        <div class="c c-desc"><div class="amp-combo"><input type="text" class="amp-input ifr-i-desc" id="ifr-aa-desc" maxlength="1000" autocomplete="off" placeholder="Select from the list or type the work item (required)"><div class="amp-combo-list"></div></div></div>
+        <div class="c c-cost"><input type="text" inputmode="decimal" class="amp-input amp-num" id="ifr-aa-cost" placeholder="0.00"></div>
+        <div class="c c-pct"><input type="text" inputmode="decimal" class="amp-input amp-num" id="ifr-aa-pct" placeholder="0.00"></div>
+        <div class="c c-x"></div></div>`;
+    ifr_swaCombo(ifr_$('ifr-aa-new').querySelector('.amp-combo'), ifr_aaRefresh);
+    const cost = ifr_$('ifr-aa-cost'), pct = ifr_$('ifr-aa-pct'), desc = ifr_$('ifr-aa-desc');
+    cost.addEventListener('input', () => { cost.value = amp_liveFmt(cost.value, true); ifr_aaRefresh(); });
+    cost.addEventListener('blur', () => { if (cost.value) cost.value = amp_fmtMoney(amp_unfmt(cost.value)); });
+    pct.addEventListener('input', () => {                                   // 0 – 100, 2 decimals (same as the Statement of Work rows)
+        let s = pct.value.replace(/[^0-9.]/g, '');
+        const d = s.indexOf('.');
+        if (d !== -1) s = s.slice(0, d + 1) + s.slice(d + 1).replace(/\./g, '').slice(0, 2);
+        if (parseFloat(s) > 100) s = '100';
+        pct.value = s;
+        ifr_aaRefresh();
+    });
+    pct.addEventListener('blur', () => { if (pct.value) pct.value = amp_fmtMoney(pct.value); });
+    desc.addEventListener('input', ifr_aaRefresh);
+    ifr_aaHideErr();
+    ifr_aaRefresh();
+    ifr_$('ifr-aa-overlay').classList.add('open');
+    desc.focus();
+}
+
+/* the new row's message when it can't be added yet, '' when it can; also paints the totals and the red boxes */
+function ifr_aaRefresh() {
+    const nc = Math.round((parseFloat(amp_unfmt(ifr_$('ifr-aa-cost').value)) || 0) * 100);
+    const np = Math.round((parseFloat(amp_unfmt(ifr_$('ifr-aa-pct').value)) || 0) * 100);
+    const totC = ifr_aa.usedC + nc, totP = ifr_aa.usedP + np;
+    const overC = totC > ifr_aa.entC, overP = totP > 10000;
+    ifr_$('ifr-aa-cost').classList.toggle('ifr-over', overC);
+    ifr_$('ifr-aa-pct').classList.toggle('ifr-over', overP);
+    ifr_$('ifr-aa-cost-total').textContent = ifr_money(totC / 100);
+    ifr_$('ifr-aa-cost-total').style.color = overC ? 'var(--afims-error, #C62828)' : '';
+    ifr_$('ifr-aa-pct-total').textContent = ifr_pct(totP / 100);
+    ifr_$('ifr-aa-pct-total').style.color = overP ? 'var(--afims-error, #C62828)' : '';
+    ifr_$('ifr-aa-left').innerHTML = 'Cost left <strong>' + ifr_money(Math.max(0, ifr_aa.entC - totC) / 100) + '</strong>'
+        + '&nbsp;&nbsp;·&nbsp;&nbsp;Accomplishment left <strong>' + ifr_pct(Math.max(0, 10000 - totP) / 100) + '</strong>';
+    const warn = [];
+    if (overC) warn.push('The cost would total ₱' + ifr_money(totC / 100) + ', which exceeds the Account Entries total of ₱' + ifr_money(ifr_aa.entC / 100) + '.');
+    if (overP) warn.push('The accomplishment would reach ' + ifr_pct(totP / 100) + ', which exceeds 100%.');
+    const w = ifr_$('ifr-aa-warn');
+    w.style.display = warn.length ? 'flex' : 'none';
+    w.innerHTML = '<span>&#9888;</span><span>' + warn.join('<br>') + '</span>';
+    const bad = !ifr_$('ifr-aa-desc').value.trim() ? 'The description is required.' : (warn.length ? warn[0] : '');
+    ifr_$('ifr-aa-save').disabled = !!bad;
+    return bad;
+}
+
+async function ifr_aaSave(ev) {
+    ev.preventDefault();
+    ifr_aaHideErr();
+    const bad = ifr_aaRefresh();
+    if (bad) { ifr_aaShowErr(bad); return; }
+    const btn = ifr_$('ifr-aa-save');
+    btn.disabled = true;
+    window.PagePreloader?.show();
+    try {
+        const res  = await fetch(`${IFR_API}/add-accomplishment?id=${encodeURIComponent(ifr_aa.row.swa_id)}`, {
+            method: 'POST', credentials: 'same-origin',
+            headers: amp_authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({
+                description: ifr_$('ifr-aa-desc').value.trim(),
+                cost: amp_unfmt(ifr_$('ifr-aa-cost').value),
+                accomplishment_pct: amp_unfmt(ifr_$('ifr-aa-pct').value),
+            }),
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to add the accomplishment.');
+        ifr_aaClose();
+        amp_toast(json.message || 'Accomplishment added.', 'success');
+        ifr_load();
+    } catch (e) {
+        ifr_aaShowErr(e.message);
+        btn.disabled = false;
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
+(function ifr_aaBind() {
+    const run = () => {
+        ifr_$('ifr-aa-close')?.addEventListener('click', ifr_aaClose);
+        ifr_$('ifr-aa-cancel')?.addEventListener('click', ifr_aaClose);
+        ifr_$('ifr-aa-form')?.addEventListener('submit', ifr_aaSave);
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+})();
+
 function amp_view_set(title, ref, html) {
     ifr_$('amp-view-body').innerHTML = html;
-    ifr_$('amp-view-card').classList.remove('amp-wide');
+    ifr_$('amp-view-card').classList.remove('amp-wide', 'u-modal-2xl'); ifr_$('amp-view-card').classList.add('u-modal-xl');
     ifr_$('amp-view-title').textContent = title;
     ifr_$('amp-view-ref').textContent = ref;
     ifr_$('amp-view-overlay').classList.add('open');
@@ -395,7 +667,7 @@ async function ifr_proforma(id) {
             } catch (e) { /* keep the pro-forma rows */ }
         }
         amp_renderProforma(0);
-        ifr_$('amp-view-card').classList.add('amp-wide');
+        ifr_$('amp-view-card').classList.add('amp-wide', 'u-modal-2xl'); ifr_$('amp-view-card').classList.remove('u-modal-xl');
         ifr_$('amp-view-title').textContent = 'Pro-forma JEV';
         ifr_$('amp-view-ref').textContent = d.swa_number || '';
         ifr_$('amp-view-overlay').classList.add('open');
@@ -455,10 +727,13 @@ function ifr_openModal(mode, row = null) {
     ifr_$('ifr-modal-title').textContent = mode === 'edit' ? 'Edit Infrastructure Record' : 'Add Infrastructure Record';
     ifr_$('ifr-rfa').value = ifr_state.validLabel = row?.rfa_number || '';
     ifr_state.valid = row ? Number(row.allocation_id) : 0;
+    ifr_state.cat   = '';                                      // set when an RFA is picked
     ifr_$('ifr-swa').value = row?.swa_number || '';
     if (mode === 'add') ifr_loadNextNumber();
     ifr_fillProject(row);
     if (mode === 'edit') ifr_state.contract = null;            // the RFA amount is checked by the server on a save
+    ifr_$('ifr-land-area').value = row && row.total_land_area !== null && row.total_land_area !== undefined && row.total_land_area !== '' ? amp_fmtMoney(row.total_land_area) : '';
+    ifr_$('ifr-tct').value = row?.tct_number || '';
     ifr_$('ifr-start').value = row?.date_started || '';
     ifr_$('ifr-end').value = row?.completion_date_revised || '';
     ifr_$('ifr-duration').value = row?.contract_duration || '';
@@ -546,6 +821,7 @@ async function ifr_edit(i) {
         }
         input.value = ifr_state.validLabel = p.rfa_number;
         ifr_state.valid = Number(p.allocation_id);
+        ifr_state.cat   = p.category || '';                    // 'CIP' | 'WIP': the group the Account Code picker highlights for this RFA
         ifr_fillProject(p);
         typed = false;
         wrap.classList.remove('open');
@@ -553,6 +829,7 @@ async function ifr_edit(i) {
         const lines = (p.lines || []).filter(l => Number(l.amount) > 0);
         (lines.length ? lines : [{}]).forEach(l => ifr_addEntry(l));          // pre-filled from the RFA
         ifr_refresh();
+        setTimeout(ifr_openNextPick, 0);                                      // a line the RFA could not fill: open its CIP / WIP choice right away
     };
     input.addEventListener('focus', () => { typed = false; input.select(); open(); });
     input.addEventListener('click', () => { if (!wrap.classList.contains('open')) open(); });
@@ -580,16 +857,30 @@ function ifr_acctCombo(wrap) {
     const input = wrap.querySelector('.ifr-f-acct'), list = wrap.querySelector('.amp-combo-list');
     let typed = false, timer = null, seq = 0, hits = [];
     const label = a => a.account_code + ' - ' + a.account_title;
+    const rowCat = () => wrap.closest('.amp-ent')?.dataset.pick || ifr_state.cat || '';   // a row the RFA could not fill uses its own group (CIP | WIP)
     const render = () => {
+        // The CIP / WIP categories are listed first under a CIP / WIP heading (the server tags them with `group`). The one that fits the
+        // picked RFA is highlighted: CIP when the RFA's accounts are the capital-asset ones (building, land, leased assets improvements, …),
+        // else WIP (ifr_state.cat, from the server). With no RFA picked yet both are highlighted.
+        let last = null;
+        const cat  = rowCat();
+        const fits = g => !cat || g === cat;
         list.innerHTML = hits.length
-            ? hits.map((a, i) => '<div class="amp-combo-opt' + (a.account_code === input.dataset.code ? ' active' : '') + '" data-i="' + i + '">' + amp_textEsc(label(a)) + '</div>').join('')
+            ? hits.map((a, i) => {
+                const head = a.group && a.group !== last
+                    ? '<div class="ifr-acct-group' + (fits(a.group) ? '' : ' ifr-acct-dim') + '">' + amp_textEsc(a.group === 'CIP' ? 'CIP — Construction in Progress' : 'WIP — Work in Process')
+                        + (cat && fits(a.group) ? ' · for this RFA' : '') + '</div>'
+                    : '';
+                last = a.group || last;
+                return head + '<div class="amp-combo-opt' + (a.group && fits(a.group) ? ' ifr-acct-hl' : '') + (a.account_code === input.dataset.code ? ' active' : '') + '" data-i="' + i + '">' + amp_textEsc(label(a)) + '</div>';
+            }).join('')
             : '<div class="amp-combo-empty">No matching account code</div>';
     };
     const load = async () => {
         const mine = ++seq;
         try {
             const q = typed ? input.value.trim() : '';
-            const res = await fetch(AMP_FORM_API + '/accounts?all=1&search=' + encodeURIComponent(q), { credentials: 'same-origin', headers: amp_authHeaders() });   // every account (infrastructure uses more than the property accounts)
+            const res = await fetch(AMP_FORM_API + '/accounts?infra=1&cat=' + encodeURIComponent(rowCat()) + '&search=' + encodeURIComponent(q), { credentials: 'same-origin', headers: amp_authHeaders() });   // every account (infrastructure uses more than the property accounts)
             const json = await res.json();
             if (mine !== seq) return;
             hits = json.success ? (json.data || []) : [];
@@ -597,7 +888,22 @@ function ifr_acctCombo(wrap) {
         render();
     };
     const open = () => { if (input.readOnly) return; wrap.classList.add('open'); render(); load(); };
-    const pick = a => { input.value = input.dataset.label = label(a); input.dataset.code = a.account_code; typed = false; wrap.classList.remove('open'); ifr_refresh(); };
+    const pick = a => {
+        // only ONE CIP / WIP account per record (not several, not CIP with WIP); other accounts can be added freely
+        if (a.group && [...document.querySelectorAll('#ifr-entries .ifr-f-acct')].some(i => i !== input && i.dataset.grp)) {
+            wrap.classList.remove('open');
+            if (typeof amp_toast === 'function') amp_toast('Only one CIP or WIP account is allowed — CIP / WIP accounts cannot be repeated or combined.', 'error');
+            else alert('Only one CIP or WIP account is allowed — CIP / WIP accounts cannot be repeated or combined.');
+            return;
+        }
+        input.dataset.grp = a.group || '';
+        input.value = input.dataset.label = label(a); input.dataset.code = a.account_code; typed = false; wrap.classList.remove('open');
+        wrap.closest('.amp-ent')?.removeAttribute('data-pick');
+        input.classList.remove('ifr-needs-pick');
+        input.title = '';
+        ifr_refresh();
+        ifr_openNextPick();                                   // the next RFA line still waiting for a CIP / WIP choice
+    };
     input.addEventListener('focus', () => { typed = false; input.select(); open(); });
     input.addEventListener('click', () => { if (!wrap.classList.contains('open')) open(); });
     input.addEventListener('input', () => { typed = true; wrap.classList.add('open'); clearTimeout(timer); timer = setTimeout(load, 250); });
@@ -610,24 +916,47 @@ function ifr_acctCombo(wrap) {
         wrap.classList.remove('open');
         typed = false;
         if (input.value !== (input.dataset.label || '')) input.value = input.dataset.label || '';
-        if (!input.value) input.dataset.code = '';
+        if (!input.value) { input.dataset.code = ''; input.dataset.grp = ''; }
         ifr_refresh();
     });
 }
+
+/* Opens the account picker of the first entry row still waiting for a CIP / WIP choice (data-pick, set by ifr_addEntry()) */
+function ifr_openNextPick() {
+    const row = [...document.querySelectorAll('#ifr-entries .amp-ent[data-pick]')].find(r => !r.querySelector('.ifr-f-acct').dataset.code);
+    if (!row) return;
+    const input = row.querySelector('.ifr-f-acct');
+    input.scrollIntoView({ block: 'nearest' });
+    input.focus();                                            // the combo opens (and loads the group's accounts) on focus
+}
+
+const IFR_CIPWIP = ['1-06-99-010', '1-06-99-020', '1-06-99-030', '1-06-99-020-01', '1-06-99-020-02', '1-06-99-020-03', '1-06-99-020-04',
+                    '1-04-03-020', '1-04-03-020-01', '1-04-03-020-02', '1-04-03-020-03', '1-04-03-020-04', '1-04-03-020-05'];
 
 function ifr_addEntry(en = {}) {
     const el  = document.createElement('div');
     el.className = 'amp-ent';
     const a   = Number(en.amount || 0);
-    const lbl = en.account_code ? en.account_code + (en.account_title ? ' - ' + en.account_title : '') : '';
+    // en.pick ('CIP' | 'WIP', from the server): the RFA's account is not valid as an Account Entry (a capital-asset account, or the WIP control
+    // account that has sub-ledgers) — the row starts blank (the amount is kept) and its picker opens on that group for the user to choose
+    // The RFA's own account is shown IN the box ("1-06-04-010 - Buildings") so it is clear which RFA account the amount comes from, but it is not
+    // a valid choice: the code is left empty (data-code) and the box is marked until the user picks a CIP / WIP account from the list.
+    const rfaLbl = en.pick ? en.account_code + (en.account_title ? ' - ' + en.account_title : '') : '';
+    if (en.pick) {
+        el.dataset.pick = en.pick;
+        en = { ...en, account_code: '', account_title: '' };
+    }
+    const lbl = rfaLbl || (en.account_code ? en.account_code + (en.account_title ? ' - ' + en.account_title : '') : '');
     el.innerHTML = `
         <div class="amp-combo">
-            <input type="text" class="amp-input ifr-f-acct" placeholder="Search account code or title" value="${amp_attrEsc(lbl)}"
+            <input type="text" class="amp-input ifr-f-acct${rfaLbl ? ' ifr-needs-pick' : ''}" placeholder="Search account code or title" value="${amp_attrEsc(lbl)}"
+                   title="${rfaLbl ? 'The RFA account is not valid here — choose a ' + el.dataset.pick + ' account from the list' : ''}"
                    data-code="${amp_attrEsc(en.account_code || '')}" data-label="${amp_attrEsc(lbl)}">
             <div class="amp-combo-list"></div>
         </div>
         <input type="text" inputmode="decimal" class="amp-input ifr-f-amount amp-num" placeholder="0.00" value="${a > 0 ? amp_attrEsc(amp_fmtMoney(a)) : ''}">
         <button type="button" class="amp-link-danger amp-ent-remove" title="Remove row">&times;</button>`;
+    if (IFR_CIPWIP.includes(en.account_code)) el.querySelector('.ifr-f-acct').dataset.grp = 'x';   // this row holds the record's one CIP / WIP account
     ifr_acctCombo(el.querySelector('.amp-combo'));
     if (ifr_state.locked) el.querySelectorAll('input').forEach(i => { i.readOnly = true; i.tabIndex = -1; });      // not editable once the record exists
     const amt = el.querySelector('.ifr-f-amount');
@@ -695,7 +1024,7 @@ const IFR_SWA_ITEMS = [
     'Perimeter Fence and Retaining Walls / Slope Protection (Riprap / Grouted Riprap)',
 ];
 /* the Description box: the suggestions drop down below it (all of them on focus, filtered while typing); picking one fills the box, and any other text can still be typed */
-function ifr_swaCombo(wrap) {
+function ifr_swaCombo(wrap, onPick = ifr_refresh) {
     const input = wrap.querySelector('.ifr-i-desc'), list = wrap.querySelector('.amp-combo-list');
     let hits = [], typed = false;
     const render = () => {
@@ -716,7 +1045,7 @@ function ifr_swaCombo(wrap) {
         input.value = hits[+opt.dataset.i];
         typed = false;
         wrap.classList.remove('open');
-        ifr_refresh();
+        onPick();
     });
     input.addEventListener('keydown', e => { if (e.key === 'Escape') wrap.classList.remove('open'); if (e.key === 'Enter') { e.preventDefault(); wrap.classList.remove('open'); } });
     input.addEventListener('blur', () => { wrap.classList.remove('open'); typed = false; });
@@ -778,6 +1107,7 @@ function ifr_error() {
     }
     const s = ifr_$('ifr-start').value, e = ifr_$('ifr-end').value;
     if (s && e && e < s) return 'The completion date (revised) cannot be before the date started.';
+    if (ifr_isEdit()) return '';                       // the Statement of Work items are not part of the edit
     const items = ifr_itemRows().filter(r => !r.blank);
     if (!items.length) return 'Add at least one item to the Statement of Work Accomplishments.';
     for (let i = 0; i < items.length; i++) {
@@ -825,11 +1155,13 @@ async function ifr_save(ev) {
     const edit = ifr_isEdit();
     const payload = {
         contract: ifr_$('ifr-contract').value.trim(),
+        total_land_area: amp_unfmt(ifr_$('ifr-land-area').value),          // Area in SQM / Units (optional)
+        tct_number: ifr_$('ifr-tct').value.trim(),                         // TCT number (optional)
         date_started: ifr_$('ifr-start').value,
         completion_date_revised: ifr_$('ifr-end').value,
         contract_duration: ifr_$('ifr-duration').value.trim(),
-        items: ifr_itemRows().filter(r => !r.blank).map(r => ({ description: r.description, cost: r.cost, accomplishment_pct: r.pct })),
     };
+    if (!edit) payload.items = ifr_itemRows().filter(r => !r.blank).map(r => ({ description: r.description, cost: r.cost, accomplishment_pct: r.pct }));
     if (!edit) payload.allocation_id = ifr_state.valid;
     if (!ifr_state.locked) {
         payload.entries = [...document.querySelectorAll('#ifr-entries .amp-ent')].map(r => ({

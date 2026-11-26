@@ -7,14 +7,19 @@ use PHPMaker2024\FIMS as App;
 /**
  * Backs the Bank Reconciliation module (app/pages/bank-reconciliation-page.php),
  * Reports > Bank Reconciliation — see "01 - table/51 - fims_bank_reconciliations.sql"
- * for the table's docblock (book_balance snapshot caveat, one-per-account-per-month).
+ * for the table's docblock (book_balance snapshot caveat, one-per-account-per-month)
+ * and "03 - alter_table/59 - bank_reconciliation_match_coa_template.sql" for the
+ * official COA-style line-up this worksheet follows.
  *
- * Per Book:  Book Balance (ending balance of the GL ledger register, see getLedger())
- *            + credit memo + interest income - debit memo = Adjusted Book Balance
- * Per Bank:  Bank Balance (manual) + deposit in transit - outstanding check
- *            = Adjusted Bank Balance, where deposit in transit / outstanding check are
- *            itemized from the ledger's un-cleared lines (see getLedger()/setCleared()),
- *            not manual entry.
+ * Per Books: Book Balance (ending balance of the GL ledger register, see getLedger())
+ *            Add:  Unrecorded Deposits, Credit Memo, Interest Income, Book Error (under)
+ *            Less: Debit Memo, Withholding Tax, Bank Charges/Cost of Checkbooks, Book Error (over)
+ *            = Adjusted Book Balance
+ * Per Bank:  Bank Balance (manual, or the latest uploaded SOA balance)
+ *            Add:  Deposit in Transit (auto-derived from the ledger's un-cleared debit
+ *                  lines — see getLedger()/setCleared()), Bank Error (under)
+ *            Less: Outstanding Checks (auto-derived, un-cleared credit lines), Bank Error (over)
+ *            = Adjusted Bank Balance
  * Reconciled when both adjusted balances match (within a centavo, floating point).
  */
 class BankReconciliationService
@@ -25,6 +30,8 @@ class BankReconciliationService
     private string $tableCleared     = 'fims.bank_reconciliation_cleared_items';
     private string $tableCoa         = 'fims.chart_of_accounts';
     private string $tableSoa         = 'fims.soa_transactions';
+    private string $tableJev             = 'fims.journal_entry_vouchers';
+    private string $tableSettingsStatus  = 'fims.settings_status';
 
     private function str(mixed $v): string
     {
@@ -317,7 +324,7 @@ class BankReconciliationService
         $beginningBalance = round((float) ($beginRow['bal'] ?? 0), 2);
 
         $rows = App\ExecuteRowsAssociative(
-            "SELECT g.gl_id, g.posting_date, g.reference_no, g.description, g.debit, g.credit,
+            "SELECT g.gl_id, g.posting_date, g.reference_no, g.doc_ref_no, g.description, g.debit, g.credit,
                     c.forced_cleared
              FROM {$this->tableGl} g
              LEFT JOIN {$this->tableCleared} c ON c.gl_id = g.gl_id AND c.bank_account_id = {$id}
@@ -415,6 +422,16 @@ class BankReconciliationService
     }
 
     // ── Create / update (upsert by bank_account_id + period) ──
+    //
+    // Line-up matches NHA's official COA-style Bank Reconciliation Statement
+    // (see "03 - alter_table/59 - bank_reconciliation_match_coa_template.sql"):
+    //   Per Books Add:  Unrecorded Deposits, Unrecorded Credit Memo, Unrecorded Interest Income,
+    //                   Book Error (under recording of deposits / misposting)
+    //   Per Books Less: Unrecorded Debit Memo, Unrecorded Withholding Tax,
+    //                   Unrecorded Bank Charges/Cost of Checkbooks,
+    //                   Book Error (over recording of deposits / misposting)
+    //   Per Bank  Add:  Deposit in Transit (auto-derived, see below), Bank Error (under validation)
+    //   Per Bank  Less: Outstanding Checks (auto-derived, see below), Bank Error (over validation)
     public function save(array $data)
     {
         $bankAccountId = (int) ($data['bank_account_id'] ?? 0);
@@ -438,28 +455,38 @@ class BankReconciliationService
         $periodStart = date('Y-m-d', mktime(0, 0, 0, $periodMonth, 1, $periodYear));
         $asOfDate = date('Y-m-t', mktime(0, 0, 0, $periodMonth, 1, $periodYear));
 
-        $bookBalance           = $this->num($data['book_balance'] ?? 0);
-        // add_unrecorded_deposit / add_unreleased_check: superseded by the ledger's own
-        // Deposits in Transit / Outstanding Checks (now itemized on the Per Bank side,
-        // see $addDepositInTransit/$lessOutstandingCheck below). Columns kept at 0 for
-        // reconciliations saved under the old lump-sum worksheet.
-        $addUnrecordedDeposit  = 0.0;
-        $addUnreleasedCheck    = 0.0;
-        $addCreditMemo         = $this->num($data['add_credit_memo'] ?? 0);
-        $addInterestIncome     = $this->num($data['add_interest_income'] ?? 0);
-        $lessDebitMemo         = $this->num($data['less_debit_memo'] ?? 0);
-        $adjustedBookBalance   = round($bookBalance + $addCreditMemo + $addInterestIncome - $lessDebitMemo, 2);
+        // ── Per Books ──
+        $bookBalance          = $this->num($data['book_balance'] ?? 0);
+        $addUnrecordedDeposit = $this->num($data['add_unrecorded_deposit'] ?? 0);
+        $addCreditMemo        = $this->num($data['add_credit_memo'] ?? 0);
+        $addInterestIncome    = $this->num($data['add_interest_income'] ?? 0);
+        $addBookErrorUnder    = $this->num($data['add_book_error_under'] ?? 0);
+        $lessDebitMemo        = $this->num($data['less_debit_memo'] ?? 0);
+        $lessWithholdingTax   = $this->num($data['less_withholding_tax'] ?? 0);
+        $lessBankCharges      = $this->num($data['less_bank_charges'] ?? 0);
+        $lessBookErrorOver    = $this->num($data['less_book_error_over'] ?? 0);
+        $adjustedBookBalance  = round(
+            $bookBalance + $addUnrecordedDeposit + $addCreditMemo + $addInterestIncome + $addBookErrorUnder
+            - $lessDebitMemo - $lessWithholdingTax - $lessBankCharges - $lessBookErrorOver,
+            2
+        );
 
         // Deposits in transit / outstanding checks come from the ledger's cleared
         // markers, not the client — same "never trust the client for computed
         // totals" rule as adjusted_book_balance/adjusted_bank_balance/status below.
         $ledger = json_decode($this->getLedger($bankAccountId, $periodStart, $asOfDate), true);
         $ledgerData = ($ledger['success'] ?? false) ? $ledger['data'] : ['outstanding_deposits' => [], 'outstanding_checks' => []];
-        $addDepositInTransit   = round(array_sum(array_column($ledgerData['outstanding_deposits'], 'debit')), 2);
-        $lessOutstandingCheck  = round(array_sum(array_column($ledgerData['outstanding_checks'], 'credit')), 2);
+        $addDepositInTransit  = round(array_sum(array_column($ledgerData['outstanding_deposits'], 'debit')), 2);
+        $lessOutstandingCheck = round(array_sum(array_column($ledgerData['outstanding_checks'], 'credit')), 2);
 
-        $bankBalance           = $this->num($data['bank_balance'] ?? 0);
-        $adjustedBankBalance   = round($bankBalance + $addDepositInTransit - $lessOutstandingCheck, 2);
+        // ── Per Bank ──
+        $bankBalance         = $this->num($data['bank_balance'] ?? 0);
+        $addBankErrorUnder   = $this->num($data['add_bank_error_under'] ?? 0);
+        $lessBankErrorOver   = $this->num($data['less_bank_error_over'] ?? 0);
+        $adjustedBankBalance = round(
+            $bankBalance + $addDepositInTransit + $addBankErrorUnder - $lessOutstandingCheck - $lessBankErrorOver,
+            2
+        );
 
         $status = abs($adjustedBookBalance - $adjustedBankBalance) < 0.01 ? 'RECONCILED' : 'UNRECONCILED';
         $remarks = trim((string) ($data['remarks'] ?? ''));
@@ -472,9 +499,10 @@ class BankReconciliationService
         );
 
         $values = "{$bankAccountId}, {$periodYear}, {$periodMonth}, " . $this->str($asOfDate) . ", "
-            . "{$bookBalance}, {$addUnrecordedDeposit}, {$addUnreleasedCheck}, {$addCreditMemo}, {$addInterestIncome}, {$lessDebitMemo}, {$adjustedBookBalance}, "
+            . "{$bookBalance}, {$addUnrecordedDeposit}, {$lessBankCharges}, {$addCreditMemo}, {$addInterestIncome}, {$lessDebitMemo}, {$adjustedBookBalance}, "
             . "{$bankBalance}, {$addDepositInTransit}, {$lessOutstandingCheck}, {$adjustedBankBalance}, "
-            . $this->str($status) . ', ' . ($remarks === '' ? 'NULL' : $this->str($remarks)) . ", {$userId}";
+            . $this->str($status) . ', ' . ($remarks === '' ? 'NULL' : $this->str($remarks)) . ", {$userId}, "
+            . "{$lessWithholdingTax}, {$addBookErrorUnder}, {$lessBookErrorOver}, {$addBankErrorUnder}, {$lessBankErrorOver}";
 
         if ($existing) {
             $id = (int) $existing['reconciliation_id'];
@@ -482,11 +510,15 @@ class BankReconciliationService
                 "UPDATE {$this->tableRecon} SET
                     as_of_date = " . $this->str($asOfDate) . ",
                     book_balance = {$bookBalance}, add_unrecorded_deposit = {$addUnrecordedDeposit},
-                    add_unreleased_check = {$addUnreleasedCheck}, add_credit_memo = {$addCreditMemo},
+                    less_bank_charges = {$lessBankCharges}, add_credit_memo = {$addCreditMemo},
                     add_interest_income = {$addInterestIncome}, less_debit_memo = {$lessDebitMemo},
+                    less_withholding_tax = {$lessWithholdingTax}, add_book_error_under = {$addBookErrorUnder},
+                    less_book_error_over = {$lessBookErrorOver},
                     adjusted_book_balance = {$adjustedBookBalance},
                     bank_balance = {$bankBalance}, add_deposit_in_transit = {$addDepositInTransit},
-                    less_outstanding_check = {$lessOutstandingCheck}, adjusted_bank_balance = {$adjustedBankBalance},
+                    less_outstanding_check = {$lessOutstandingCheck},
+                    add_bank_error_under = {$addBankErrorUnder}, less_bank_error_over = {$lessBankErrorOver},
+                    adjusted_bank_balance = {$adjustedBankBalance},
                     status = " . $this->str($status) . ",
                     remarks = " . ($remarks === '' ? 'NULL' : $this->str($remarks)) . ",
                     updated_at = CURRENT_TIMESTAMP
@@ -497,9 +529,10 @@ class BankReconciliationService
             $row = App\ExecuteRow(
                 "INSERT INTO {$this->tableRecon}
                     (bank_account_id, period_year, period_month, as_of_date,
-                     book_balance, add_unrecorded_deposit, add_unreleased_check, add_credit_memo, add_interest_income, less_debit_memo, adjusted_book_balance,
+                     book_balance, add_unrecorded_deposit, less_bank_charges, add_credit_memo, add_interest_income, less_debit_memo, adjusted_book_balance,
                      bank_balance, add_deposit_in_transit, less_outstanding_check, adjusted_bank_balance,
-                     status, remarks, prepared_by)
+                     status, remarks, prepared_by,
+                     less_withholding_tax, add_book_error_under, less_book_error_over, add_bank_error_under, less_bank_error_over)
                  VALUES ({$values})
                  RETURNING reconciliation_id",
                 'DB'
@@ -508,5 +541,169 @@ class BankReconciliationService
         }
 
         return $this->ok(['reconciliation_id' => $id, 'status' => $status, 'adjusted_book_balance' => $adjustedBookBalance, 'adjusted_bank_balance' => $adjustedBankBalance]);
+    }
+
+    // Per Books item key => [label, side ('add'|'less'), default contra account_code or null].
+    // 'add' items increase Cash (Dr Cash / Cr contra); 'less' items decrease Cash (Dr contra / Cr Cash).
+    // Bank Error (under/over) is NOT here — it's the bank's own error to correct on ITS books, not
+    // NHA's, so it never generates a JEV.
+    private const JEV_ITEMS = [
+        'add_unrecorded_deposit' => ['label' => 'Unrecorded Deposits',                       'side' => 'add',  'default_account' => null],
+        'add_credit_memo'        => ['label' => 'Unrecorded Credit Memo',                    'side' => 'add',  'default_account' => null],
+        'add_interest_income'    => ['label' => 'Unrecorded Interest Income',                'side' => 'add',  'default_account' => '4-02-02-210'], // Interest Income
+        'add_book_error_under'   => ['label' => 'Book Error (under recording / misposting)', 'side' => 'add',  'default_account' => null],
+        'less_debit_memo'        => ['label' => 'Unrecorded Debit Memo',                     'side' => 'less', 'default_account' => null],
+        'less_withholding_tax'   => ['label' => 'Unrecorded Withholding Tax',                'side' => 'less', 'default_account' => '1-99-02-080'], // Withholding Tax at Source
+        'less_bank_charges'      => ['label' => 'Unrecorded Bank Charges/Cost of Checkbooks', 'side' => 'less', 'default_account' => '5-03-01-040'], // Bank Charges
+        'less_book_error_over'   => ['label' => 'Book Error (over recording / misposting)',  'side' => 'less', 'default_account' => null],
+    ];
+
+    /**
+     * Per Books items with a non-zero amount on a saved reconciliation — what the "Adjusting Journal
+     * Entry" panel offers to book, each with its suggested contra account (null when there is no
+     * confident default — the preparer must pick one). auto_postable is true when every item already
+     * resolves to an account (all defaults present) AND the reconciliation is RECONCILED — the two
+     * conditions postAdjustingJev() itself requires — so the page can fire the posting automatically
+     * without waiting for a click when nothing is missing (see loadJevPanel() in the page script).
+     */
+    public function getJevPreview($id)
+    {
+        $row = $this->fetch((int) $id);
+        if (!$row) {
+            return $this->fail('Reconciliation not found.');
+        }
+        if (!empty($row['jev_id'])) {
+            $jevStatus = App\ExecuteScalar(
+                "SELECT st.name FROM {$this->tableJev} jev
+                 LEFT JOIN {$this->tableSettingsStatus} st ON st.id = jev.status_id
+                 WHERE jev.jev_id = " . (int) $row['jev_id'],
+                'DB'
+            );
+
+            return $this->ok(['already_posted' => true, 'jev_id' => (int) $row['jev_id'], 'jev_no' => $row['jev_no'], 'jev_status' => $jevStatus]);
+        }
+
+        $items = [];
+        $autoPostable = $row['status'] === 'RECONCILED';
+        foreach (self::JEV_ITEMS as $key => $meta) {
+            $amount = $this->num($row[$key] ?? 0);
+            if ($amount > 0) {
+                $items[] = ['key' => $key, 'label' => $meta['label'], 'side' => $meta['side'], 'amount' => round($amount, 2), 'default_account' => $meta['default_account']];
+                if ($meta['default_account'] === null) {
+                    $autoPostable = false;
+                }
+            }
+        }
+
+        return $this->ok(['already_posted' => false, 'status' => $row['status'], 'items' => $items, 'auto_postable' => $autoPostable && !empty($items)]);
+    }
+
+    /**
+     * Posts the adjusting Journal Entry Voucher for a saved reconciliation's non-zero Per Books
+     * items (see JEV_ITEMS/getJevPreview()) straight to the General Ledger — one line per item
+     * (credited for an Add item, debited for a Less item) against the contra account the preparer
+     * chose, plus one net Cash line against the bank account's own GL account_code. Only allowed
+     * once the reconciliation is RECONCILED (Adjusted Book Balance = Adjusted Bank Balance) — that's
+     * the whole point of this worksheet: post the adjustments once they're proven to explain the gap,
+     * not before. Delegates the JEV itself to DisbursementVoucherService::createStandaloneJev() (same
+     * standalone-JEV path Property Record and Infra IAR already use for numbering/validation), then
+     * immediately posts it via GeneralLedgerService::postJev() — same two-step most JEVs go through,
+     * just chained here instead of left for Accounting to post separately from the JEV screen.
+     *
+     * $contraAccounts: [item_key => account_code, ...] — required for every non-zero item that has
+     * no default_account (see JEV_ITEMS); a default may still be overridden.
+     */
+    public function postAdjustingJev($id, int $bookId, array $contraAccounts, int $userId)
+    {
+        $row = $this->fetch((int) $id);
+        if (!$row) {
+            return $this->fail('Reconciliation not found.');
+        }
+        if (!empty($row['jev_id'])) {
+            return $this->fail("This reconciliation already has adjusting JEV {$row['jev_no']} — a reconciliation can only post one.");
+        }
+        if ($row['status'] !== 'RECONCILED') {
+            return $this->fail('This reconciliation is Unreconciled — the Adjusted Book Balance and Adjusted Bank Balance must match before an adjusting entry can post.');
+        }
+
+        $bank = App\ExecuteRow(
+            "SELECT account_code FROM {$this->tableBankAccounts} WHERE bank_account_id = " . (int) $row['bank_account_id'],
+            'DB'
+        );
+        if (!$bank || empty($bank['account_code'])) {
+            return $this->fail('This bank account has no GL account tagged — tag one in Bank Account Management before posting an adjusting entry.');
+        }
+        $cashAccountCode = $bank['account_code'];
+
+        $lines = [];
+        $netCash = 0.0;
+        foreach (self::JEV_ITEMS as $key => $meta) {
+            $amount = round($this->num($row[$key] ?? 0), 2);
+            if ($amount <= 0) {
+                continue;
+            }
+            $accountCode = trim((string) ($contraAccounts[$key] ?? $meta['default_account'] ?? ''));
+            if ($accountCode === '') {
+                return $this->fail("Select a contra account for \"{$meta['label']}\".");
+            }
+            $account = App\ExecuteRow("SELECT posting_allowed FROM {$this->tableCoa} WHERE account_code = " . $this->str($accountCode), 'DB');
+            if (!$account) {
+                return $this->fail("Account code '{$accountCode}' does not exist in the chart of accounts.");
+            }
+            if (!$account['posting_allowed']) {
+                return $this->fail("Account code '{$accountCode}' is not postable (it's a summary/header account).");
+            }
+
+            if ($meta['side'] === 'add') {
+                $lines[] = ['account_code' => $accountCode, 'debit' => 0, 'credit' => $amount, 'description' => $meta['label']];
+                $netCash += $amount;
+            } else {
+                $lines[] = ['account_code' => $accountCode, 'debit' => $amount, 'credit' => 0, 'description' => $meta['label']];
+                $netCash -= $amount;
+            }
+        }
+
+        if (!$lines) {
+            return $this->fail('Nothing to post — every Per Books Add/Less item on this reconciliation is zero.');
+        }
+
+        $netCash = round($netCash, 2);
+        $cashLine = $netCash > 0
+            ? ['account_code' => $cashAccountCode, 'debit' => $netCash, 'credit' => 0, 'description' => 'Cash in Bank — Bank Reconciliation adjusting entry']
+            : ['account_code' => $cashAccountCode, 'debit' => 0, 'credit' => -$netCash, 'description' => 'Cash in Bank — Bank Reconciliation adjusting entry'];
+        array_unshift($lines, $cashLine);
+
+        $particulars = 'Bank Reconciliation adjusting entry — ' . $row['bank_name'] . ' ' . $row['account_name']
+            . ' (' . str_pad((string) $row['period_month'], 2, '0', STR_PAD_LEFT) . '/' . $row['period_year'] . ')';
+
+        $voucher = new DisbursementVoucherService();
+        $result = $voucher->createStandaloneJev([
+            'jev_date'    => $row['as_of_date'],
+            'book_id'     => $bookId,
+            'particulars' => $particulars,
+            'lines'       => $lines,
+        ], $userId);
+
+        if (!($result['success'] ?? false)) {
+            return json_encode($result);
+        }
+
+        $jevId = (int) $result['data']['jev_id'];
+        $jevNo = $result['data']['jev_no'];
+        // Link it to the reconciliation regardless of whether the GL post below succeeds — the JEV
+        // already exists either way, and "already has adjusting JEV X" must keep this from re-posting.
+        App\Execute(
+            "UPDATE {$this->tableRecon} SET jev_id = {$jevId}, jev_no = " . $this->str($jevNo) . ', updated_at = CURRENT_TIMESTAMP
+             WHERE reconciliation_id = ' . (int) $id,
+            'DB'
+        );
+
+        $gl = new GeneralLedgerService();
+        $postResult = $gl->postJev($jevId, $userId);
+        if (!($postResult['success'] ?? false)) {
+            return $this->ok(['jev_id' => $jevId, 'jev_no' => $jevNo, 'posted' => false, 'message' => "Adjusting JEV {$jevNo} was created but could not be posted to the General Ledger automatically: " . ($postResult['message'] ?? 'unknown error') . ' Post it manually from the Journal Entry Voucher screen.']);
+        }
+
+        return $this->ok(['jev_id' => $jevId, 'jev_no' => $jevNo, 'posted' => true, 'message' => "Adjusting JEV {$jevNo} posted to the General Ledger."]);
     }
 }

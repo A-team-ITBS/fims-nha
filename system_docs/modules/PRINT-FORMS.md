@@ -21,7 +21,7 @@ Disbursement Voucher").
 | Form | FMD (default) | REGIONAL (`issuing_office: 'REGIONAL'`) | GLOBAL |
 |---|---|---|---|
 | CBA | CO / COE (`document_type`) | regional wording + signatory — see "Regional CBA" | used FMD's generators — nothing to add |
-| CAF | FMD wording | 3 wordings (`body_variant`), "Certified:" block — see "Regional CAF" | — |
+| CAF | FMD wording | 3 payee wordings (`body_variant`), same template layout — see "Regional CAF" | — |
 | RFA | forms 1a–2d (`form_variant`) | "RFA Form No." label, "Request for Fund Allotment" + bold "Re:" particulars — see RFA | used FMD's generators |
 | LAA | CO / COE | the region's "LAA" is a different document → the **LAA release request** form (`LAAREQ`) | used FMD's generators |
 | PO | FMD printed the screen only | same form as GSD (REGIONAL's DOCX + HTML merged) | printed the screen only |
@@ -155,16 +155,16 @@ Ported from the old FMD module (`FMD/scripts/gen_cba_docx.js` +
 rebuilt on this repo's components.
 
 **Who may print it:** the Financial Management Department and administrators — and the same
-goes for the **RFA** and **LAA** (the three memo request forms). The user's `uac.users.rc_id` is
+goes for the **RFA**, the **LAA** (the three memo request forms) and the **CAF**. The user's `uac.users.rc_id` is
 joined to `fims.responsibility_code` and its `rc_code` must be FMD's
 (`GlobalService::CENTRAL_REVIEW_RC_CODE`, `35-074-0000000-032` — recognised by rc_code, not by
 rc_id, whose format differs between datasets) — or the user is a superadmin (user level -1, the
 built-in administrator included; `GlobalService::canPrintAllocationForm()`). The API enforces it —
-`POST /print/cba`, `/print/rfa`, `/print/laa` (`PrintPayloadService::FMD_ONLY_DOCS`) and
-`GET /print/payload/allocation/{id}` answer 403 for anyone else, so the preview, PDF and DOCX are
-all closed — and those forms' Print / Print Preview buttons are hidden for everyone else (the memo
-request pages' row menu, the request details modal, and the memo form). The CAF, CFA, LAA release
-request and the other forms are not restricted; an RFA's CAF stays printable from the memo request pages.
+`POST /print/cba`, `/print/rfa`, `/print/laa`, `/print/caf` (`PrintPayloadService::FMD_ONLY_DOCS`),
+`GET /print/payload/allocation/{id}` and `GET /print/payload/caf/{id}` answer 403 for anyone else, so the preview, PDF and DOCX are
+all closed — and those forms' Print / Print Preview buttons (and the row's **Print CAF**, which an FMD user only gets once the RFA has a CAF — a superadmin always gets it) are hidden for everyone else (the memo
+request pages' row menu, the request details modal, and the memo form). The CFA, LAA release
+request and the other forms are not restricted.
 
 ## Pieces
 
@@ -462,23 +462,24 @@ Ported from the old FMD `gen_caf_docx.js` / `print-preview.js` `buildCafHtml()`
 | Letterhead | Same designer, saved default under `CAF`; has a footer line |
 | File name | `CAF-<caf number>` (no double prefix; blank → `CAF-DRAFT`) |
 
-**Content:** date (upright, right-aligned); title "*CERTIFICATE AS TO
-AVAILABILITY OF FUNDS*" (bold italic); one italic certify paragraph at 1.5
-lines with a 0.5in first-line indent:
+**Layout — the CAF template** (`CAF-2641-87-01.docx`, signed by the Department Manager; `CafPrintService::templateStyle()`, used by
+**every** CAF, main office or regional): two empty lines, then the date (upright, centred over the right-hand part of the page — a 4in
+left indent, first line a further 0.5in in), an empty line, the title "*CERTIFICATE AS TO AVAILABILITY OF FUNDS*" (14pt bold italic),
+an empty line, then one italic, **left-aligned** certify paragraph at 1.5 lines with a 0.5in first-line indent:
 
 > This is to certify that the amount of **<WORDS & nn/100 PESOS> (<amount>)**
 > necessary to cover <purpose> to be released to **<payee> <payee_title>**, with
 > principal office at <address> is available from <fund> per RFA# <rfa>.
 
 (payee / title / address parts only when given; no fund → "the appropriate fund
-source"; ordinals in the purpose — "1st", "2nd" — get a superscript suffix);
-signatory centred in the right half (name bold italic); footnote "**RFA# <rfa>**"
-and "Source of Fund: **<fund>**" (italic). No validity paragraph, no reminders.
+source"; the purpose is printed **as typed** — no "the" is added, and a blank purpose leaves the phrase out; ordinals in the purpose —
+"1st", "2nd" — get a superscript suffix); signatory centred in the right half (name bold italic); footnote "**RFA# <rfa>**"
+and "Source of Fund: **<fund>**" (italic, 12pt). No validity paragraph, no reminders, and no CAF number on the page.
 
 **Data:** `caf_number`, `allocation_number` (or `rfa_number`, the linked RFA),
 `caf_amount` (or `amount`), `purpose`, `payee_name`, `payee_title`,
-`payee_office_address`, `fund_source_name`, `date`, `approved_by_name`. A
-trailing code like " (CR)" / " (GSD)" is dropped from the fund and payee names.
+`payee_office_address`, `fund_source_name`, `date`, `approved_by_name`. The fund is printed **as given, code included**
+("NG Support - GAA (NG-GAA)"); a trailing code like " (CR)" / " (GSD)" is dropped only from the main-office payee name.
 
 **Signatory:** `approved_by_name`, else the current **FMD Department Manager**
 (same as the CBA). The old CAF's placeholder name (used only when nobody holds
@@ -486,23 +487,19 @@ the role) differed from the CBA's; the CBA's default is used for both.
 
 ### Regional CAF (`issuing_office: 'REGIONAL'`)
 
-From the old REGIONAL `gen_caf_docx.js` / `cafServices::buildPrintPayload()`
-(`CafPrintService::regionalModel()`). Same certificate layout with its own style:
-date top-left italic, title bold italic 12pt, paragraph indented 1in, a
-**"Certified:"** block (name bold and title italic on one line, office below),
-no footnote lines.
-
-The amount: "**<WORDS> PESOS ONLY (P 1,000.00)**", with centavos "**… PESOS & 50/100
-ONLY**" (whole tens) or "**… PESOS AND TWENTY-FIVE CENTAVOS ONLY**"; the payee in
-capitals. Wording by `body_variant`:
+From the old REGIONAL `gen_caf_docx.js` / `cafServices::buildPrintPayload()`. A Regional / District requesting office uses **the same
+template layout as every CAF** (above) — it no longer has a layout of its own (it used to print the date top-left, a justified
+paragraph and a "Certified:" block with a blank name and no `RFA#` / `Source of Fund` lines). What is regional is the **payee wording**
+(the payee in capitals), chosen by `body_variant`. The signatory is the Department Manager unless the payload names `certified_name`
+(then that name, `certified_title` — default "Chief Corporate Accountant A" — and `certified_office` are printed in the same block).
 
 | `body_variant` | Wording |
 |---|---|
-| `entered_into_with` (default) | "… necessary to cover the <purpose> entered into with **<PAYEE>** with principal office at <address> is available from <fund> per RFA# <no>." |
-| `in_favor_of` (e.g. EHAP) | "… in favor of **<PAYEE>** necessary to cover the <purpose> is available from <fund> per RFA# <no>." |
+| `entered_into_with` (default) | "… necessary to cover <purpose> entered into with **<PAYEE>** with principal office at <address> is available from <fund> per RFA# <no>." |
+| `in_favor_of` (e.g. EHAP) | "… in favor of **<PAYEE>** necessary to cover <purpose> is available from <fund> per RFA# <no>." |
 | `in_favor_of_petty` | "… in favor of **<PAYEE>**, <purpose> is available from <fund>." — title "… AVAILABILITY OF **FUND**" |
 
-`ref_type: 'LAA'` prints "LAA#" instead of "RFA#". The old module guessed the
+`ref_type: 'LAA'` prints "LAA#" instead of "RFA#" (in the sentence and in the footnote). The old module guessed the
 variant (and the payee) from the purpose text; here the caller sends
 `body_variant`.
 
@@ -1045,10 +1042,20 @@ repo yet, so it prints from the payload.
 any length): the box keeps what fits and says so, and an **attachment page** —
 inserted after the front, before the back page, only when something overflowed —
 lists everything with totals:
-- accounting entries > 11 → rows 1–10, then row 11 **SEE ATTACHED** carrying the
-  sum of the remaining debits / credits (the columns still add up);
+- accounting entries: **GL codes only**, one row per GL — a line posted to an SL account prints as its 4-part GL
+  (2-02-01-020-10 → 2-02-01-020) and the lines of one GL are summed (`entryRows()`) — and a last row with the
+  **TOTAL** of the debits and credits. Up to 10 GL rows use the form's own rows (row 11 = TOTAL). **More than 10
+  (plain paper):** the grid is **redrawn** in the same space (`gridOverlayPdf()`, Dompdf, stamped over the form with
+  pdftk): the scanned rows are blanked inside the border — the column headers and the outer frame stay — and ruled
+  into one row per line + the TOTAL on the form's column lines, the text sized to the rows (8 pt down to 5.5 pt). Up
+  to **18 lines** fit; past that the 18th row carries the rest — **SEE ATTACHED** with their sums — and the
+  attachment page lists every line. Pre-printed stock (`paper: 'preprinted'`) can't be redrawn: it keeps rows 1–10
+  + TOTAL, with SEE ATTACHED on row 10 past 10 lines. The grid's position (`GRID_TOP` 503.0 / `GRID_BOTTOM` 349.1 /
+  column lines, in PDF points) was measured on `dv_background.pdf` — re-measure it if the background is replaced;
 - deductions > 12 → rows 1–11, then row 12 **See attached** with the rest's sum;
-- particulars longer than ≈ 3 lines → their start + "... (see attached)".
+- particulars that don't fit the box's 4 lines → their start (cut at a word) + "... (see attached)". "Fit" is
+  measured (`wrapParticulars()`: Helvetica 10 pt widths word-wrapped to the field's width, each typed line break a new
+  line), not counted — six short typed lines are cut too, where the old character limit let them be clipped silently.
 
 | | |
 |---|---|
@@ -1086,7 +1093,12 @@ overrides it), `payee_name`, `payee_address`, `payee_tin`, `particulars`,
 Box C with the amount in words), `deductions` [{ `description`, `amount` }] (up
 to 12 lines, listed under the particulars, then "Total Deductions" —
 `total_deductions` or their sum), `accounting_entries` [{ `obligation`, `fpa`,
-`object_code`, `account_code`, `debit`, `credit` }] (up to 11 rows);
+`object_code`, `account_code`, `debit`, `credit` }] (up to 18 rows + the TOTAL row on plain paper) — from the
+voucher page, `prp_dvPayload()` fills **OBLIGATION** with the linked RFA's number
+(`prp_dvEntriesWithObligation()`): on every debit line, the RFA whose lines carry
+that account (or an SL under it), else all of the DV's RFAs (e.g. PERA on a payroll
+DV whose RFA lists only Salaries); credit lines stay blank; with no entries yet the
+RFA number prints on a row of its own. FPA and OBJECT CODE are not sent yet;
 Box A — `cert_officer1_name` / `_title` (centred), with `cert_officer2_name` /
 `_title` the two print side by side; Box B — MAIN: `fmd_officer_name` / `_title`
 (blank → the current FMD Department Manager, "Department Manager, FMD") and
@@ -1097,79 +1109,318 @@ Not on the form's fields (filled by hand, as on the old print): Journalized /
 Indexed, the CHECK and OFFICIAL RECEIPT boxes, Received From / releasing
 officer, and For COA Use Only.
 
-## GL — General Ledger
+## BIR2307 — Certificate of Creditable Tax Withheld at Source (BIR Form 2307)
 
-`GeneralLedgerPrintService` + `scripts/gen_gl_docx.js`. Letter portrait, Arial 9pt, no
-letterhead (the sheet has its own title). One account's ledger card, printed as the
-official sheet's **monthly summary**, not every posting:
+`Bir2307PrintService` (print type `BIR2307`, PDF only). The January 2018 ENCS form, `_shared/template/bir_2307.pdf` (the old
+ACCOUNTING template with its hand-named AcroForm fields), filled and flattened with pdftk through the shared
+`PrintService::fillPdfForm()`, page 1 kept. One certificate per **Disbursement Voucher**: the DV view's **BIR 2307**
+button (next to Print) shows when the DV withholds an EWT or percentage tax and isn't cancelled
+(`vr_hasBir2307()` in `voucher/readone.php`); `prp_open({ dv_id }, { type: 'BIR2307' })`.
 
-- Header (repeats on every page): GENERAL LEDGER, Entity Name / Account Code,
-  Account Title / Sheet No., then Date (month | day) · Particulars · Ref. · Amount
-  (Debit · Credit · Balance).
-- The year row, then an optional "Jan 1 Balance" line (`opening_balance`; the system
-  has no brought-forward balance, so there is none unless the caller passes one).
-- Per month, one line per journal, in the order CKDJ, ADADJ, CRDJ, GJ, each with the
-  journal's debit and credit for the month:
-  - CKDJ and ADADJ print as "Disbursements".
-  - CRDJ prints as "Collections & Deposits".
-  - GJ prints as "Various Adjustments".
-- Each line is dated the month's last day. The month name is on the first line only,
-  and the balance on the last. A blank row separates months.
-- Blank filler rows up to `MIN_ROWS`, then "Dec 31 Balance" with the total debit and
-  credit (the opening balance counted on its normal side) and the ending balance.
+**Edit Form / Form Preview** — the same window as the old ACCOUNTING "BIR Form 2307" (dv-processing.php
+`#bir2307Modal`): the preview opens on an **Edit Form** tab laid out like the paper form (`prp_ffOpen()`, any pdfOnly
+type with `prefill` in `PRP_TYPES`), filled from `GET /print/prefill/bir2307/{dvId}` (`Bir2307PrintService::prefill()`);
+**Form Preview** shows the real PDF (re-rendered when opened after a change); Download PDF works from either.
+Blue = you can fill in or change, grey dashed + 🔒 = locked, yellow = changed from the prefilled value:
+- **1** Quarter (Q1–Q4 — sets the period to its first / last day) and For the Period From / To — editable;
+- **Part I** — 2 payee TIN (dashes added as you type), 3 name, 4 registered address, 4A ZIP — editable;
+- **Part II** — 6 TIN, Nature of Business ("Government Agency"), 7 name, 8 address, 8A ZIP — locked (NHA);
+- **Part III** — each row's description editable (default: its ATC's wording, else the DV's particulars); ATC (with
+  its rate), income payment and tax withheld locked to the DV; the totals, and a warning when the tax bases exceed the
+  DV's gross;
+- **Signatory** — Printed Name picked from a list: NHA's default signatory first and **preselected (CRISALYN T. HUGO,
+  Officer-In-Charge, Acctg. Dept., TIN 416-806-839)**, then the DV's own Accounting signatories (Section Chief,
+  Division Manager, Department Manager), or "— Enter manually —"; picking one fills the title and TIN (editable);
+  Date Signed (not printed — the form has no box for the payor's signing date).
+The edits travel in the payload (`Bir2307PrintService::EDITABLE` keys) and are not saved (the old window stored a
+certificate with notes and an audit trail — not built). NHA's payor details and default signatory come from
+`fims.app_settings` and fall back to the old module's values (`Bir2307PrintService::FALLBACK`) while a key is missing.
 
-**Journal of a posting:** from its `doc_ref_no` (the JEV's, copied to the GL line):
-"CHECK…" → CKDJ, "ADA…" → ADADJ, "OR…" → CRDJ, anything else → GJ. A payload line
-may override this with `journal`. CRDJ does not occur yet, because official receipts
-are not posted to the GL.
+**Data** — payload `{ dv_id }` (+ the edited values above); the service reads the rest:
+- **Period:** the quarter of the DV date (item 1, MMDDYYYY); each ATC line's whole tax base goes in the column of the
+  DV date's month (1st / 2nd / 3rd month of the quarter).
+- **Part I (payee):** the DV's vendor (name, TIN, address), else the DV's claimant / claimant address / TIN. The TIN
+  boxes are 3-3-3 + a 5-box branch code (the template has no `TIN_Payee_4`); no ZIP is kept, so 4A prints blank.
+- **Part II (payor) and the payor's signature:** NHA's, from `fims.app_settings` — `bir_payor_tin`, `bir_payor_name`,
+  `bir_payor_address`, `bir_payor_zip`, `bir_signatory_name`, `bir_signatory_title`, `bir_signatory_tin` (seeded in
+  `01 - table/55 - fims_app_settings.sql`). The conforme prints the payee's name and TIN.
+- **Part III:** the DV's ATC lines with tax withheld (`disbursement_voucher_atc_lines` + `atc_codes.description`, cut
+  to ~96 characters at a word) — income-tax codes (WI / WC…) in the EWT table (rows 1–10), percentage-tax codes
+  (WB…) in the business-tax table (rows 13–22); each table's totals. Withholding VAT (WV…) is not on a 2307. More
+  than 10 rows in a table: the rest are left off (the form has 10).
+- A DV with no EWT / percentage-tax line → HTTP 400 "DV … has no withholding tax … to certify on a BIR 2307."
 
-**Balance:** `debit_normal` (default true) gives debit − credit; false gives
-credit − debit.
+Not built (the old ACCOUNTING module had them): a stored certificate (number, DRAFT → ISSUED), editable rows, and the
+quarterly per-payee certificate that sums all of a vendor's DVs in a quarter by month.
 
-**Payload:**
-- `account_code`, `account_title`, `fiscal_year`, `debit_normal`, `opening_balance`
-- `entity_name`, `sheet_no` (both blank by default: filled in by hand)
-- `lines [{ posting_date, debit, credit, doc_ref_no, journal? }]`
+## ANNUALWS — Annualization of Income (worksheet, client template)
 
-**Data:** the General Ledger page's `GET /general_ledger/ledger?account_code=&fiscal_yr=&book_id=`
-response is mapped by `prp_glPayload(resp, { fiscal_year, opening_balance })` and
-printed with `prp_open(payload, { type: 'GL' })` — the page's header **Print** button
-(`general-ledger-page.php`, see "Module integration").
+`AnnualizationPrintService` (print type `ANNUALWS`, PDF only through Dompdf — `GlobalService::renderPdf()`, letter
+portrait) in the layout of the client's **ANNUALIZATION TEMPLATE.xlsx** (sheet EMP ANZN), for one employee and fiscal
+year: Payroll Management → Annualization → **Annualization of Income** on the row; payload `{ fiscal_yr, employee_id }`. The preview
+modal has **Export to Excel** (`PRP_TYPES.ANNUALWS.excel` → `POST /print/annualws/excel`, `xlsx()` through `XlsxWriter`,
+one sheet "EMP ANZN", same blocks, real numbers).
+Data: `PayrollManagementService::annualizationWorksheet()` — the year's payroll lines by tax treatment (same signs and
+ceilings as `annualize()`): per month BASIC (taxable pay — basic, RA / TA, differentials; LWOP / recoupments take away),
+TAX, GSIS / HDMF / PHIC / UNION DUES (contribution lines by account 2-02-01-020 / -030 / -040 / other) and the net; OTHER
+ALLOWANCES / BONUSES (each 13th month / other-benefit item + excess de minimis, total, less ₱90,000, taxable); DE MINIMIS
+(every active benefit of `fims.payroll_de_minimis_benefits` — rice, uniform, cash gift, loyalty linked to the monthly-import items; SRI / PEI listed but fed only once their
+special-payroll template exists — actual,
+limit, excess; a MONTH limit is ×12 and shows e.g. "2,000.00 / month"; a DE_MINIMIS item not linked to a benefit gets
+its own row with no limit, all excess); TAX EXEMPT; INCOME (basic less tax exempt) + income over the
+90,000 threshold = TAXABLE INCOME, TRAIN tax due, less tax withheld = TAX DUE / (REFUND); the tax table. PERA is left
+out, as in the client's sheet. The "BIR FORM 2316" (previous employer) row prints blank; the client's "SCA – DV#…" /
+"SRI TAX" rows are parked. Not copied: the client sheet's UCA excess formula (6,000 vs a 7,000 limit) and its de minimis
+excess total that skipped Loyalty.
+Wording is the template's, word for word: BIR FORM 2316 / months / SRI TAX / TOTAL; OTHER ALLOWANCES/ BONUSES: with its
+fixed rows YEAR END BONUS, MID YEAR BONUS, CHILDREN ALLOWANCE, PROFESSIONAL DEV'T INCENTIVES, MEAL ALLOWANCE (other
+13th-month / benefit items follow under their own names), EXCESS OF DE MINIMIS BENEFITS, TOTAL, (90,000.00), TAXABLE;
+DE MINIMIS BENEFITS: rows = the benefit names (seeded RICE SUBSIDY/MONTH, UCA/YEAR, CASH GIFT, SRI, PEI, LOYALTY), LIMIT as
+entered, a TOTAL under ACTUAL / LIMIT / EXCESS; GROSS TAXABLE INCOME, INCOME IN EXCESS OF 90,000 TRESHHOLD (the template's
+spelling), TAXABLE INCOME, TOTAL TAX DUE, LESS : TAX WITHHELD, TAX DUE / (REFUND); IF TAXABLE INCOME IS : / TAX DUE IS:.
+Only NAME: and DEPT: in the heading (as the template).
+The de minimis limits are editable on **Payroll Setup → De Minimis Limits** (`GET /payroll-setup/de-minimis`,
+`POST …/de-minimis/add`, `PUT …/de-minimis/update/{id}`); a payroll item counts as one through Tax Treatment
+**De minimis** + its benefit (`payroll_items.de_minimis_id`). A changed limit applies on the next **Annualize**.
+
+## GCG — GCG Quarterly Report
+
+`GcgReportPrintService` (print type `GCG`) — a copy of the client's template **GCG_Quarterly_Template_Preview.xlsx**
+(GENERAL LEDGER folder; the DBM forms are not built). Payroll Management → Year-to-Date Report → **GCG Quarter** (Q1–Q4)
++ **GCG Report**, for the tab's fiscal year; payload `{ fiscal_yr, period }`.
+- **Excel** (`POST /print/gcg/excel`, the preview's Export to Excel) — the template filled: sheet "GCG Report"; A1
+  "GCG Report (Q1 2026)" (merged A–AR, Arial 12 bold, centred); A2 "National Housing Authority (NHA)" (merged, bold 9);
+  row 4 the template's 44 headers (bold 9, wrapped, bordered, 48 pt; "name⏎account"): EMP. NO., LAST NAME, FIRST NAME,
+  MIDDLE NAME, POSITION, JOB GRADE, STEP, BASIC SALARY, PERA … Terminal Leave, NET PAY; the template's column widths;
+  frozen at A5, auto-filter on row 4 (`XlsxWriter::freeze()` / `autoFilter()` / `gridLines()`, added for it).
+- Rows: one per employee paid in the quarter, grouped by position (then name); a yellow bold subtotal per position
+  (position in A, count in F, every column summed); a bold GRAND TOTAL (count in F, every column summed).
+- **PDF** — the same sheet with every column A–AR on one line: the page is as wide as the sheet (≈ 3,270 × 1,370 pt,
+  about 70 rows a page, header repeated), and the print preview opens full screen for it (`PRP_TYPES.GCG.full` →
+  `.prp-full`, 98vw).
+- Data: the quarter's imported monthly payroll (`fims.payroll_record_items`). A line goes to a column by its item where
+  the template's code isn't an account in our chart (`ITEM_COLUMN`: 2016_CNA_IN_REF → C.N.A, LOYALTY, MEAL_SUBSIDY,
+  CHILDREN'S_ALLOWANCE / _ADJ, RICE_SUBSIDY — the template's 5-01-02-170…270 / 5-01-04-040…060 aren't in the COA),
+  otherwise by its 4-part account (`ACCOUNT_COLUMN`; BASIC SALARY = 5-01-01-010, Life & Retirement … PFAI = the employer
+  shares 5-01-03-010…050). Earnings, refunds and employer shares add; deductions on a PS account (LWOP, undertime) take
+  away. NET PAY = the payroll records' `net_amount`. PS items with no column (today MEDICAL, 3K, 50K, MYFA_2017) are
+  listed below the report; loans, withholdings and recoupments aren't PS expense.
+- Blank for now: JOB GRADE / POSITION (the import doesn't fill them — everyone in one blank-position group), STEP (not
+  kept); columns no monthly-import item feeds (Quarters, Honoraria, Hazard, OT, PBB, SCA, PRAISE, SRI, Cashier's, GAD,
+  Monetization of LC, SOA, GPAI, Laundry, Terminal Leave).
+Not built (the old module had them): the report history table and DBM Forms 703-A1 / 703-A2.
+
+## BIR2316 — Certificate of Compensation Payment / Tax Withheld (BIR Form 2316)
+
+`Bir2316PrintService` (print type `BIR2316`, PDF only): `_shared/template/bir_2316.pdf` (September 2021 ENCS, the old ACCOUNTING template with its named fields) filled through `PrintService::fillPdfForm()`. One per **employee and fiscal year**, from the stored tax annualization (`fims.payroll_annualization` — Payroll Management → Annualization → **2316** on the row); payload `{ fiscal_yr, employee_id }`. Opens on an **Edit Form** (`prp_ffForm2316`, prefilled by `GET /print/prefill/bir2316?year=&employee_id=`) like the old income-tax-withheld 2316 window:
+- **editable** — 2 period (MMDD); Part I employee TIN (from the payroll directory), RDO, registered / home / foreign address + ZIP, birth date, contact no., minimum wage earner + rates; Part III previous employer (TIN, name, address, ZIP, its taxable compensation (22) and tax withheld (25B) — items 23–28 recompute as typed); 53 the employer's signatory (prefilled CRISALYN T. HUGO from the settings / fallback) and 54 the employee, dates signed; CTC / valid ID;
+- **locked** — 1 year, 5 name, Part II NHA (main employer), and every amount: 19 gross, 20 non-taxable, 21 taxable, 23 = 21 + 22, 24 tax due on 23 (TRAIN table), 25A withheld here, 26 = 28 = 24 (as adjusted, as the old form), 34 benefits ≤ ₱90,000, 35 de minimis, 36 contributions, 37 PERA, 38 total non-taxable, 39 taxable pay less contributions, 48 benefits over ₱90,000, 52 = 21. RA / TA aren't kept apart from basic pay by the import, so 40 / 41 stay blank (in 39); 29–33 (minimum wage earners) aren't computed.
+Not built (old module had them): saving the edits / employee details for later years, a 2316 certificate number, the 1604-C and alphalist.
+
+## GL — General Ledger (NHA Form No. 11)
+
+`GeneralLedgerPrintService` + `scripts/gen_gl_docx.js` (print type `GL`). Letter portrait, Arial 9pt, no letterhead.
+The layout of the books' own GENERAL LEDGER sheets (Main Office, CISFA, NGC, MPLC / PPMO workbooks — one sheet per
+4-part GL account, per book):
+
+- **Header** (repeats on every page): "NHA Form No. 11"; GENERAL LEDGER; NATIONAL HOUSING AUTHORITY (Agency);
+  **Fund:** the book · **Account Code:**; **Account Title:** · **Sheet No.** (blank — filled in by hand); then
+  Date (month | day) · Particulars · Reference · Debit · Credit · Balance.
+- **Rows — the monthly summary, not every posting:**
+  - the year, then **Jan 1 Beginning Balance** — the book's Opening Balance for the year (`fims.opening_balances` of
+    the account and the SL accounts under it), on its normal side (0.00 when none);
+  - per month, one line per journal, dated the month's last day, in this order, with the journal's debit and credit
+    totals; the balance on the month's last line:
+
+    | Reference | Particulars | Postings |
+    |---|---|---|
+    | CKDJ | Disbursements | PAYMENT JEVs from a check ("CHECK NO. …") |
+    | CRDJ | Collections and Deposits (Main Office: Collections & Deposits) | JEVs journalized from a Collections report (`collection_reports.collection_jev_id` / `deposit_jev_id`) |
+    | ADADJ | Various Fund Transfer (Main Office: Advice to Debit Account Disb.) | PAYMENT JEVs from an ADA / FTLA ("ADA…", "FTLA-…") |
+    | GJ | Various Adjustments | every other JEV (DV setup entries, standalone JEVs) |
+
+  - **Dec 31 Closing Entry** (GJ) — the year-end closing JEV (`jev_classification = 'CLOSING'`) on its own line; a
+    legacy OPENING JEV adds to the Beginning Balance instead;
+  - blank filler rows, then **"<year> Dec 31 Ending Balance"**: total debit, total credit (the Beginning Balance on its
+    side) and the ending balance — the Trial Balance figure for the account and book.
+- **Balance:** `debit_normal` (Asset / Expense) gives debit − credit; otherwise credit − debit. A balance against the
+  normal side prints in brackets, e.g. (15,000.00).
+- **Month and year of a posting = its JEV's date and fiscal year** (the accounting period), not the ledger's posting date — the ledger stamps the day the JEV was posted, so a JEV dated in March but posted in November still prints under March.
+- The journal of each posting is worked out server-side from its JEV (looked up by `jev_no`); a payload line may set
+  `journal` (CKDJ | CRDJ | ADADJ | GJ | CLOSING | OPENING).
+
+**Payload:** `account_code`, `account_title`, `fund`, `book_id`, `fiscal_year`, `debit_normal`, `sheet_no`,
+`opening_balance` (optional — overrides the Opening Balance lookup), `lines [{ posting_date, jev_no, doc_ref_no, debit,
+credit, journal? }]`.
+
+**Data:** the General Ledger page's `GET /general_ledger/ledger?account_code=&fiscal_yr=&book_id=` (the GL account with
+its SL accounts' postings rolled in) mapped by `prp_glPayload(resp, { fiscal_year, book_id, fund })`, printed with
+`prp_open(payload, { type: 'GL' })` from the header **Print ▾** menu (shown once one account is picked in the Account search) → General Ledger; the same menu's Subsidiary Ledger lists the SL sheets (see SL). **One book and one fiscal
+year per sheet:** Print asks for a Book when "All Books" is selected, and for a Fiscal Year when the postings span
+several.
+
+**Books' sheets vs this form:** the wording follows the book (Main Office vs the other books, as above); the books list
+the journals in varying order — this form uses the order above. An account with only an Opening Balance (no postings)
+has no row in the list: pick it in the Account search, and the header Print lists its sheet ("Beginning balance only"). The books' off-form check
+columns (H/I — the Trial Balance figure and the difference) are not printed.
 
 ## SL — Subsidiary Ledger
 
-`SubsidiaryLedgerPrintService` + `scripts/gen_sl_docx.js`. Letter portrait, Times 10pt, no letterhead.
+`SubsidiaryLedgerPrintService` + `scripts/gen_sl_docx.js` (print type `SL`). Letter portrait, Arial 9pt, no letterhead.
+The layout of the books' own SUBSIDIARY LEDGER sheets (e.g. Main Office's "SL-MO-SAVINGS-PNB-LBP" workbook: one sheet
+per bank savings account under 1-01-02-030 Cash in Bank – Savings, plus a TOP SHEET schedule):
+
+```
+<BOOK> - <GL ACCOUNT TITLE> <YEAR>                                 <Fund>   <GL code>
+SUBSIDIARY LEDGER                                     <BANK  account no.>  (or the SL code)
+                                                      <account name>       (or the SL title)
+DATE | PARTICULARS | FOLIO | JEV# | DEBITS | CREDITS | BALANCE
+<year>
+JAN  | Beginning balance |       |       |        |         | <beginning>
+<MON>| <explanation>     | <journal> | <JEV no.> | <debit> | <credit> |      (no running balance on the lines)
+DEC  | Ending balance    |       |       | <total debits> | <total credits> | <ending>
+```
+
+- **One sheet per SL account** (a bottom-level child of the GL account in the Chart of Accounts) with postings or a
+  beginning balance in the book and year; SLs with nothing are left out. The GL account's own postings (not through
+  an SL) are not an SL — they are on the General Ledger sheet. Nothing at all → one blank sheet.
+- **Header:** when the SL account is a bank account's sub-ledger (`fims.bank_accounts.sl_code` = the SL's account_id,
+  or `account_code` = its code — set with Bank Management's GL / SL picker), the bank name + account number and the
+  account name, as on the books' sheets; otherwise the SL code and title.
+- **Lines:** one per posting — DATE = the month of its JEV date; PARTICULARS = the JEV's particulars, else its DV's,
+  else the posting's own description; FOLIO = the journal (CKDJ check, CRDJ collections, ADADJ ADA / FTLA, GJ the
+  rest — the same rule as the General Ledger form); JEV# = the JEV no. The year is the JEV's fiscal year.
+- **Beginning balance** = the SL account's Opening Balance for the book and year (`fims.opening_balances`); a legacy
+  OPENING JEV adds to it. **Ending balance:** total debits and credits of the lines (the beginning **not** included,
+  as on the books' sheets) and beginning + the year's net. Balances against the normal side print in brackets.
+- Not printed: the books' off-form check columns (bank / account no. / balance vs the TOP SHEET). The TOP SHEET
+  schedule (every SL with its balance) is not built.
+
+**Payload:** `gl_account_code`, `gl_account_title` (looked up from the first SL's parent when blank), `fund`,
+`book_id`, `fiscal_year`, `debit_normal`, `ledgers [{ sl_code, sl_name, opening_balance?, lines }]` (or, for one SL:
+`sl_code`, `sl_name`, `opening_balance`, `lines`); `lines [{ posting_date, jev_no, doc_ref_no, particulars, debit,
+credit, journal? }]`.
+
+**Data:**
+- **General Ledger page** — the header **Print ▾** (one account picked) → *Subsidiary Ledger* lists only the book + fiscal year
+  sheets where an SL under the account has postings or a beginning balance (`GET /print/gl-sheets`: `sl_postings`,
+  `sl_opening`); clicking one fetches `GET /general_ledger/ledger-sl?account_code=&fiscal_yr=&book_id=` →
+  `prp_glSlPayload`. The SL popup's **Print SL** prints the data it loaded.
+- **Subsidiary Ledger page** (not in the sidebar): `GET /general_ledger/subsidiary-ledger` → `prp_slPayload` — one SL.
 
 - **What an SL is:** a **bottom-level** account in `fims.chart_of_accounts` (it has a parent and no children; the
   SL tables `sl_masters` / `sl_details` were dropped). Its GL account is its parent. The SL search
   (`DisbursementVoucherService::fetchSlCodes`) and the SL ledger (`GeneralLedgerService::fetchSubsidiaryLedger` /
   `fetchAllSubsidiaryLedgers`) only take bottom-level accounts, so group accounts (e.g. "2-01-01 Payables")
   are not SLs.
-- **Header** (repeats on every page): SUBSIDIARY LEDGER; Entity Name / Fund; the SL Account Name box (the SL
-  account's title and code) beside GL Account Name / Account Code (its parent account) / Bank Account No.;
-  then Date · Particulars · Ref · Amount (Debit · Credit · Balance).
-- **Rows:** unlike the GL sheet, **one line per posting**: date (mm/dd/yyyy), particulars (the posting's
-  description), Ref (the JEV no.), debit, credit and the running balance on every line. An optional
-  "Balance forwarded" first line (`opening_balance`).
-- **Filler and totals:** blank rows fill the sheet (wrapped Particulars count as several lines), then
-  **Totals**: total debit, total credit, ending balance.
-- **Balance:** `debit_normal` follows the parent account's type; payables are credit-normal.
-
-**Payload:**
-- `sl_code`, `sl_name` (the SL account's code and title); `sl_detail_name` (optional suffix, no longer used)
-- `gl_account_code`, `gl_account_title` (optional: when blank, `SubsidiaryLedgerPrintService` looks up the SL
-  account's parent in `fims.chart_of_accounts`)
-- `bank_account_no`, `entity_name` (both blank: filled in by hand)
-- `fund`, `fiscal_year`, `debit_normal`, `opening_balance`
-- `lines [{ posting_date, particulars, ref, debit, credit }]`
-
-**Data:** the Subsidiary Ledger page's `GET /general_ledger/subsidiary-ledger` response is mapped by
-`prp_slPayload(resp, opts)`: `master { account_code, account_title, account_type }` is the SL account (the
-older `{ sl_code, sl_name, account_code }` master is still read). The page's header **Print** button passes
-the Book filter (→ Fund) and the Fiscal Year.
 
 **JEV:** the SL line of a JEV now carries only `sl_code` (an account code). `JevPrintService` fills its title
 from `fims.chart_of_accounts`, together with the account titles.
+
+## TB — Trial Balance
+
+`TrialBalancePrintService` (print type `TB`). A4 portrait, Arial 9.5pt, no letterhead (its own title block). **HTML / PDF
+only** — registered in `PrintService::DOCS` without a `script`, so `format: 'docx'` answers 400 ("no DOCX version").
+It is the report the Trial Balance page shows, laid out like its print view and its Excel export:
+
+- **Title block** (box): NHA logo | NATIONAL HOUSING AUTHORITY / TRIAL BALANCE [— book] / office (`MAIN OFFICE`) / as-of date |
+  Pambansang Pabahay + Bagong Pilipinas.
+- **Table** — Accounts · Acct. Code · Debit Balances · Credit Balances (heading repeats on every page): a bold shaded
+  major-class row (Assets / Liabilities / Equity / Revenue / Expenses), the account-group row under it (bold for Assets; a
+  plain row with its code for the other classes), then the accounts (indented); a **Total** row (single rule above, double
+  below); then the "I HEREBY CERTIFY …" paragraph and the *Signature Over Printed Name / Head of Accounting Department* line.
+- A zero prints `-` and a negative in brackets, as the Excel number format does.
+- **No stranded headings:** Dompdf has no "keep with next", so the heading rows (major class / group) are printed *together
+  with the first account below them* inside one unbreakable row (a nested table of the same column widths) — a heading is never
+  left alone at the foot of a page. (Found by rendering a 3-page report; the plain-row version orphaned "Liabilities".)
+
+**Payload** (all optional): `rows [{ major_group, account_group, account_group_code, account_title, account_code, total_debit,
+total_credit }]`, `as_of` (the date line; default today), `book_name` (adds "— <book>"), `office`, `fiscal_yr` (file name only).
+The totals are summed from the rows. File name `Trial-Balance_<year | all-years>` — the same stem the page's Excel uses.
+
+**Data / UI** — `app/pages/trial-balance-page.php`: the single header button **Print / Export ▾** opens a menu (PDF | Excel);
+the choice opens a preview modal with **Print** (PDF only) and **Download** on a bar above the preview.
+- **PDF** — the page posts the rows it already loaded (`GET /general_ledger/trial-balance`) to `POST /print/tb`
+  (`format: 'pdf'`); the preview is that PDF itself, so Print and Download give exactly what is shown.
+- **Excel** — still built in the browser with ExcelJS (`tb_buildWorkbook()`); the preview (`tb_excelPreviewHtml()`) is an
+  imitation of that sheet — keep the two in step when the workbook changes.
+
+## BS — Balance Sheet (Statement of Financial Position)
+
+`BalanceSheetPrintService` (print type `BS`). A4, Arial, no letterhead (its own title block). **HTML / PDF only** (no `script`
+in `PrintService::DOCS`, so `format: 'docx'` answers 400). It prints whichever **View** the Balance Sheet page is showing:
+
+| View | Columns | Page |
+|---|---|---|
+| Detailed / Condensed | Account Title · Current Year · Prior Year (As Restated) · INCREASE (DECREASE) | portrait |
+| Consolidated | Accounts · one column per book · TOTAL | landscape (more than 4 columns) |
+
+The model sets `orientation`; `PrintService::print()` uses it ahead of the form's `DOCS` entry (`$model['orientation'] ??
+$cfg['orientation'] ?? 'portrait'`), because the layout depends on the data. Column widths follow the column count
+(`TITLE_SHARE`).
+
+- **Title block**: NHA logo | the page's title lines (agency, statement title, book / office or "As at …", date, "(In Philippine
+  Peso)") | Pambansang Pabahay + Bagong Pilipinas; then the table, the "I HEREBY CERTIFY …" paragraph and the signature line.
+- **Rows** follow the page's own styling (`.fims-report-table-*`): `major` section band, `group` (shaded, uppercase), `subgroup`
+  (bold, indented), `account` (indented), `contra` (italic), `netvalue` (bold, ruled above), `subtotal` (bold, ruled above),
+  `grand` (shaded, ruled above and below). A zero prints `-`, a negative in brackets.
+- **No stranded headings:** `major` / `group` / `subgroup` rows are printed *together with the next row* inside one unbreakable
+  row (nested table of the same widths) — Dompdf has no "keep with next".
+
+**Payload:** `lines [{ text, bold }]`, `columns [string]`, `rows [{ kind, title, values [number|null] }]` (one value per amount
+column; an unknown `kind` prints as `account`), `fiscal_yr`, `view` (file name only). File name
+`Balance-Sheet_<year>_<view>` — the same as the page's Excel.
+
+**Data / UI** — `app/pages/balance-sheet-page.php`: the single header button **Print / Export ▾** → menu (PDF | Excel) → preview
+modal with **Print** (PDF only) and **Download** above the preview; the Excel preview is centred.
+- One source: `bs_sheetModel()` reads the table on screen once (title lines, headings, rows with their classes, amounts parsed back
+  to numbers). The **PDF payload** (`bs_printPayload()`), the **Excel preview** (`bs_excelPreviewHtml()`) and the **workbook**
+  (`bs_buildWorkbook()`, ExcelJS, in the browser) are all made from it, so they can't disagree. Works for the sample-data
+  preview (`balance_sheet = true`) too.
+- **PDF** — posted to `POST /print/bs` (`format: 'pdf'`); the preview is that PDF itself, so Print and Download give what is shown.
+
+## IS — Income Statement (Statement of Financial Performance)
+
+`IncomeStatementPrintService` (print type `IS`). The Balance Sheet's layout — same title block, Views (Detailed / Condensed
+portrait; Consolidated landscape), row kinds and payload — so it calls `BalanceSheetPrintService::model()` / `html()` and changes
+only the certification wording ("… Statement of Financial Performance … revenue earned and expenses incurred …") and the file
+name `Income-Statement_<year>_<view>` (the same layout-sharing as the CAF → CBA). `BalanceSheetPrintService::model()` takes
+`$filePrefix` and `$certification` for this and keeps the model's `certification` for `html()`; `PrintService` still calls
+`model($payload)` alone, so the Balance Sheet prints as before. HTML / PDF only. The `grand` rows are the running
+**Surplus (Deficit)** checkpoints (from current operations / before subsidy / after subsidy).
+
+**UI** — `app/pages/income-statement-page.php`: the same single **Print / Export ▾** button → PDF | Excel → preview modal
+(Print / Download above the preview, Excel preview centred) as the Balance Sheet; `is_sheetModel()` is the one source for the PDF
+payload, the Excel preview and the workbook. Excel keeps its own indents (accounts two levels, subgroups one).
+
+## SC — Statement of Changes in Net Assets/Equity
+
+`StatementOfChangesPrintService` (print type `SC`). The Balance Sheet's layout again (delegates to `BalanceSheetPrintService`),
+portrait: **Description · Consolidated (or the picked book) · NHA (Main Office)**. The page's Prior Year column is never filled
+in, so it is in neither the Excel nor the PDF. Section bands (`BALANCE AT JANUARY 1`, `CHANGES IN NET ASSETS/EQUITY`, `BALANCE AT
+DECEMBER 31`) are `major`, the lines `account`, "Net Changes" `subtotal`, the closing balance `grand`. Own certification wording,
+column widths `[56, 22, 22]` (payload `widths` overrides) and file name `Statement-of-Changes_<year>`. HTML / PDF only.
+
+**UI** — `app/pages/statement-of-changes-page.php`: the single **Print / Export ▾** button → PDF | Excel → preview modal;
+`sc_sheetModel()` is the one source for the PDF payload (`POST /print/sc`), the Excel preview and the workbook. A "—" (no NHA
+figure for that book) is a blank cell in both.
+
+## CF — Statement of Cash Flows
+
+`CashFlowPrintService` (print type `CF`). The Balance Sheet's layout (delegates to `BalanceSheetPrintService`), portrait:
+**Particulars · Note · Current Year · Previous Year**. The Note column is narrow, centred and blank — the page never fills it
+(the printed form leaves it for note numbers) — so the payload sends it as blank. Rows: the three activity headers `major`;
+the lines `account`; the lines under "Disbursements made for:" `detail` (one level deeper); section totals `subtotal`; the Net
+Increase and Ending rows `total`. Own certification wording and file name `Statement-of-Cash-Flows_<year>`. HTML / PDF only.
+
+**UI** — `app/pages/cash-flow-page.php`: the same button / menu / preview modal; `cf_sheetModel()` is the one source for the PDF
+payload (`POST /print/cf`), the Excel preview and the workbook.
+
+**Shared layout additions** (made for SC / CF, harmless to BS / IS — a payload that sends none of them prints as before):
+- row kind `detail` (an `account` indented one level further) and `total` (a `grand` row in normal case, not capitals — the page's
+  `fims-report-table-normalcase`);
+- optional payload `widths` (percent per column) and `aligns` (`left` | `center` | `right` per column); a list that doesn't match
+  the column count, or has a bad entry, is ignored (default split).
 
 ## Requirements
 
@@ -1191,8 +1442,14 @@ calls the same helper.
 | Purchase Orders — `po/page.php` (row) and `po/readone.php` | Print | PO | `{ po_id }` — PurchaseOrderPrintService loads the PO |
 | Disbursement Vouchers — `voucher/readone.php` (`voucher.php`'s view modal) | Print | DV | `GET /voucher/read/{id}` → `prp_dvPayload` (its JEVs print from the Journal Entry Voucher register) |
 | Journal Entry Vouchers — `journal-entry-voucher.php` (row) | Print | JEV | the row's DV (`/voucher/read/{dv_id}`) → `prp_jevFromDv` |
-| General Ledger — `general-ledger-page.php` (header; shown once one account is picked) | Print | GL | the loaded ledger (`GET /general_ledger/ledger`) → `prp_glPayload`; fiscal year = the Fiscal Year filter, else the postings' year (several years → asks to pick one) |
-| Subsidiary Ledger — `subsidiary-ledger-page.php` (header; shown once one SL code is picked) | Print | SL | the loaded ledger (`GET /general_ledger/subsidiary-ledger`) → `prp_slPayload`; Book → Fund; GL account = the SL account's parent (looked up) |
+| General Ledger — `general-ledger-page.php` (header **Print ▾**, shown once one account is picked in the Account search) | Print ▾ → **General Ledger** | GL (NHA Form No. 11) | the menu lists only the **book + fiscal year sheets that have data** for that account (`GET /print/gl-sheets` → `GeneralLedgerPrintService::availableSheets`: postings or an Opening Balance, honouring the Fiscal Year filter); clicking one prints it — that account's ledger for that book and year (`GET /general_ledger/ledger`) → `prp_glPayload`; needs one Book (→ Fund) and one Fiscal Year; Beginning Balance = the book's Opening Balance |
+| General Ledger — `general-ledger-page.php` (header Print ▾ → **Subsidiary Ledger** — lists the book + year sheets with SL data; or the SL popup's Print SL) | Subsidiary Ledger / Print SL | SL | `GET /general_ledger/ledger-sl` (that book and year) → `prp_glSlPayload`: a sheet per SL with postings, plus the GL account's own postings; Book → Fund |
+| Subsidiary Ledger — `subsidiary-ledger-page.php` (not in the sidebar; header, shown once one SL code is picked) | Print | SL | the loaded ledger (`GET /general_ledger/subsidiary-ledger`) → `prp_slPayload`: one SL, one sheet; Book → Fund; GL account = the SL account's parent (looked up) |
+| Trial Balance — `trial-balance-page.php` (header **Print / Export ▾**) | PDF / Excel → preview → Print / Download | TB (PDF) | the rows the page loaded (`GET /general_ledger/trial-balance`) → `POST /print/tb`; Excel is built in the browser (ExcelJS) from the same rows |
+| Balance Sheet — `balance-sheet-page.php` (header **Print / Export ▾**) | PDF / Excel → preview → Print / Download | BS (PDF) | the table on screen (any View) via `bs_sheetModel()` → `POST /print/bs`; Excel is built in the browser (ExcelJS) from the same model |
+| Income Statement — `income-statement-page.php` (header **Print / Export ▾**) | PDF / Excel → preview → Print / Download | IS (PDF) | the table on screen (any View) via `is_sheetModel()` → `POST /print/is`; Excel is built in the browser (ExcelJS) from the same model |
+| Statement of Changes — `statement-of-changes-page.php` (header **Print / Export ▾**) | PDF / Excel → preview → Print / Download | SC (PDF) | the table on screen (Consolidated or one book) via `sc_sheetModel()` → `POST /print/sc`; Excel is built in the browser (ExcelJS) from the same model |
+| Statement of Cash Flow — `cash-flow-page.php` (header **Print / Export ▾**) | PDF / Excel → preview → Print / Download | CF (PDF) | the table on screen via `cf_sheetModel()` → `POST /print/cf`; Excel is built in the browser (ExcelJS) from the same model |
 | IAR Module — `iar-module.php` (row; pro-forma view) | Print IAR; Print JEV | IAR; JEV | the row (IAR header + delivery lines) + its PO (`/purchase-order/all?search=`) → `prp_iarPayload`; the delivery receipt's pro-forma → `prp_jevFromProforma` |
 
 DV deductions print with the withholding taxes (ATC lines) under the
@@ -1214,8 +1471,8 @@ delivered amount reaches the PO total.
   action on the list rows (the list's records keep their amounts in
   `line_transaction`).
 - **Done — PO, DV, JEV, IAR:** see "Module integration" above. Not printed by
-  those modules yet: the DV's obligation / budget ledger (no DV form fields for
-  it), the IAR's inspector / signatories and inspection status (no data —
+  those modules yet: the DV's FPA / OBJECT CODE columns and its budget ledger
+  (OBLIGATION prints the RFA number), the IAR's inspector / signatories and inspection status (no data —
   prints blank / complete-by-amount), the PO readone (no PHPMaker route serves
   `po/readone.php`, so its Print isn't reachable until one does).
 - Call `prp_open(..., { type: 'LV' })` from the LV module once it exists.

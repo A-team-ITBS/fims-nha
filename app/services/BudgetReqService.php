@@ -367,7 +367,7 @@ class BudgetReqService
      * rows), batching the three child queries with one IN (...) each
      * rather than querying per header.
      */
-    private function attachProgramsToHeaders(array $headerRows): array
+    private function attachProgramsToHeaders(array $headerRows, bool $excludeSupplemental = false): array
     {
         if (empty($headerRows)) {
             return [];
@@ -376,12 +376,18 @@ class BudgetReqService
         $ids = array_map(fn ($row) => (string) $row['budget_reference_number'], $headerRows);
         $idList = implode(', ', array_map(fn ($id) => App\QuotedValue($id, DataType::STRING, 'DB'), $ids));
 
+        // $excludeSupplemental (the Budget Requirements / proposal screens): leave out the lines of supplemental projects and the programs / projects that exist only
+        // for them — see suppOnlyProgramSql(). Off by default: fetchById() and the review guards must see everything.
+        $noSuppProgram = $excludeSupplemental ? ' AND NOT ' . $this->suppOnlyProgramSql('brp') : '';
+        $noSuppProject = $excludeSupplemental ? ' AND NOT ' . $this->suppOnlyProjectSql('brp2') : '';
+        $noSuppLine    = $excludeSupplemental ? ' AND li.supplemental_revision_id IS NULL' : '';
+
         $programRows = App\ExecuteRows(
             "SELECT brp.*, pg.program_name, sp.sub_program_name
              FROM {$this->tableBudgetReqProgram} brp
              LEFT JOIN {$this->tableProgram} pg ON pg.program_code = brp.program_code
              LEFT JOIN {$this->tableSubProgram} sp ON sp.sub_program_code = brp.sub_program_code
-             WHERE brp.budget_reference_number IN ({$idList})
+             WHERE brp.budget_reference_number IN ({$idList}){$noSuppProgram}
              ORDER BY brp.budget_req_program_id ASC",
             'DB'
         ) ?: [];
@@ -415,7 +421,7 @@ class BudgetReqService
              LEFT JOIN {$this->tableChartOfAccounts} coa ON coa.account_id = li.account_id
              LEFT JOIN {$this->tableTypeOfFund} tof ON tof.type_of_fund_id = li.type_of_fund_id
              LEFT JOIN {$this->tableComponentType} ct ON ct.component_type_id = li.component_id
-             WHERE li.budget_reference_number IN ({$idList})
+             WHERE li.budget_reference_number IN ({$idList}){$noSuppLine}
              ORDER BY li.budget_req_project_id ASC, li.budget_line_item_id ASC",
             'DB'
         ) ?: [];
@@ -455,6 +461,15 @@ class BudgetReqService
         return $headerRows;
     }
 
+    /* ── Supplemental projects on the proposal screens ────────────────────────────────────────────────────────────────────────────────────────
+       A supplemental project (BudgetRevisionService::approveSupplemental()) is a NEW project released by a DBM SARO and added straight to the APPROVED budget: it was never
+       part of a budget PROPOSAL. Its budget lines carry a tag, fims.budget_line_items.supplemental_revision_id (03 - alter_table/63). COB Monitoring and RFA / LAA Monitoring
+       show them (they read their own queries); the Budget Requirements (proposal) screens must not, so they ask for $excludeSupplemental.
+       "Exists only for them": the approval REUSES a program row / project row that is already in the office's request, so one of those can hold both ordinary and tagged
+       lines — it stays, with its ordinary lines. Only a request / program / project whose lines are ALL tagged is left out. A request with no line at all is never left out. */
+
+    private static ?bool $suppTagExists = null;
+
     /**
      * Blanks out every header's 'programs' (never 'coe_line_items') when the caller is a plain Regional/District
      * (originating office) user — Program-based origination now belongs to FMD (or a superadmin) only, so their
@@ -476,6 +491,57 @@ class BudgetReqService
     }
 
     /**
+     * Whether the proposal filter can be applied: $requested AND the tag column exists. A database that has not had 03 - alter_table/63 yet has no tagged line (the approval that
+     * writes the tag needs the column too), so the filter is simply skipped there instead of failing every proposal screen on a missing column.
+     */
+    public static function excludeSupplemental(bool $requested): bool
+    {
+        if (!$requested) {
+            return false;
+        }
+        if (self::$suppTagExists === null) {
+            self::$suppTagExists = (int) App\ExecuteScalar(
+                "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'fims' AND table_name = 'budget_line_items' AND column_name = 'supplemental_revision_id'",
+                'DB'
+            ) > 0;
+        }
+
+        return self::$suppTagExists;
+    }
+
+    // A budget request (alias $a of fims.budget_req) whose lines are all tagged — i.e. one that supplemental approvals created, with nothing of a proposal in it.
+    private function suppOnlyHeaderSql(string $a): string
+    {
+        $li = $this->tableLineItems;
+
+        return "(EXISTS (SELECT 1 FROM {$li} xt WHERE xt.budget_reference_number = {$a}.budget_reference_number AND xt.supplemental_revision_id IS NOT NULL)
+                 AND NOT EXISTS (SELECT 1 FROM {$li} xo WHERE xo.budget_reference_number = {$a}.budget_reference_number AND xo.supplemental_revision_id IS NULL))";
+    }
+
+    // A program row (alias $a of budget_req_program) whose projects' lines are all tagged.
+    private function suppOnlyProgramSql(string $a): string
+    {
+        $li  = $this->tableLineItems;
+        $prj = $this->tableBudgetReqProject;
+
+        return "(EXISTS (SELECT 1 FROM {$prj} xj JOIN {$li} xt ON xt.budget_req_project_id = xj.budget_req_project_id
+                          WHERE xj.budget_req_program_id = {$a}.budget_req_program_id AND xt.supplemental_revision_id IS NOT NULL)
+                 AND NOT EXISTS (SELECT 1 FROM {$prj} xj JOIN {$li} xo ON xo.budget_req_project_id = xj.budget_req_project_id
+                                  WHERE xj.budget_req_program_id = {$a}.budget_req_program_id AND xo.supplemental_revision_id IS NULL))";
+    }
+
+    // A project row (alias $a of budget_req_project) whose lines are all tagged.
+    private function suppOnlyProjectSql(string $a): string
+    {
+        $li = $this->tableLineItems;
+
+        return "(EXISTS (SELECT 1 FROM {$li} xt WHERE xt.budget_req_project_id = {$a}.budget_req_project_id AND xt.supplemental_revision_id IS NOT NULL)
+                 AND NOT EXISTS (SELECT 1 FROM {$li} xo WHERE xo.budget_req_project_id = {$a}.budget_req_project_id AND xo.supplemental_revision_id IS NULL))";
+    }
+
+    /**
+     * @param bool   $excludeSupplemental true on the proposal screens: leave out the supplemental projects' lines and what exists only for them (requests, programs, projects), and
+     *                                    keep them out of the counts, the totals and the pagination. False (default) = everything, as the Budget Amendment form's line picker needs.
      * @param string $rcCodeFrom only requests of RCs whose rc_code sorts at or after this value (e.g.
      *                           "35-074-0000001-000" = the Regional and District offices, which come after
      *                           the central departments). Each row also carries its RC (rc_code, rc_name,
@@ -485,15 +551,21 @@ class BudgetReqService
     public function fetchAlls(?int $page = null, int $limit = 10, string $fiscalYr = '', string $programCode = '', string $rcId = '', string $rcCodeFrom = '', int $userId = 0, string $alsoIncludeRcId = ''): array
     {
         try {
+            $excludeSupplemental = self::excludeSupplemental($excludeSupplemental);   // skipped on a database without the tag column (03 - alter_table/63)
             $where = ['1=1'];
 
             if ($fiscalYr !== '') {
                 $where[] = 'br.fiscal_yr = '.(int) $fiscalYr;
             }
+            if ($excludeSupplemental) {
+                // a request that only supplemental approvals created is not a proposal: no list row, no count, no KPI amount
+                $where[] = 'NOT ' . $this->suppOnlyHeaderSql('br');
+            }
             if ($programCode !== '') {
                 $where[] = "EXISTS (SELECT 1 FROM {$this->tableBudgetReqProgram} brp
                                      WHERE brp.budget_reference_number = br.budget_reference_number
-                                       AND brp.program_code = ".App\QuotedValue($programCode, DataType::STRING, 'DB').')';
+                                       AND brp.program_code = ".App\QuotedValue($programCode, DataType::STRING, 'DB')
+                    . ($excludeSupplemental ? ' AND NOT ' . $this->suppOnlyProgramSql('brp') : '') . ')';
             }
             // $rcId / $rcCodeFrom / $alsoIncludeRcId are OR'd together, not AND'd — each names an
             // independent way a row can be "in scope", and a row only needs to satisfy one. In
@@ -525,6 +597,11 @@ class BudgetReqService
             }
             $whereSql = implode(' AND ', $where);
 
+            // the counts / total of each request, kept in step with what attachProgramsToHeaders() will list
+            $progCountWhere = $excludeSupplemental ? 'WHERE NOT ' . $this->suppOnlyProgramSql('xp') : '';
+            $projCountWhere = $excludeSupplemental ? 'WHERE NOT ' . $this->suppOnlyProjectSql('xj2') : '';
+            $liCountWhere   = $excludeSupplemental ? 'WHERE supplemental_revision_id IS NULL' : '';
+
             $joinSql = "SELECT br.*, st.name AS status_name, st.color AS status_color,
                                rc.rc_code, rc.rc_name, rc.office_type AS rc_office_type,
                                rc.parent_rc_id AS rc_parent_id, prc.rc_code AS rc_parent_code, prc.rc_name AS rc_parent_name,
@@ -538,18 +615,21 @@ class BudgetReqService
                         LEFT JOIN fims.responsibility_code rc ON rc.rc_id = br.rc_id
                         LEFT JOIN fims.responsibility_code prc ON prc.rc_id = rc.parent_rc_id
                         LEFT JOIN (
-                            SELECT budget_reference_number, COUNT(*) AS program_count
-                            FROM {$this->tableBudgetReqProgram}
-                            GROUP BY budget_reference_number
+                            SELECT xp.budget_reference_number, COUNT(*) AS program_count
+                            FROM {$this->tableBudgetReqProgram} xp
+                            {$progCountWhere}
+                            GROUP BY xp.budget_reference_number
                         ) prg ON prg.budget_reference_number = br.budget_reference_number
                         LEFT JOIN (
-                            SELECT budget_reference_number, COUNT(*) AS project_count
-                            FROM {$this->tableBudgetReqProject}
-                            GROUP BY budget_reference_number
+                            SELECT xj2.budget_reference_number, COUNT(*) AS project_count
+                            FROM {$this->tableBudgetReqProject} xj2
+                            {$projCountWhere}
+                            GROUP BY xj2.budget_reference_number
                         ) proj ON proj.budget_reference_number = br.budget_reference_number
                         LEFT JOIN (
                             SELECT budget_reference_number, COUNT(*) AS li_count, SUM(proposed_amount) AS li_total
                             FROM {$this->tableLineItems}
+                            {$liCountWhere}
                             GROUP BY budget_reference_number
                         ) li ON li.budget_reference_number = br.budget_reference_number
                         LEFT JOIN LATERAL (
@@ -572,12 +652,11 @@ class BudgetReqService
 
             $total = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->table} br WHERE {$whereSql}", 'DB');
             $data = App\ExecuteRows($joinSql." ORDER BY br.fiscal_yr DESC, br.budget_reference_number DESC LIMIT {$limit} OFFSET {$offset}", 'DB') ?: [];
+<<<<<<< HEAD
             $data = $this->stripProgramsForOriginatingOffice($this->attachProgramsToHeaders($data), $userId);
-
-            $totalAmount = (float) App\ExecuteScalar(
-                "SELECT COALESCE(SUM(li.proposed_amount), 0) FROM {$this->tableLineItems} li
-                 JOIN {$this->table} br ON br.budget_reference_number = li.budget_reference_number
-                 WHERE {$whereSql}",
+=======
+            $data = $this->attachProgramsToHeaders($data, $excludeSupplemental);
+                 WHERE {$whereSql}" . ($excludeSupplemental ? ' AND li.supplemental_revision_id IS NULL' : ''),
                 'DB'
             );
 

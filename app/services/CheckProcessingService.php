@@ -102,6 +102,7 @@ class CheckProcessingService
     private string $tableCancellations     = 'fims.check_cancellations';
     private string $tableDv                = 'fims.disbursement_vouchers';
     private string $tableSettingsStatus    = 'fims.settings_status';
+    private string $tableFundTracking      = 'fims.fund_tracking';
     // Unified Tab 3+4 ("Released to Claimants" / "Released to Regions") —
     // see "01 - table/38 - fims_check_releases_unified.sql" for why these
     // replaced four separate tables (fims.check_claimant_releases,
@@ -545,6 +546,36 @@ class CheckProcessingService
         );
 
         return $this->dataTable($params['draw'] ?? 1, $rows);
+    }
+
+    /**
+     * The SARO currently linked to a given DV number (fims.fund_tracking.dv_id — see
+     * DisbursementVoucherService::linkSaro(); one SARO points at one DV at a time, "03 -
+     * alter_table/61 - fund_tracking_add_dv_bank_account.sql"), plus that SARO's own bank account
+     * (bank_account_id -> fims.bank_accounts), resolved in the same query so the caller gets
+     * everything it needs for the auto-fill in one round trip. Used by the Prepare Check modal
+     * (GET /check-processing/dv-saro) to fill #prepBankAccount once a DV is picked — same
+     * "auto-fill, read-only lookup, no linking" shape as FtlaService::getRfaForDv(). Returns null
+     * when the DV has no SARO linked (nothing to fill).
+     */
+    public function getSaroForDv(string $dvNo): ?array
+    {
+        $dvNo = trim($dvNo);
+        if ($dvNo === '') {
+            return null;
+        }
+
+        return App\ExecuteRow(
+            "SELECT ft.id, ft.saro_id, ft.bank_account_id,
+                    ba.account_name, ba.account_number, ba.bank_name
+             FROM {$this->tableFundTracking} ft
+             JOIN {$this->tableDv} dv ON dv.dv_id = ft.dv_id
+             LEFT JOIN {$this->tableBankAccounts} ba ON ba.bank_account_id = ft.bank_account_id
+             WHERE dv.dv_no = " . $this->str($dvNo) . '
+               AND ft.deleted_at IS NULL
+             LIMIT 1',
+            'DB'
+        ) ?: null;
     }
 
     // Not-yet-used check numbers for a bank account, sourced from the

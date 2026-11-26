@@ -14,9 +14,6 @@ namespace PHPMaker2024\FIMS;
 $_pyr_api = Config('API.FIMS_URL');
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <div id="pyr-root" class="nha-root">
@@ -145,6 +142,36 @@ $_pyr_api = Config('API.FIMS_URL');
         </div>
     </div>
 
+    <!-- ── DE MINIMIS LIMITS (fims.payroll_de_minimis_benefits — editable; used by Payroll Management → Annualization) ── -->
+    <div class="nha-table-wrap" id="pyr-dm-wrap" style="margin-top:18px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;flex-wrap:wrap;">
+            <div>
+                <div style="font-weight:600;font-size:14px;">De Minimis Limits</div>
+                <div class="nha-td-sub" style="margin-top:2px;">Tax-exempt ceiling of each de minimis benefit. The excess counts toward the ₱90,000 13th month &amp; other benefits. Annualize again after a change.</div>
+            </div>
+            <button id="pyr-dm-add" type="button" class="nha-btn-act edit" title="Add a de minimis benefit">+ Add Benefit</button>
+        </div>
+        <div class="nha-tbl-scroll">
+            <table class="nha-tbl">
+                <thead>
+                    <tr>
+                        <th>Code</th>
+                        <th>Benefit</th>
+                        <th style="text-align:right;">Limit</th>
+                        <th>Per</th>
+                        <th style="text-align:right;">Yearly Limit</th>
+                        <th>Status</th>
+                        <th>Items</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="pyr-dm-tbody">
+                    <tr><td colspan="8"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
 <?php include __DIR__ . '/form/payroll-form.php'; ?>
 
 </div><!-- /#pyr-root -->
@@ -169,6 +196,7 @@ const PYR_FIELDS = {               // payload key → input id
     item_code : 'pyr-item-code',
     item_name : 'pyr-item-name',
     category  : 'pyr-category',
+    tax_treatment : 'pyr-tax-treatment',
     status    : 'pyr-status',
     remarks   : 'pyr-remarks',
 };
@@ -274,8 +302,20 @@ function pyr_bind() {
     $pyr('pyr-body')?.addEventListener('scroll', pyr_positionPanel);
     window.addEventListener('resize', pyr_positionPanel);
 
+    $pyr('pyr-tax-treatment')?.addEventListener('change', pyr_syncDeMinimis);
+    $pyr('pyr-dm-add')?.addEventListener('click', () => pyr_dmEdit(0));
+    $pyr('pyr-dm-tbody')?.addEventListener('click', e => {
+        const b = e.target.closest('[data-dm-act]');
+        if (!b) return;
+        const id = Number(b.dataset.id || 0);
+        if (b.dataset.dmAct === 'edit') pyr_dmEdit(id);
+        else if (b.dataset.dmAct === 'cancel') { pyr_dmEditing = null; pyr_dmRender(); }
+        else if (b.dataset.dmAct === 'save') pyr_dmSave(id);
+    });
+
     pyr_load();
     pyr_loadAccounts();
+    pyr_dmLoad();
 }
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', pyr_bind);
@@ -735,6 +775,8 @@ function pyr_resetState() {
     pyr_clearParts();
     pyr_syncAccountUi();
     pyr_syncSide();
+    pyr_dmFillSelect('');
+    pyr_syncDeMinimis();
 }
 
 async function pyr_openModal(mode, row = null) {
@@ -755,6 +797,9 @@ async function pyr_openModal(mode, row = null) {
         $pyr('pyr-item-name').value = row.item_name ?? '';
         pyr_nameTouched = true;                             // never overwrite the saved name
         $pyr('pyr-category').value = row.category ?? '';
+        $pyr('pyr-tax-treatment').value = row.tax_treatment || 'NONE';
+        pyr_dmFillSelect(row.de_minimis_id || '');
+        pyr_syncDeMinimis();
         $pyr('pyr-status').value   = row.status || 'ACTIVE';
         $pyr('pyr-remarks').value  = row.remarks ?? '';
         pyr_syncSide();
@@ -822,6 +867,8 @@ async function pyr_save(ev) {
     if (!v.item_code) { pyr_showErr('Item code is required.'); return; }
     if (!v.item_name) { pyr_showErr('Item name is required.'); return; }
     if (!v.category)  { pyr_showErr('Category is required.'); return; }
+    const deMinimisId = $pyr('pyr-de-minimis').value;
+    if (v.tax_treatment === 'DE_MINIMIS' && !deMinimisId) { pyr_showErr('Choose which de minimis benefit this item is.'); return; }
 
     const acc = pyr_resolve();
     const newAccounts = [];                                         // sub-ledgers to create, parent first
@@ -848,6 +895,8 @@ async function pyr_save(ev) {
     const payload = {
         item_name    : v.item_name,
         category     : v.category,
+        tax_treatment: v.tax_treatment || 'NONE',
+        de_minimis_id: v.tax_treatment === 'DE_MINIMIS' ? deMinimisId : null,
         status       : v.status,
         remarks      : v.remarks,
         account_code : accountCode,
@@ -880,12 +929,120 @@ async function pyr_save(ev) {
         pyr_toast(`Payroll item ${mode === 'edit' ? 'updated' : 'created'} successfully.`, 'success');
         pyr_closeModal();
         pyr_load();
+        pyr_dmLoad();                                               // linked-item counts
     } catch (e) {
         pyr_showErr(e.message);       // nothing was saved, and no sub-ledger was left behind
     } finally {
         pyr_saving = false;
         $pyr('pyr-save').disabled = false;
     }
+}
+
+/* ── De minimis benefits & limits ──────────────────────────────
+   GET /payroll-setup/de-minimis · POST /de-minimis/add · PUT /de-minimis/update/{id}
+   The table edits one row at a time inline; the item form's "De Minimis Benefit" select is filled from the same list. */
+let pyr_dm = [];                   // every benefit (active and inactive)
+let pyr_dmEditing = null;          // de_minimis_id being edited, 0 = the new row, null = none
+
+function pyr_money(n) { return Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+async function pyr_dmLoad() {
+    try {
+        const res = await fetch(`${PYR_API}/de-minimis`, { credentials: 'same-origin' });
+        let json = null;
+        try { json = await res.json(); } catch (_) { /* non-JSON error body */ }
+        if (!res.ok || !json || !json.success) throw new Error((json && json.message) || 'HTTP ' + res.status);
+        pyr_dm = json.data ?? [];
+        pyr_dmRender();
+    } catch (e) {
+        $pyr('pyr-dm-tbody').innerHTML = `<tr><td colspan="8"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Could not load the de minimis limits.</span><span class="nha-empty-text">${pyr_esc(e.message)}</span></div></td></tr>`;
+    }
+    pyr_dmFillSelect();
+}
+
+function pyr_dmRender() {
+    const rows = pyr_dm.map(d => pyr_dmEditing === Number(d.de_minimis_id) ? pyr_dmEditRow(d) : `<tr>
+        <td><code class="nha-code">${pyr_esc(d.code)}</code></td>
+        <td style="font-weight:600;">${pyr_esc(d.name)}${d.remarks ? `<div class="nha-td-sub" style="font-weight:400;margin-top:2px;">${pyr_esc(d.remarks)}</div>` : ''}</td>
+        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;">${pyr_money(d.limit_amount)}</td>
+        <td>${d.limit_per === 'MONTH' ? 'Month' : 'Year'}</td>
+        <td style="text-align:right;font-family:'IBM Plex Mono',monospace;">${pyr_money(d.annual_limit)}</td>
+        <td>${pyr_statusBadge(d.status)}</td>
+        <td>${Number(d.items) || '<span class="nha-td-sub">none linked</span>'}</td>
+        <td><button class="nha-btn-act edit" type="button" data-dm-act="edit" data-id="${Number(d.de_minimis_id)}">Edit</button></td>
+    </tr>`);
+    if (pyr_dmEditing === 0) rows.push(pyr_dmEditRow(null));
+    $pyr('pyr-dm-tbody').innerHTML = rows.length ? rows.join('')
+        : '<tr><td colspan="8"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No de minimis benefits.</span><span class="nha-empty-text">Use “+ Add Benefit”.</span></div></td></tr>';
+}
+
+function pyr_dmEditRow(d) {
+    const id = d ? Number(d.de_minimis_id) : 0;
+    const inp = 'class="nha-filter-input" style="width:100%;min-width:0;padding-left:8px;"';
+    const sel = 'class="nha-filter-select" style="min-width:0;"';
+    return `<tr data-dm-row="${id}">
+        <td>${d ? `<code class="nha-code">${pyr_esc(d.code)}</code>` : `<input ${inp} data-f="code" maxlength="30" placeholder="e.g. MEAL">`}</td>
+        <td><input ${inp} data-f="name" maxlength="150" value="${pyr_esc(d?.name ?? '')}" placeholder="Benefit name">
+            <input ${inp} data-f="remarks" style="width:100%;min-width:0;padding-left:8px;margin-top:4px;" value="${pyr_esc(d?.remarks ?? '')}" placeholder="Remarks (e.g. RR No. / basis)"></td>
+        <td><input ${inp} data-f="limit_amount" inputmode="decimal" style="width:110px;text-align:right;padding-left:8px;" value="${d ? Number(d.limit_amount).toFixed(2) : ''}" placeholder="0.00"></td>
+        <td><select ${sel} data-f="limit_per"><option value="YEAR"${d?.limit_per !== 'MONTH' ? ' selected' : ''}>Year</option><option value="MONTH"${d?.limit_per === 'MONTH' ? ' selected' : ''}>Month</option></select></td>
+        <td class="nha-td-sub" style="text-align:right;">×12 if per month</td>
+        <td><select ${sel} data-f="status"><option value="ACTIVE"${d?.status !== 'INACTIVE' ? ' selected' : ''}>Active</option><option value="INACTIVE"${d?.status === 'INACTIVE' ? ' selected' : ''}>Inactive</option></select></td>
+        <td>${d ? Number(d.items) : ''}</td>
+        <td style="white-space:nowrap;">
+            <button class="nha-btn-act edit" type="button" data-dm-act="save" data-id="${id}">Save</button>
+            <button class="nha-btn-act" type="button" data-dm-act="cancel" data-id="${id}">Cancel</button>
+        </td>
+    </tr>`;
+}
+
+function pyr_dmEdit(id) {
+    pyr_dmEditing = id;
+    pyr_dmRender();
+    $pyr('pyr-dm-tbody').querySelector(`[data-dm-row="${id}"] [data-f="${id ? 'limit_amount' : 'code'}"]`)?.focus();
+}
+
+async function pyr_dmSave(id) {
+    const row = $pyr('pyr-dm-tbody').querySelector(`[data-dm-row="${id}"]`);
+    if (!row) return;
+    const body = {};
+    row.querySelectorAll('[data-f]').forEach(el => { body[el.dataset.f] = el.value.trim(); });
+    body.limit_amount = (body.limit_amount || '').replace(/,/g, '');
+    if (!body.name) { pyr_toast('Enter the benefit name.', 'error'); return; }
+    if (body.limit_amount === '' || isNaN(Number(body.limit_amount)) || Number(body.limit_amount) < 0) { pyr_toast('Enter the limit (0 or more).', 'error'); return; }
+    try {
+        const res = await fetch(id ? `${PYR_API}/de-minimis/update/${id}` : `${PYR_API}/de-minimis/add`, {
+            method: id ? 'PUT' : 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        let json = null;
+        try { json = await res.json(); } catch (_) { /* non-JSON error body */ }
+        if (!res.ok || !json || !json.success) throw new Error((json && json.message) || 'HTTP ' + res.status);
+        pyr_toast(json.message || 'Saved.', 'success');
+        pyr_dmEditing = null;
+        pyr_dmLoad();
+    } catch (e) {
+        pyr_toast(e.message, 'error');
+    }
+}
+
+/* The item form's benefit select: active benefits, plus the item's own one if it was made inactive. */
+function pyr_dmFillSelect(keep) {
+    const s = $pyr('pyr-de-minimis');
+    if (!s) return;
+    const cur = keep !== undefined ? String(keep || '') : s.value;
+    s.innerHTML = '<option value="">— Select benefit —</option>' + pyr_dm
+        .filter(d => d.status === 'ACTIVE' || String(d.de_minimis_id) === cur)
+        .map(d => `<option value="${Number(d.de_minimis_id)}">${pyr_esc(d.name)} — ${pyr_money(d.limit_amount)} / ${d.limit_per === 'MONTH' ? 'month' : 'year'}${d.status !== 'ACTIVE' ? ' (inactive)' : ''}</option>`)
+        .join('');
+    s.value = cur;
+}
+
+function pyr_syncDeMinimis() {
+    const wrap = $pyr('pyr-de-minimis-wrap');
+    if (wrap) wrap.hidden = $pyr('pyr-tax-treatment').value !== 'DE_MINIMIS';
 }
 
 /* ── Toast ─────────────────────────────────────────────────── */

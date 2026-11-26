@@ -12,7 +12,7 @@ use PHPMaker2024\FIMS\DataType;
  *                                       line_transaction (JSONB) = the PO's delivery receipts (DR):
  *   [ { dr_number, delivery_date, total_amount,
  *       lines: [ { account_code, account_title, amount } ],
- *       items?: [ { description, serial_no, amount, property_no } ] } ]   // items only when the total is >= 50,000
+ *       items?: [ { description, serial_no, amount, property_no } ] } ]   // items only for a property / equipment account row of >= 50,000
  *
  * The PO is picked from the Budget Allocation (the po_number of an RFA row — see poSource()). One save handles ONE DR. A DR is
  * identified inside its PO by its dr_number (unique within the PO); a serial number is unique across all DRs.
@@ -22,7 +22,7 @@ use PHPMaker2024\FIMS\DataType;
  *   { po_number, iar_number, si_number?, si_date?,
  *     dr: { dr_ref? (edit: the dr_number the DR had when it was loaded), dr_number, delivery_date,
  *           entries: [ { account_code, amount } ],                           // account codes from fims.chart_of_accounts
- *           items?: [ { description?, serial_no?, amount?, property_no? } ] } }   // many items, one line each; kept only when the total is >= 50,000
+ *           items?: [ { description?, serial_no?, amount?, property_no? } ] } }   // many items, one line each; required only for property / equipment account rows of >= 50,000 (needsItems())
  *
  * API shape of a delivery receipt (read / list):
  *   { dr_number, delivery_date, total_amount, entries: [ { account_code, account_title, amount } ],
@@ -33,12 +33,40 @@ class PoDrService
     private string $h = 'fims.inspection_acceptance_report';   // po_number, iar_number, si_number, si_date, line_transaction
 
     /** An account row of this amount or more needs items (description required, serial, amount, property no. — one line each). */
-    private const ITEM_MIN_AMOUNT = 50000;
+    private const ITEM_MIN_AMOUNT = 50000;   // ...but only on a property / equipment account (PRIORITY_ACCOUNTS) — see needsItems()
 
     /** Property, plant & equipment accounts (the property record categories): offered first in the Account Code picker. */
     private const PRIORITY_ACCOUNTS = [
         '1-06-05-020', '1-06-05-030', '1-06-05-070', '1-06-05-080', '1-06-05-110',
         '1-06-05-130', '1-06-05-990', '1-06-06-010', '1-06-07-010', '1-06-99-990',
+    ];
+
+    /**
+     * Does this account row need items? Only a row of ITEM_MIN_AMOUNT or more whose account is a property / equipment category
+     * (PRIORITY_ACCOUNTS, or a sub-ledger of one, e.g. 1-06-05-020-01). Any other account — whatever the amount — has no item validation.
+     */
+    public static function needsItems(string $code, float $amount): bool
+    {
+        if ($amount < self::ITEM_MIN_AMOUNT) {
+            return false;
+        }
+        foreach (self::PRIORITY_ACCOUNTS as $p) {
+            if ($code === $p || str_starts_with($code, $p . '-')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The Infrastructure tab's highlighted account categories (Account Entries picker, GET /po-dr/accounts?infra=1): CIP (construction in
+     * progress) and WIP (work in process), the GL accounts and their sub-ledgers, in this order. Shown first and under a CIP / WIP heading;
+     * typing still searches the whole chart of accounts.
+     */
+    public const INFRA_CATEGORIES = [
+        'CIP' => ['1-06-99-010', '1-06-99-020', '1-06-99-030', '1-06-99-020-01', '1-06-99-020-02', '1-06-99-020-03', '1-06-99-020-04'],
+        'WIP' => ['1-04-03-020', '1-04-03-020-01', '1-04-03-020-02', '1-04-03-020-03', '1-04-03-020-04', '1-04-03-020-05'],
     ];
 
     /** Pro-forma JEV: the DR total is credited to Accounts Payable. */
@@ -225,7 +253,7 @@ class PoDrService
         $qualCents = 0;
         $needBy    = [];   // account code => cents of its account rows that need items
         foreach ($entries as $en) {
-            if ((float) $en['amount'] >= self::ITEM_MIN_AMOUNT) {
+            if (self::needsItems($en['account_code'], (float) $en['amount'])) {
                 $c          = (int) round((float) $en['amount'] * 100);
                 $qualCents += $c;
                 $needBy[$en['account_code']] = ($needBy[$en['account_code']] ?? 0) + $c;
@@ -277,7 +305,7 @@ class PoDrService
                 $itemCents += (int) round((float) $row['amount'] * 100);
                 if (isset($row['account_code'])) {
                     if (!isset($needBy[$row['account_code']])) {
-                        return [null, null, "Item {$n}: category {$row['account_code']} is not an account row of " . number_format(self::ITEM_MIN_AMOUNT, 2) . ' or more.'];
+                        return [null, null, "Item {$n}: category {$row['account_code']} is not a property / equipment account row of " . number_format(self::ITEM_MIN_AMOUNT, 2) . ' or more.'];
                     }
                     $haveBy[$row['account_code']] = ($haveBy[$row['account_code']] ?? 0) + (int) round((float) $row['amount'] * 100);
                 }
@@ -301,7 +329,7 @@ class PoDrService
             }
             if ($itemCents !== $qualCents) {
                 return [null, null, 'The items total ' . number_format($itemCents / 100, 2) . ' but must equal ' . number_format($qualCents / 100, 2)
-                    . ' (the account rows of ' . number_format(self::ITEM_MIN_AMOUNT, 2) . ' or more).'];
+                    . ' (the property / equipment account rows of ' . number_format(self::ITEM_MIN_AMOUNT, 2) . ' or more).'];
             }
         }
 
@@ -462,6 +490,8 @@ class PoDrService
         }
         if ($onlyWithBalance) {   // the PO picker (adding an IAR): a PO whose DV was already processed is not offered
             $where .= ' AND NOT ' . $this->activeDvSql();
+            // a PO that already has an IAR is not offered either: further deliveries are added from that row's Actions → Add Deliveries
+            $where .= " AND NOT EXISTS (SELECT 1 FROM {$this->h} iar WHERE iar.po_number = a.po_number)";
         }
         $sql = "SELECT * FROM (
                     SELECT DISTINCT ON (a.po_number)
@@ -512,8 +542,11 @@ class PoDrService
      * 5-02-03-010-01 "Office Supplies" under 5-02-03-010 "Office Supplies Expenses"; when a GL account has postable SLs only its
      * SLs are offered. Typing the GL code (5-02-03-010) finds its SLs too.
      */
-    public function searchAccounts(string $search = '', bool $all = false): array
+    public function searchAccounts(string $search = '', bool $all = false, bool $infra = false, string $cat = ''): array
     {
+        if ($infra) {
+            return $this->searchInfraAccounts($search, $cat);
+        }
         try {
             $where = "COALESCE(c.posting_allowed, TRUE) AND COALESCE(c.status, 'Active') ILIKE 'active'
                       AND NOT EXISTS (SELECT 1 FROM fims.chart_of_accounts ch
@@ -537,6 +570,48 @@ class PoDrService
                      WHERE {$where}
                      ORDER BY c.account_code
                  ) t ORDER BY prio, account_code LIMIT 30",
+                'DB'
+            ) ?: [];
+
+            return ['success' => true, 'data' => $rows];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Account Entries picker of the Infrastructure tab. Nothing typed: ONLY the CIP / WIP categories (INFRA_CATEGORIES), each tagged
+     * with its group, CIP first. Typing searches the whole postable chart by code or title, the CIP / WIP accounts first (still tagged).
+     * Like the normal picker, a GL account that has sub-ledgers is NOT offered: the amount is entered under one of its sub-ledgers
+     * (so 1-04-03-020 WIP and 1-06-99-020 CIP are replaced by their -01 … sub-ledgers; 1-06-99-010 / -030 have none and are offered).
+     * Rows: { account_code, account_title, group: 'CIP' | 'WIP' | null }.
+     */
+    private function searchInfraAccounts(string $search, string $cat = ''): array
+    {
+        try {
+            $cat = strtoupper(trim($cat));   // the group of the picked RFA ('CIP' | 'WIP'): listed first; '' = CIP then WIP
+            $q       = fn(array $codes) => implode(',', array_map(fn($c) => $this->q($c), $codes));
+            $cip     = $q(self::INFRA_CATEGORIES['CIP']);
+            $wip     = $q(self::INFRA_CATEGORIES['WIP']);
+            $all     = $q(array_merge(self::INFRA_CATEGORIES['CIP'], self::INFRA_CATEGORIES['WIP']));
+            $search  = trim($search);
+            $where   = "COALESCE(c.posting_allowed, TRUE) AND COALESCE(c.status, 'Active') ILIKE 'active'
+                        AND NOT EXISTS (SELECT 1 FROM fims.chart_of_accounts ch
+                              WHERE ch.parent_account_id = c.account_id AND ch.posting_allowed AND COALESCE(ch.status, 'Active') ILIKE 'active')";
+            if ($search !== '') {
+                $s      = $this->q('%' . $search . '%');
+                $where .= " AND (c.account_code ILIKE {$s} OR c.account_title ILIKE {$s})";
+            } else {
+                $where .= " AND c.account_code IN ({$all})";
+            }
+            $rows = App\ExecuteRows(
+                "SELECT account_code, account_title, grp AS \"group\" FROM (
+                    SELECT c.account_code, c.account_title,
+                           CASE WHEN c.account_code IN ({$cip}) THEN 'CIP' WHEN c.account_code IN ({$wip}) THEN 'WIP' END AS grp,
+                           array_position(ARRAY[{$all}]::text[], c.account_code::text) AS pos
+                      FROM fims.chart_of_accounts c
+                     WHERE {$where}
+                 ) t ORDER BY (grp IS NULL), (grp IS DISTINCT FROM " . $this->q($cat) . "), pos, account_code LIMIT 40",
                 'DB'
             ) ?: [];
 
@@ -570,6 +645,7 @@ class PoDrService
             'vendor_id'         => $info['vendor_id'] ?? null,
             'vendor_name'       => $info['vendor_name'] ?? null,
             'rfa_number'        => $info['rfa_number'] ?? null,
+            'lines'             => $info['lines'] ?? [],   // the RFA's account lines, to pre-fill a new delivery receipt
             'po_amount'         => $poAmt,
             'dr_total'          => $drTotal,
             'balance'           => $poAmt === null ? null : round($poAmt - $drTotal, 2),
@@ -584,14 +660,54 @@ class PoDrService
             'iar_number' => $r['iar_number'],
             'si_number'  => $r['si_number'],
             'si_date'    => $r['si_date'],
+            'delivery_accepted'    => in_array($r['delivery_accepted'] ?? false, [true, 't', 'true', 1, '1'], true),
+            'delivery_accepted_at' => $r['delivery_accepted_at'] ?? null,   // "Date"
+            'inspected_by'         => $r['inspected_by'] ?? null,           // "Inspected By": the user's name, read live from uac.users
+            'subject_to'           => $r['subject_to'] ?? null,
+            'inspection_notes'     => $r['inspection_notes'] ?? null,
             'receipts'   => array_map(fn($d) => $this->shape($d), $this->drsFrom($r['line_transaction'])),
         ];
     }
 
-    private const COLS = "i.po_number, i.iar_number, i.si_number, TO_CHAR(i.si_date, 'YYYY-MM-DD') AS si_date, i.line_transaction";
+    private const COLS = "i.po_number, i.iar_number, i.si_number, TO_CHAR(i.si_date, 'YYYY-MM-DD') AS si_date, i.line_transaction,
+                              i.delivery_accepted, TO_CHAR(i.delivery_accepted_at, 'YYYY-MM-DD') AS delivery_accepted_at, i.subject_to, i.inspection_notes,
+                              (SELECT NULLIF(TRIM(CONCAT_WS(' ', NULLIF(TRIM(u.first_name), ''), NULLIF(TRIM(u.middle_name), ''), NULLIF(TRIM(u.last_name), ''), NULLIF(TRIM(u.suffix), ''))), '')
+                                 FROM uac.users u WHERE u.user_id = i.delivery_accepted_by) AS inspected_by";
+
+    /**
+     * The values of the list's two filter dropdowns: the requesting offices and suppliers of the POs that have an IAR,
+     * { offices: [{value: rc_id, label: rc_name}], suppliers: [{value: vendor_id, label: vendor_name}] }.
+     */
+    public function filterOptions(): array
+    {
+        try {
+            $from = "FROM {$this->h} i
+                     JOIN fims.budget_allocation f ON UPPER(COALESCE(f.allocation_type, '')) = 'RFA' AND f.deleted_at IS NULL AND f.po_number = i.po_number";
+            $offices = App\ExecuteRows(
+                "SELECT DISTINCT f.requesting_rc_id AS value, COALESCE(rc.rc_name, f.requesting_rc_id) AS label
+                 {$from} LEFT JOIN fims.responsibility_code rc ON rc.rc_id = f.requesting_rc_id
+                 WHERE COALESCE(f.requesting_rc_id, '') <> '' ORDER BY label",
+                'DB'
+            ) ?: [];
+            $suppliers = App\ExecuteRows(
+                "SELECT DISTINCT x.vendor_id::text AS value, x.vendor_name AS label FROM (
+                     SELECT COALESCE(f.vendor_id, pom.vendor_id) AS vendor_id, COALESCE(v.vendor_name, pom.vendor_name) AS vendor_name
+                     {$from}
+                     LEFT JOIN fims.vendors v ON v.vendor_id = f.vendor_id
+                     LEFT JOIN LATERAL (SELECT p.vendor_id, p.vendor_name FROM fims.purchase_orders p
+                                         WHERE p.po_number = f.po_number AND p.status <> 'CANCELLED' ORDER BY p.po_id DESC LIMIT 1) pom ON TRUE
+                 ) x WHERE x.vendor_id IS NOT NULL AND COALESCE(x.vendor_name, '') <> '' ORDER BY label",
+                'DB'
+            ) ?: [];
+
+            return ['success' => true, 'data' => ['offices' => $offices, 'suppliers' => $suppliers]];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
 
     /** One entry per PO number: { po_number, iar_number, …, receipts: [ … ] } (paginated). */
-    public function fetchAlls(int $page = 1, int $limit = 10, string $search = ''): array
+    public function fetchAlls(int $page = 1, int $limit = 10, string $search = '', string $rcId = '', string $vendorId = '', string $dateFrom = '', string $dateTo = ''): array
     {
         try {
             $where = '1=1';
@@ -601,6 +717,31 @@ class PoDrService
                 $s     = $this->q('%' . $search . '%');
                 $where = "(i.po_number ILIKE {$s} OR i.iar_number ILIKE {$s} OR i.si_number ILIKE {$s} OR i.line_transaction::text ILIKE {$s})";
             }
+            // Filters: the PO's requesting office and supplier (both come from the PO's RFA, as in the list's own columns)
+            $rcId     = trim($rcId);
+            $vendorId = trim($vendorId);
+            // Date From / Date To: the PO Date column of the list (the PO's own date, else the RFA's creation date — see poSource())
+            $dateFrom = $this->validDate(trim($dateFrom)) ? trim($dateFrom) : '';
+            $dateTo   = $this->validDate(trim($dateTo)) ? trim($dateTo) : '';
+            if ($rcId !== '' || $vendorId !== '' || $dateFrom !== '' || $dateTo !== '') {
+                $rfa = "UPPER(COALESCE(f.allocation_type, '')) = 'RFA' AND f.deleted_at IS NULL AND f.po_number = i.po_number";
+                if ($dateFrom !== '' || $dateTo !== '') {
+                    $poDate = "COALESCE((SELECT p.po_date FROM fims.purchase_orders p WHERE p.po_number = f.po_number AND p.status <> 'CANCELLED' ORDER BY p.po_id DESC LIMIT 1), f.created_at)::date";
+                    if ($dateFrom !== '') {
+                        $rfa .= " AND {$poDate} >= " . $this->q($dateFrom) . '::date';
+                    }
+                    if ($dateTo !== '') {
+                        $rfa .= " AND {$poDate} <= " . $this->q($dateTo) . '::date';
+                    }
+                }
+                if ($rcId !== '') {
+                    $rfa .= ' AND f.requesting_rc_id = ' . $this->q($rcId);
+                }
+                if ($vendorId !== '') {
+                    $rfa .= " AND COALESCE(f.vendor_id::text, (SELECT p.vendor_id::text FROM fims.purchase_orders p WHERE p.po_number = f.po_number AND p.status <> 'CANCELLED' ORDER BY p.po_id DESC LIMIT 1)) = " . $this->q($vendorId);
+                }
+                $where .= " AND EXISTS (SELECT 1 FROM fims.budget_allocation f WHERE {$rfa})";
+            }
 
             $limit  = max(1, $limit);
             $page   = max(1, $page);
@@ -608,7 +749,7 @@ class PoDrService
             $total  = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->h} i WHERE {$where}", 'DB');
 
             $rows = App\ExecuteRows(
-                'SELECT ' . self::COLS . " FROM {$this->h} i WHERE {$where} ORDER BY i.iar_id DESC LIMIT {$limit} OFFSET {$offset}",
+                'SELECT ' . self::COLS . " FROM {$this->h} i WHERE {$where} ORDER BY i.delivery_accepted ASC, i.iar_id DESC LIMIT {$limit} OFFSET {$offset}",   // not yet accepted on top, accepted deliveries last (newest first within each)
                 'DB'
             ) ?: [];
 
@@ -809,6 +950,84 @@ class PoDrService
         return $r ? (string) ($r[0]['dv_no'] ?: 'DV') : null;
     }
 
+    /**
+     * Actions -> Delivery Acceptance: marks the PO's delivery as accepted (delivery_accepted = TRUE, with when / who). One-way; no more
+     * delivery receipts can be added afterwards. Other modules can key off the flag.
+     */
+    public function acceptDelivery(string $poNumber, ?int $userId = null, string $subjectTo = '', string $notes = ''): array
+    {
+        try {
+            $po        = trim($poNumber);
+            $subjectTo = trim($subjectTo);
+            $notes     = trim($notes);
+            if ($subjectTo === '') {
+                return ['success' => false, 'message' => 'Subject to ICS/PAR is required.'];
+            }
+            if (mb_strlen($subjectTo) > 100) {
+                return ['success' => false, 'message' => 'Subject to ICS/PAR must be 100 characters or fewer.'];
+            }
+            if (mb_strlen($notes) > 2000) {
+                return ['success' => false, 'message' => 'Inspection notes must be 2,000 characters or fewer.'];
+            }
+            $cur = App\ExecuteRows("SELECT delivery_accepted, line_transaction FROM {$this->h} WHERE po_number = " . $this->q($po), 'DB');
+            if (!$cur) {
+                return ['success' => false, 'message' => "PO '{$po}' has no IAR yet.", 'httpCode' => 404];
+            }
+            if (in_array($cur[0]['delivery_accepted'], [true, 't', 'true', 1, '1'], true)) {
+                return ['success' => false, 'message' => "The delivery of PO '{$po}' was already accepted.", 'httpCode' => 409];
+            }
+            // every delivery receipt's pro-forma JEV must have been submitted first
+            $pending = [];
+            foreach ($this->drsFrom($cur[0]['line_transaction']) as $d) {
+                if (empty($d['jev_id'])) {
+                    $pending[] = (string) ($d['dr_number'] ?? '');
+                }
+            }
+            if ($pending) {
+                return ['success' => false, 'message' => 'Submit the pro-forma JEV of every delivery receipt first. Not yet submitted: ' . implode(', ', $pending) . '.'];
+            }
+            $by = $userId ? (int) $userId : 'NULL';
+            App\Execute("UPDATE {$this->h} SET delivery_accepted = TRUE, delivery_accepted_at = CURRENT_TIMESTAMP, delivery_accepted_by = {$by}, "
+                . 'subject_to = ' . $this->q($subjectTo) . ', inspection_notes = ' . $this->sqlOrNull($notes === '' ? null : $notes)
+                . " WHERE po_number = " . $this->q($po), 'DB');
+
+            $this->notifyGsd($po, $userId, $subjectTo, $notes);
+
+            return ['success' => true, 'message' => "Delivery of PO '{$po}' accepted."];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /** The Responsibility Center of the General Services Department (fims.responsibility_code): notified of every delivery acceptance. */
+    private const GSD_RC = '010';
+
+    /**
+     * Tell every active GSD user (uac.users.rc_id = GSD_RC) that a delivery was accepted. Never throws and never blocks the acceptance —
+     * the acceptance is already saved. The sender is left out of the recipients; event_key makes a repeat harmless.
+     */
+    private function notifyGsd(string $po, ?int $userId, string $subjectTo, string $notes): void
+    {
+        try {
+            $r    = App\ExecuteRows("SELECT iar_number FROM {$this->h} WHERE po_number = " . $this->q($po), 'DB');
+            $iar  = $r ? (string) $r[0]['iar_number'] : '';
+            $body = "Delivery Acceptance for PO {$po}" . ($iar !== '' ? " (IAR {$iar})" : '') . ". Subject to: {$subjectTo}." . ($notes !== '' ? " Notes: {$notes}" : '')
+                . ' Open it to prepare the Disbursement Voucher.';
+            try {   // the link goes to the DV (Voucher page), which opens the new-DV modal with this PO (and its vendor) filled in — not to the IAR module
+                $link = '/' . ltrim((string) App\GetUrl('Voucher'), '/');
+            } catch (\Throwable $e) {
+                $link = '/Voucher';
+            }
+            $link .= '?po=' . rawurlencode($po);
+            NotificationService::toRc(self::GSD_RC, "Delivery Acceptance: PO {$po}", $body, $link, [
+                'sender_id' => $userId && $userId > 0 ? $userId : null,
+                'event_key' => "delivery_accepted:{$po}",
+            ]);
+        } catch (\Throwable $e) {
+            App\LogError("PoDrService: could not notify GSD of the acceptance of PO {$po} — " . $e->getMessage());
+        }
+    }
+
     public function create(array $body, ?int $userId = null): array
     {
         try {
@@ -829,7 +1048,12 @@ class PoDrService
 
             App\Execute('BEGIN', 'DB');
             try {
-                $cur = App\ExecuteRows("SELECT iar_number, line_transaction FROM {$this->h} WHERE po_number = " . $this->q($po) . ' FOR UPDATE', 'DB');
+                $cur = App\ExecuteRows("SELECT iar_number, line_transaction, delivery_accepted FROM {$this->h} WHERE po_number = " . $this->q($po) . ' FOR UPDATE', 'DB');
+                if ($cur && in_array($cur[0]['delivery_accepted'], [true, 't', 'true', 1, '1'], true)) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return ['success' => false, 'message' => "The delivery of PO '{$po}' was already accepted, so no more delivery receipts can be added."];
+                }
                 if ($cur && $cur[0]['iar_number'] !== $iar) {
                     App\Execute('ROLLBACK', 'DB');
 
@@ -886,6 +1110,9 @@ class PoDrService
             $check = $this->fetchByPo($oldPo);
             if (!$check['success']) {
                 return $check;
+            }
+            if (!empty($check['data']['delivery_accepted'])) {   // Delivery Acceptance locks the record: no more deliveries and no edits
+                return ['success' => false, 'message' => "The delivery of PO '{$oldPo}' was already accepted, so the record can no longer be edited."];
             }
 
             // the PO of an IAR cannot be changed
@@ -1001,6 +1228,9 @@ class PoDrService
             $check = $this->fetchByPo($poNumber);
             if (!$check['success']) {
                 return $check;
+            }
+            if (!empty($check['data']['delivery_accepted'])) {
+                return ['success' => false, 'message' => "The delivery of PO '{$poNumber}' was already accepted, so the record can no longer be deleted."];
             }
             App\Execute("DELETE FROM {$this->h} WHERE po_number = " . $this->q($poNumber), 'DB');
 

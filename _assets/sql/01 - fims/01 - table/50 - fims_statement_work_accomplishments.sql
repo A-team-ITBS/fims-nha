@@ -51,7 +51,10 @@ CREATE TABLE IF NOT EXISTS fims.statement_work_accomplishments (
     date_started             DATE,
     completion_date_revised  DATE,
     contract_duration        VARCHAR(100),                      -- e.g. "180 calendar days"
-    line_transaction         JSONB         NOT NULL DEFAULT '[]'::jsonb,   -- [ { items[], lines[] (account entries), jev_id, jev_no } ]
+    total_land_area          NUMERIC(18,2),                     -- "Area in SQM / Units", typed by the user (optional)
+    tct_number               VARCHAR(100),                      -- TCT (Transfer Certificate of Title) number, typed by the user (optional)
+    category                 VARCHAR(255),                      -- "account code - title" of the record's one CIP / WIP account entry; set when the pro-forma JEV is submitted
+    line_transaction       JSONB         NOT NULL DEFAULT '[]'::jsonb,   -- [ { items[], lines[] (account entries), jev_id, jev_no } ]
     created_by               INTEGER,
     created_at               TIMESTAMPTZ   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by               INTEGER,
@@ -68,3 +71,22 @@ COMMENT ON COLUMN fims.statement_work_accomplishments.line_transaction IS 'One e
 
 -- A database that has the table from an earlier version of this file gets the column added here (a fresh one already has it).
 ALTER TABLE fims.statement_work_accomplishments ADD COLUMN IF NOT EXISTS contract VARCHAR(255);
+ALTER TABLE fims.statement_work_accomplishments ADD COLUMN IF NOT EXISTS total_land_area NUMERIC(18,2);
+ALTER TABLE fims.statement_work_accomplishments ADD COLUMN IF NOT EXISTS tct_number VARCHAR(100);
+COMMENT ON COLUMN fims.statement_work_accomplishments.total_land_area IS 'Area in SQM / Units: typed by the user (optional)';
+COMMENT ON COLUMN fims.statement_work_accomplishments.tct_number IS 'TCT number: typed by the user (optional)';
+
+-- Category: the record's one CIP / WIP account entry as "account code - title" (e.g. "1-04-03-020-01 - Sites and Services"), set by the app
+-- when the pro-forma JEV is submitted. Records whose JEV was already submitted get it here.
+ALTER TABLE fims.statement_work_accomplishments ADD COLUMN IF NOT EXISTS category VARCHAR(255);
+COMMENT ON COLUMN fims.statement_work_accomplishments.category IS 'Category: "account code - title" of the CIP / WIP account entry, set when the pro-forma JEV is submitted';
+UPDATE fims.statement_work_accomplishments s
+   SET category = x.account_title
+  FROM (SELECT t.swa_id, (ln ->> 'account_code') || ' - ' || COALESCE(ln ->> 'account_title', '') AS account_title,
+               row_number() OVER (PARTITION BY t.swa_id ORDER BY o) AS rn
+          FROM fims.statement_work_accomplishments t,
+               LATERAL jsonb_array_elements(COALESCE(t.line_transaction -> 0 -> 'lines', '[]'::jsonb)) WITH ORDINALITY AS e(ln, o)
+         WHERE COALESCE(t.line_transaction -> 0 ->> 'jev_id', '') <> ''
+           AND ln ->> 'account_code' IN ('1-06-99-010', '1-06-99-020', '1-06-99-030', '1-06-99-020-01', '1-06-99-020-02', '1-06-99-020-03', '1-06-99-020-04',
+                                         '1-04-03-020', '1-04-03-020-01', '1-04-03-020-02', '1-04-03-020-03', '1-04-03-020-04', '1-04-03-020-05')) x
+ WHERE x.swa_id = s.swa_id AND x.rn = 1 AND s.category IS DISTINCT FROM x.account_title;

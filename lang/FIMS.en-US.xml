@@ -1,4 +1,4 @@
-<ew-language date="2026/11/24" id="en-US" author="e.World Technology Limited">
+<ew-language date="2026/11/26" id="en-US" author="e.World Technology Limited">
   <project>
     <phrase id="bodytitle" value="NHA - FIMS" />
     <phrase id="footertext" value="&amp;copy;2026 ITBS Corporation. All rights reserved." />
@@ -65,14 +65,14 @@
     <menu id="766">
       <phrase id="menutext" value="Work-In-Process" />
     </menu>
-    <menu id="867">
-      <phrase id="menutext" value="Construction In Progress" />
+    <menu id="870">
+      <phrase id="menutext" value="Merchandise Inventory" />
     </menu>
     <menu id="868">
       <phrase id="menutext" value="Property and equipment for Distribution" />
     </menu>
-    <menu id="870">
-      <phrase id="menutext" value="Merchandise Inventory" />
+    <menu id="867">
+      <phrase id="menutext" value="Construction In Progress" />
     </menu>
     <menu id="869">
       <phrase id="menutext" value="Fixed Assets" />
@@ -108,10 +108,13 @@
       <phrase id="menutext" value="Check Registry" />
     </menu>
     <menu id="398">
-      <phrase id="menutext" value="Fund Transfer Letter of Advice" />
+      <phrase id="menutext" value="FTLA Memo Request" />
     </menu>
     <menu id="561">
       <phrase id="menutext" value="Accountable Forms Registry" />
+    </menu>
+    <menu id="972">
+      <phrase id="menutext" value="Status of Fund" />
     </menu>
     <menu id="865">
       <phrase id="menutext" value="Payroll" />
@@ -149,11 +152,14 @@
     <menu id="871">
       <phrase id="menutext" value="Budget Utilization Report" />
     </menu>
+    <menu id="973">
+      <phrase id="menutext" value="SOA Generator (For Testing)" />
+    </menu>
     <menu id="394">
       <phrase id="menutext" value="Ledgers" />
     </menu>
     <menu id="393">
-      <phrase id="menutext" value="General Ledger" />
+      <phrase id="menutext" value="General / Subsidiary Ledger" />
     </menu>
     <menu id="395">
       <phrase id="menutext" value="Subsidiary Ledger" />
@@ -202,6 +208,12 @@
     </menu>
     <menu id="769">
       <phrase id="menutext" value="Closing Balance" />
+    </menu>
+    <menu id="974">
+      <phrase id="menutext" value="Administration Fees" />
+    </menu>
+    <menu id="975">
+      <phrase id="menutext" value="Administration Fee Rate" />
     </menu>
     <menu id="330">
       <phrase id="menutext" value="Fund Sourcing" />
@@ -1873,6 +1885,18 @@
     </table>
     <table id="bur_page">
       <phrase id="tblcaption" value="Budget Utilization Report" />
+    </table>
+    <table id="status_of_fund_page">
+      <phrase id="tblcaption" value="Status of Fund" />
+    </table>
+    <table id="soa_generator_page">
+      <phrase id="tblcaption" value="SOA Generator" />
+    </table>
+    <table id="admin_fee_page">
+      <phrase id="tblcaption" value="Administration Fees" />
+    </table>
+    <table id="admin_fee_rates_page">
+      <phrase id="tblcaption" value="Administration Fee Rate" />
     </table>
   </project>
 </ew-language>

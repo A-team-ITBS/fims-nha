@@ -83,6 +83,8 @@ class DisbursementVoucherService
     private string $tableSettingsStatus  = 'fims.settings_status';
     private string $tableBudgetCategory  = 'fims.budget_category';
     private string $tableRfaProjects     = 'fims.budget_allocation_project';
+    private string $tableFundTracking    = 'fims.fund_tracking';
+    private string $tableBankAccounts    = 'fims.bank_accounts';
 
     // Classification tag only (reporting/filtering) — never changes which fields the voucher form
     // shows. NOT a manual/pickable field: it is derived server-side from the voucher's own
@@ -282,12 +284,21 @@ class DisbursementVoucherService
                     continue;
                 }
                 $rfa = App\ExecuteRow(
-                    "SELECT allocation_id, allocation_number, requesting_rc_id, dv_id
-                     FROM {$this->tableRfa} WHERE allocation_id = " . (int) $rfaId . " AND allocation_type = 'RFA'",
+                    "SELECT a.allocation_id, a.allocation_number, a.request_referrence_no, a.requesting_rc_id, a.dv_id, a.fiscal_year,
+                            st.name AS status_name
+                     FROM {$this->tableRfa} a
+                     LEFT JOIN {$this->tableSettingsStatus} st ON st.id = a.status_id
+                     WHERE a.allocation_id = " . (int) $rfaId . " AND a.allocation_type = 'RFA'",
                     'DB'
                 );
                 if (!$rfa) {
                     $errors[] = "RFA #{$rfaId} does not exist.";
+                    continue;
+                }
+                // Only an Approved RFA carries an allotment a DV can draw from.
+                if (($rfa['status_name'] ?? '') !== 'Approved') {
+                    $label = $rfa['allocation_number'] ?: ($rfa['request_referrence_no'] ?: "#{$rfaId}");
+                    $errors[] = "RFA {$label} is " . ($rfa['status_name'] ?: 'not approved') . ' — only an Approved RFA can fund a Disbursement Voucher.';
                     continue;
                 }
                 $rfas[] = $rfa;
@@ -295,6 +306,30 @@ class DisbursementVoucherService
         }
         $fields['requesting_department_id']  = null; // fims.budget_allocation now keys its requesting office by requesting_rc_id (a Responsibility Center), which doesn't fit this INTEGER column — see "14 - budget_allocation_requesting_department_id_to_requesting_rc_id.sql"
         $fields['_rfaRows'] = $rfas; // internal only — never persisted as a DV column, see linkRfas()
+
+        // SARO — soft reference into fims.fund_tracking (one SARO per DV, unlike the RFA list above):
+        // the link lives entirely on the SARO SIDE (fund_tracking.dv_id — see "03 - alter_table/61 -
+        // fund_tracking_add_dv_bank_account.sql") — this table carries no SARO column of its own. The
+        // actual linking (fund_tracking.dv_id set/cleared) happens in create()/update() after this
+        // voucher's own row is written — see linkSaro(). Optional: a DV need not cite a SARO.
+        $saroIdRaw = trim((string) ($body['saro_id'] ?? ''));
+        $saroRow = null;
+        if ($saroIdRaw !== '') {
+            if (!ctype_digit($saroIdRaw)) {
+                $errors[] = 'saro_id must be numeric.';
+            } else {
+                $saroRow = App\ExecuteRow(
+                    "SELECT ft.id, ft.saro_id, ft.dv_id, ft.bank_account_id
+                     FROM {$this->tableFundTracking} ft
+                     WHERE ft.id = " . (int) $saroIdRaw . ' AND ft.deleted_at IS NULL',
+                    'DB'
+                );
+                if (!$saroRow) {
+                    $errors[] = "SARO #{$saroIdRaw} does not exist.";
+                }
+            }
+        }
+        $fields['_saroRow'] = $saroRow; // internal only — never persisted as a DV column, see linkSaro()
 
         // Payroll DV (optional): the imported payroll month this voucher pays (Payroll Management —
         // PayrollManagementService). Validated / linked in create()/update() (payroll_records.disbursement_voucher_id).
@@ -390,6 +425,10 @@ class DisbursementVoucherService
 
         $fields['po_number'] = trim((string) ($body['po_number'] ?? ''));
         $fields['po_amount'] = is_numeric($body['po_amount'] ?? null) ? (float) $body['po_amount'] : null;
+        // No IAR, no DV: a PO must have been inspected and accepted before a voucher can be prepared against it.
+        if ($fields['po_number'] !== '' && $this->iarOfPo($fields['po_number']) === null) {
+            $errors[] = "PO '{$fields['po_number']}' has no IAR (Inspection and Acceptance Report) yet. Record the IAR for this PO before preparing a disbursement voucher.";
+        }
 
         // ATC Code and Accounting Entries (both optional) — normally Accounting's job during
         // FOR_ACCOUNTING via saveJournalEntry(), but Originating can pre-fill either here too; full
@@ -641,21 +680,23 @@ class DisbursementVoucherService
         if (!$rfaId) {
             return 0.0;
         }
-        $linkedDvId = (int) (App\ExecuteScalar("SELECT dv_id FROM {$this->tableRfa} WHERE allocation_id = {$rfaId}", 'DB') ?? 0);
-        if (!$linkedDvId || $linkedDvId === $excludeDvId) {
-            return 0.0;
-        }
-        $row = App\ExecuteRow(
-            "SELECT dv.net_amount, st.name AS status FROM {$this->table} dv
+        // Every ACTIVE DV (not CANCELLED/REJECTED) linked to this RFA draws from it — an RFA can back several DVs
+        // while it still has a balance (disbursement_vouchers.rfa_allocation_ids). What a DV draws is its GROSS amount (the deductions are
+        // part of the expense, paid out later through the remittance DVs) — plus, for a payroll DV, the employer
+        // (government) share its month carries, which the payroll's RFA also funds (the remittance DVs that pay it
+        // carry no RFA of their own).
+        $exclude = $excludeDvId !== null ? " AND dv.dv_id <> {$excludeDvId}" : '';
+        $total   = App\ExecuteScalar(
+            "SELECT COALESCE(SUM(dv.gross_amount
+                        + (SELECT COALESCE(SUM(r.total_employer_share), 0) FROM fims.payroll_records r WHERE r.disbursement_voucher_id = dv.dv_id)), 0)
+             FROM {$this->table} dv
              LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
-             WHERE dv.dv_id = {$linkedDvId}",
+             WHERE {$rfaId} = ANY(dv.rfa_allocation_ids){$exclude}
+               AND COALESCE(st.name, '') NOT IN ('CANCELLED', 'REJECTED')",
             'DB'
         );
-        if (!$row || in_array($row['status'], ['CANCELLED', 'REJECTED'], true)) {
-            return 0.0;
-        }
 
-        return (float) $row['net_amount'];
+        return (float) ($total ?? 0);
     }
 
     /** Same as priorPaymentsForRfa(), summed across every RFA a DV cites. */
@@ -682,27 +723,66 @@ class DisbursementVoucherService
     private function linkRfas(int $dvId, array $rfaRows): ?string
     {
         $newIds = array_map(fn ($r) => (int) $r['allocation_id'], $rfaRows);
+        $keep   = $newIds ? implode(',', $newIds) : '0';
 
-        foreach ($rfaRows as $rfa) {
-            $otherDvId = $rfa['dv_id'] !== null ? (int) $rfa['dv_id'] : null;
-            if ($otherDvId === null || $otherDvId === $dvId) {
-                continue;
-            }
-            $other = App\ExecuteRow(
-                "SELECT dv.dv_no, st.name AS status FROM {$this->table} dv
-                 LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
-                 WHERE dv.dv_id = {$otherDvId}",
+        // The DV carries the RFAs it draws from (rfa_allocation_ids). An RFA may be cited by other DVs too — it
+        // stays usable while it has a balance; the amount ceiling is enforced by checkAmountAgainstRfas().
+        $before = App\ExecuteRows("SELECT unnest(rfa_allocation_ids) AS allocation_id FROM {$this->table} WHERE dv_id = {$dvId}", 'DB') ?: [];
+        App\Execute("UPDATE {$this->table} SET rfa_allocation_ids = " . ($newIds ? "ARRAY[{$keep}]" : 'ARRAY[]') . "::integer[] WHERE dv_id = {$dvId}", 'DB');
+
+        // budget_allocation.dv_id stays as "the latest DV linked to this RFA" for every other module that reads it
+        // (COB, BUR, FTLA, check processing ...). Re-derive it for every RFA this save touched.
+        $ids = array_unique(array_merge($newIds, array_map(fn ($r) => (int) $r['allocation_id'], $before)));
+        if ($ids) {
+            $idList = implode(',', $ids);
+            App\Execute(
+                "UPDATE {$this->tableRfa} a SET dv_id = (
+                    SELECT dv.dv_id FROM {$this->table} dv
+                    LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
+                    WHERE a.allocation_id = ANY(dv.rfa_allocation_ids) AND COALESCE(st.name, '') NOT IN ('CANCELLED', 'REJECTED')
+                    ORDER BY dv.dv_id DESC LIMIT 1)
+                 WHERE a.allocation_id IN ({$idList})",
                 'DB'
             );
-            if ($other && !in_array($other['status'], ['CANCELLED', 'REJECTED'], true)) {
-                return "RFA '{$rfa['allocation_number']}' is already linked to Disbursement Voucher {$other['dv_no']} and cannot be selected here.";
+        }
+
+        return null;
+    }
+
+    /**
+     * Points $saroRow (prepare()'s `_saroRow`, or null — "no SARO selected") at $dvId —
+     * fims.fund_tracking.dv_id — and clears dv_id back to NULL on whatever OTHER fund_tracking row
+     * used to point at $dvId (a SARO that was unlinked/swapped out in this save). One DV cites at
+     * most one SARO at a time (unlike RFAs, which a DV can cite several of — see linkRfas()), so
+     * this is the single-value equivalent. Refuses (returns the error message) to steal a SARO
+     * that's currently linked to a DIFFERENT, still-active (non-CANCELLED/REJECTED) DV — same rule
+     * linkRfas() enforces for RFAs. Called from inside create()/update()'s own transaction, after
+     * this voucher's own row has been written (so $dvId is known) — a non-null return should
+     * trigger a ROLLBACK, same as a linkRfas() failure.
+     */
+    private function linkSaro(int $dvId, ?array $saroRow): ?string
+    {
+        $newId = $saroRow ? (int) $saroRow['id'] : null;
+
+        if ($saroRow) {
+            $otherDvId = isset($saroRow['dv_id']) ? (int) $saroRow['dv_id'] : null;
+            if ($otherDvId !== null && $otherDvId !== $dvId) {
+                $other = App\ExecuteRow(
+                    "SELECT dv.dv_no, st.name AS status FROM {$this->table} dv
+                     LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
+                     WHERE dv.dv_id = {$otherDvId}",
+                    'DB'
+                );
+                if ($other && !in_array($other['status'], ['CANCELLED', 'REJECTED'], true)) {
+                    return "SARO '{$saroRow['saro_id']}' is already linked to Disbursement Voucher {$other['dv_no']} and cannot be selected here.";
+                }
             }
         }
 
-        $keep = $newIds ? implode(',', $newIds) : '0';
-        App\Execute("UPDATE {$this->tableRfa} SET dv_id = NULL WHERE dv_id = {$dvId} AND allocation_id NOT IN ({$keep})", 'DB');
-        if ($newIds) {
-            App\Execute("UPDATE {$this->tableRfa} SET dv_id = {$dvId} WHERE allocation_id IN ({$keep})", 'DB');
+        $keep = $newId ?: 0;
+        App\Execute("UPDATE {$this->tableFundTracking} SET dv_id = NULL WHERE dv_id = {$dvId} AND id <> {$keep}", 'DB');
+        if ($newId) {
+            App\Execute("UPDATE {$this->tableFundTracking} SET dv_id = {$dvId} WHERE id = {$newId}", 'DB');
         }
 
         return null;
@@ -853,27 +933,19 @@ class DisbursementVoucherService
                   WHERE bap.allocation_id = a.allocation_id AND bap.deleted_at IS NULL) AS line_transaction";
     }
 
-    private function rfaAvailableSql(?int $excludeDvId): string
-    {
-        $exclude = $excludeDvId !== null ? " OR a.dv_id = {$excludeDvId}" : '';
-
-        return "(a.dv_id IS NULL{$exclude} OR a.dv_id IN (
-            SELECT dv.dv_id FROM {$this->table} dv
-            LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
-            WHERE st.name IN ('CANCELLED', 'REJECTED')
-        ))";
-    }
-
     /**
-     * RFA picker options. One RFA backs only one DV at a time (budget_allocation.dv_id — see
-     * linkRfas()), so an RFA already linked to a DIFFERENT, still-active DV is left out entirely;
-     * $excludeDvId is the DV currently being edited, so its own already-linked RFAs keep showing
-     * (as "already yours", not "taken by someone else").
+     * RFA picker options. An Approved RFA is offered for as long as it has a remaining balance — several DVs may
+     * draw from one RFA (disbursement_vouchers.rfa_allocation_ids); $excludeDvId is the DV currently being edited, so its own prior draw is
+     * left out of paid_amount and its RFAs keep showing.
      */
     public function fetchRfaOptions(array $filters = [], ?int $excludeDvId = null): array
     {
         try {
-            $where = ["a.allocation_type = 'RFA'", $this->rfaAvailableSql($excludeDvId)];
+            // Only Approved RFAs can fund a DV (a Draft / For Review / Returned one has no allotment yet) — except an
+            // RFA the DV being edited already cites, so its chip still shows.
+            $approved = "a.status_id = (SELECT id FROM {$this->tableSettingsStatus} WHERE status_for = 'budget_allocation' AND name = 'Approved' LIMIT 1)";
+            $where = ["a.allocation_type = 'RFA'",
+                $excludeDvId !== null ? "({$approved} OR a.allocation_id IN (SELECT unnest(rfa_allocation_ids) FROM {$this->table} WHERE dv_id = {$excludeDvId}))" : $approved];
             if (!empty($filters['fiscal_yr'])) {
                 $where[] = 'a.fiscal_year = ' . (int) $filters['fiscal_yr'];
             }
@@ -900,11 +972,69 @@ class DisbursementVoucherService
 
             $rows = array_map(fn (array $r) => $this->withRfaBudget($r, $excludeDvId), $rows);
 
+            // An RFA is offered for as long as it has a balance (a budget ceiling of 0 = no cap) — plus the ones the DV
+            // being edited already draws from, so its own chips still show.
+            $own = $excludeDvId !== null
+                ? array_map('intval', array_column(App\ExecuteRows("SELECT unnest(rfa_allocation_ids) AS allocation_id FROM {$this->table} WHERE dv_id = {$excludeDvId}", 'DB') ?: [], 'allocation_id'))
+                : [];
+            $rows = array_values(array_filter($rows, fn (array $r) => $r['budget_amount'] <= 0 || $r['remaining_balance'] > 0.005 || in_array((int) $r['allocation_id'], $own, true)));
+
             return ['success' => true, 'data' => $rows];
         } catch (\Exception $e) {
             App\LogError('DisbursementVoucherService::fetchRfaOptions ' . $e->getMessage());
 
             return ['success' => false, 'message' => 'Failed to load RFAs.'];
+        }
+    }
+
+    /**
+     * SARO picker options — fims.fund_tracking WHERE tracking_type_id resolves to 'SARO' (fims.
+     * fund_tracking_type.fund_tracking_code). One SARO backs only one DV at a time (fund_tracking.
+     * dv_id — see linkSaro()), so a SARO already linked to a DIFFERENT, still-active DV is left out
+     * entirely; $excludeDvId is the DV currently being edited, so its own already-linked SARO keeps
+     * showing (as "already yours", not "taken by someone else"). Also resolves the SARO's own
+     * bank account (bank_account_id -> fims.bank_accounts), so the picker can show it alongside the
+     * SARO reference number without a second round trip.
+     */
+    public function fetchSaroOptions(array $filters = [], ?int $excludeDvId = null): array
+    {
+        try {
+            $saroTypeId = (int) (App\ExecuteScalar(
+                "SELECT fund_tracking_type_id FROM fims.fund_tracking_type WHERE UPPER(fund_tracking_code) = 'SARO' AND deleted_at IS NULL LIMIT 1",
+                'DB'
+            ) ?: 0);
+            if (!$saroTypeId) {
+                return ['success' => true, 'data' => []]; // 'SARO' isn't configured as a tracking type — nothing to offer
+            }
+
+            $available = "(ft.dv_id IS NULL" . ($excludeDvId !== null ? " OR ft.dv_id = {$excludeDvId}" : '') . ' OR ft.dv_id IN ('
+                . "SELECT dv.dv_id FROM {$this->table} dv LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id WHERE st.name IN ('CANCELLED', 'REJECTED')))";
+
+            $where = ['ft.deleted_at IS NULL', "ft.tracking_type_id = {$saroTypeId}", $available];
+            if (!empty($filters['fiscal_yr'])) {
+                $where[] = 'ft.fiscal_year = ' . (int) $filters['fiscal_yr'];
+            }
+            if (!empty($filters['search'])) {
+                $kw = App\QuotedValue('%' . $filters['search'] . '%', App\DataType::STRING, 'DB');
+                $where[] = "ft.saro_id ILIKE {$kw}";
+            }
+            $whereSql = implode(' AND ', $where);
+
+            $rows = App\ExecuteRows(
+                "SELECT ft.id, ft.saro_id, ft.fiscal_year, ft.description, ft.amount, ft.unreleased, ft.dv_id,
+                        ft.bank_account_id, ba.account_name, ba.account_number, ba.bank_name
+                 FROM {$this->tableFundTracking} ft
+                 LEFT JOIN {$this->tableBankAccounts} ba ON ba.bank_account_id = ft.bank_account_id
+                 WHERE {$whereSql}
+                 ORDER BY ft.id DESC",
+                'DB'
+            ) ?: [];
+
+            return ['success' => true, 'data' => $rows];
+        } catch (\Exception $e) {
+            App\LogError('DisbursementVoucherService::fetchSaroOptions ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to load SAROs.'];
         }
     }
 
@@ -952,6 +1082,9 @@ class DisbursementVoucherService
      */
     private function checkAmountAgainstRfas(array $f, ?int $excludeDvId): array
     {
+        if ($f['_payrollPeriodId'] && $f['_rfaRows']) {
+            return $this->checkPayrollAgainstRfas($f, $excludeDvId);
+        }
         if ($f['_payrollPeriodId'] || $f['_remittanceId'] || $f['_dvRemit'] || !$f['_rfaRows']) {
             return [[], null];
         }
@@ -976,6 +1109,98 @@ class DisbursementVoucherService
         return [$errors, round($budget, 2)];
     }
 
+    /**
+     * The RFA rules for a PAYROLL DV (Payroll Management → Create DV), on top of "the RFA is Approved" (prepare()):
+     *   - the payroll month's fiscal year must be the RFA's fiscal year;
+     *   - every RFA must have a Personnel Services line (account 5-01-…) — a payroll is never MOOE / Capital Outlay;
+     *   - the RFAs' remaining balance must cover the payroll's GROSS plus its EMPLOYER (government) share: the
+     *     employer share is paid later by the remittance DVs, which carry no RFA of their own, so the payroll's
+     *     RFA is what funds it.
+     * Returns the RFAs' budget like checkAmountAgainstRfas() does, so budget/obligation come from the RFAs.
+     *
+     * @return array{0: array<int, string>, 1: ?float} [errors, budgetFromRfas]
+     */
+    private function checkPayrollAgainstRfas(array $f, ?int $excludeDvId): array
+    {
+        $periodId = (int) $f['_payrollPeriodId'];
+        $payroll  = App\ExecuteRow(
+            "SELECT p.fiscal_yr, p.payroll_month,
+                    COALESCE(SUM(r.gross_amount), 0) AS gross, COALESCE(SUM(r.total_employer_share), 0) AS employer_share
+             FROM fims.payroll_periods p
+             LEFT JOIN fims.payroll_records r ON r.payroll_period_id = p.payroll_period_id
+             WHERE p.payroll_period_id = {$periodId}
+             GROUP BY p.fiscal_yr, p.payroll_month",
+            'DB'
+        );
+        if (!$payroll) {
+            return [[], null];   // validateDvLink() reports a missing month
+        }
+        $months = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        $label  = ($months[(int) $payroll['payroll_month']] ?? 'Month ' . $payroll['payroll_month']) . ' ' . $payroll['fiscal_yr'];
+
+        $errors    = [];
+        $budget    = 0.0;
+        $remaining = 0.0;
+        foreach ($f['_rfaRows'] as $row) {
+            $rfaLabel = $row['allocation_number'] ?: ('#' . $row['allocation_id']);
+            if ((int) ($row['fiscal_year'] ?? 0) !== (int) $payroll['fiscal_yr']) {
+                $errors[] = "RFA {$rfaLabel} is for FY {$row['fiscal_year']} — the {$label} payroll needs an FY {$payroll['fiscal_yr']} RFA.";
+            }
+            $detail = $this->fetchRfaDetail((int) $row['allocation_id'], $excludeDvId);
+            if (!$detail['success']) {
+                continue;
+            }
+            $hasPs = false;
+            foreach ($detail['data']['lines'] ?? [] as $line) {
+                if (str_starts_with((string) ($line['account_code'] ?? ''), '5-01-')) {
+                    $hasPs = true;
+                    break;
+                }
+            }
+            if (!$hasPs) {
+                $errors[] = "RFA {$rfaLabel} has no Personnel Services line (account 5-01-…) — a payroll can't be charged to it.";
+            }
+            $budget    += (float) $detail['data']['budget_amount'];
+            $remaining += (float) $detail['data']['remaining_balance'];
+        }
+
+        $gross    = round((float) $payroll['gross'], 2);
+        $employer = round((float) $payroll['employer_share'], 2);
+        $required = round($gross + $employer, 2);
+        if ($required - $remaining > 0.005) {
+            $errors[] = 'The ' . $label . ' payroll needs ' . number_format($required, 2) . ' (gross ' . number_format($gross, 2)
+                . ' + employer share ' . number_format($employer, 2) . ') but the selected RFA(s) have only '
+                . number_format($remaining, 2) . ' remaining.';
+        }
+
+        return [$errors, $budget > 0 ? round($budget, 2) : null];
+    }
+
+    /**
+     * A payroll DV's Amount and deductions are the imported month's, never what the form sent: they are replaced
+     * here from Payroll Management (dvData()) before the DV is validated and saved. Any other body is returned as is;
+     * so is a payroll body whose month can't be read (validateDvLink() then reports why).
+     */
+    private function withPayrollAmounts(array $body): array
+    {
+        $periodId = $body['payroll_period_id'] ?? null;
+        if ($periodId === null || $periodId === '' || !ctype_digit((string) $periodId)) {
+            return $body;
+        }
+        $data = (new PayrollManagementService())->dvData((int) $periodId);
+        if (!($data['success'] ?? false)) {
+            return $body;
+        }
+        $d = $data['data'];
+        $body['gross_amount'] = $d['gross_amount'];
+        $body['deductions']   = array_map(static fn (array $x) => [
+            'deduction_type_id' => $x['deduction_type_id'] ?? null,
+            'deduction_amount'  => $x['deduction_amount'] ?? 0,
+        ], is_array($d['deductions'] ?? null) ? $d['deductions'] : []);
+
+        return $body;
+    }
+
     // ── queries ──
 
     public function fetchAlls(?int $page = null, int $limit = 10, array $filters = []): array
@@ -984,6 +1209,9 @@ class DisbursementVoucherService
             $from = "{$this->table} dv LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id";
 
             $where = ['1=1'];
+            if (($visible = $this->visibilitySql()) !== null) {
+                $where[] = $visible; // Originating sees only its own office's vouchers — see visibilitySql()
+            }
             if (!empty($filters['status'])) {
                 $where[] = 'st.name = ' . $this->str(strtoupper($filters['status']));
             }
@@ -998,7 +1226,7 @@ class DisbursementVoucherService
                 // RFA no longer has a column on this table (see linkRfas()) — matched via the
                 // reverse link (budget_allocation.dv_id) instead.
                 $where[] = "(dv.dv_no ILIKE {$kw} OR dv.claimant_name ILIKE {$kw}
-                             OR EXISTS (SELECT 1 FROM {$this->tableRfa} a WHERE a.dv_id = dv.dv_id AND a.allocation_number ILIKE {$kw}))";
+                             OR EXISTS (SELECT 1 FROM {$this->tableRfa} a WHERE a.allocation_id = ANY(dv.rfa_allocation_ids) AND a.allocation_number ILIKE {$kw}))";
             }
             $whereSql = implode(' AND ', $where);
 
@@ -1052,6 +1280,43 @@ class DisbursementVoucherService
         }
     }
 
+    /**
+     * The IAR (Inspection and Acceptance Report, fims.inspection_acceptance_report — one row per PO) recorded for a PO number,
+     * or null when the PO has none yet. A DV may only be prepared against a PO that has been inspected and accepted.
+     */
+    private function iarOfPo(string $poNumber): ?array
+    {
+        $row = App\ExecuteRow(
+            'SELECT iar_number, si_number FROM fims.inspection_acceptance_report WHERE po_number = ' . $this->str($poNumber)
+            . " AND COALESCE(TRIM(iar_number), '') <> '' LIMIT 1",
+            'DB'
+        );
+
+        return $row ?: null;
+    }
+
+    /** GET /voucher/po-iar?po_number= — does this PO have an IAR? Drives the DV form's warning. */
+    public function checkPoIar(string $poNumber): array
+    {
+        try {
+            $poNumber = trim($poNumber);
+            if ($poNumber === '') {
+                return ['success' => true, 'data' => ['po_number' => '', 'has_iar' => true, 'iar_number' => null]];
+            }
+            $iar = $this->iarOfPo($poNumber);
+
+            return ['success' => true, 'data' => [
+                'po_number'  => $poNumber,
+                'has_iar'    => $iar !== null,
+                'iar_number' => $iar['iar_number'] ?? null,
+            ]];
+        } catch (\Exception $e) {
+            App\LogError('DisbursementVoucherService::checkPoIar ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to check the PO\'s IAR.'];
+        }
+    }
+
     public function fetchById(int|string $id): array
     {
         try {
@@ -1073,6 +1338,11 @@ class DisbursementVoucherService
                 'DB'
             );
             if (!$row) {
+                return ['success' => false, 'message' => "Disbursement Voucher #{$dvId} not found.", 'httpCode' => 404];
+            }
+            // Same rule as the list: an Originating user can't open another office's voucher by id (reported as "not found", not "forbidden").
+            if (($visible = $this->visibilitySql()) !== null
+                && (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->table} dv WHERE dv.dv_id = {$dvId} AND {$visible}", 'DB') === 0) {
                 return ['success' => false, 'message' => "Disbursement Voucher #{$dvId} not found.", 'httpCode' => 404];
             }
 
@@ -1102,11 +1372,25 @@ class DisbursementVoucherService
                      LEFT JOIN {$this->tableRc}             rc ON rc.rc_id = a.requesting_rc_id
                      LEFT JOIN {$this->tableVendor}         v  ON v.vendor_id = a.vendor_id
                      LEFT JOIN {$this->tableBudgetCategory} bc ON bc.budget_category_id = a.category_id
-                     WHERE a.allocation_type = 'RFA' AND a.dv_id = {$dvId}
+                     WHERE a.allocation_type = 'RFA' AND a.allocation_id IN (SELECT unnest(rfa_allocation_ids) FROM {$this->table} WHERE dv_id = {$dvId})
                      ORDER BY a.allocation_id",
                     'DB'
                 ) ?: []
             )));
+
+            // The SARO currently linked to this DV, if any — the link lives on the SARO side
+            // (fund_tracking.dv_id, see linkSaro()), same reverse-lookup idea as `rfas` above. What
+            // the form's single-select repopulates from, and what Check Preparation's auto-fill
+            // (CheckProcessingService::getSaroForDv()) reads too.
+            $row['saro'] = App\ExecuteRow(
+                "SELECT ft.id, ft.saro_id, ft.fiscal_year, ft.description, ft.amount, ft.unreleased,
+                        ft.bank_account_id, ba.account_name, ba.account_number, ba.bank_name
+                 FROM {$this->tableFundTracking} ft
+                 LEFT JOIN {$this->tableBankAccounts} ba ON ba.bank_account_id = ft.bank_account_id
+                 WHERE ft.dv_id = {$dvId} AND ft.deleted_at IS NULL
+                 LIMIT 1",
+                'DB'
+            ) ?: null;
 
             // Supporting Documents attached to this voucher, if any (same attachment convention as
             // fims.budget_allocation — see FileUploadServices::attachmentsFor()).
@@ -1317,14 +1601,15 @@ class DisbursementVoucherService
     /**
      * Adds `acted_by_me` to each JEV register row — true when the current user already took a step on
      * that JEV's review chain — so the register can hide the endorse/approve action from them.
-     * The same rule is enforced server-side in changeJevStatus().
+     * The same rule is enforced server-side in changeJevStatus(). Never true for a superadmin (user id -1 or user level -1),
+     * who bypasses it there — so the register keeps showing them the advance action.
      */
     private function flagJevsActedByCurrentUser(array $rows): array
     {
         $userId = (int) App\CurrentUserID();
         $ids    = array_values(array_unique(array_map(fn ($r) => (int) $r['jev_id'], $rows)));
         $acted  = [];
-        if ($userId > 0 && $ids) {
+        if ($userId > 0 && $ids && !GlobalService::getUserRcScope()['is_admin']) {
             $list = implode(',', array_map(fn ($id) => "'" . $id . "'", $ids));
             foreach (App\ExecuteRows(
                 "SELECT DISTINCT record_id FROM fims.status_change_log
@@ -1640,6 +1925,12 @@ class DisbursementVoucherService
             $existing = App\ExecuteRow("SELECT jev_id FROM {$this->tableJev} WHERE dv_id = {$dvId}", 'DB');
             if ($existing) {
                 $jevId = (int) $existing['jev_id'];
+                // The lines are replaced below (delete + re-insert). Lines already posted to the General Ledger are referenced by
+                // fims.general_ledger (jev_line_id FK), so that would fail with a bare database error — say so plainly instead.
+                $posted = (int) App\ExecuteScalar("SELECT COUNT(*) FROM fims.general_ledger WHERE jev_id = {$jevId}", 'DB');
+                if ($posted > 0) {
+                    return ['success' => false, 'message' => 'This voucher\'s Journal Entry Voucher is already posted to the General Ledger, so its entries can\'t be changed here. Reverse the posting first.'];
+                }
                 App\Execute(
                     "UPDATE {$this->tableJev} SET
                         book_id = " . $this->intOrNull($bookId) . ",
@@ -2125,8 +2416,9 @@ class DisbursementVoucherService
                 return ['success' => false, 'message' => "Cannot move a {$jev['status']} Journal Entry to {$new}."];
             }
             // Segregation of duties: each step needs a different person — whoever already submitted /
-            // endorsed this entry can't also take the next step on it.
-            if ($this->userAlreadyActedOnJev($jevId, $userId)) {
+            // endorsed this entry can't also take the next step on it. A superadmin bypasses it (same as the DV chain's
+            // authorizeTransition()), so one admin account can walk an entry through every step.
+            if (!GlobalService::getUserRcScope()['is_admin'] && $this->userAlreadyActedOnJev($jevId, $userId)) {
                 return ['success' => false, 'message' => 'You have already acted on this Journal Entry. The next step must be done by a different user.', 'httpCode' => 403];
             }
 
@@ -2210,6 +2502,7 @@ class DisbursementVoucherService
     public function create(array $body, int $userId): array
     {
         try {
+            $body = $this->withPayrollAmounts($body);   // a payroll DV's Amount / deductions are the import's
             [$errors, $f] = $this->prepare($body);
 
             $dvNo = trim((string) ($body['dv_no'] ?? ''));
@@ -2290,6 +2583,13 @@ class DisbursementVoucherService
                     return ['success' => false, 'message' => $rfaError];
                 }
 
+                $saroError = $this->linkSaro((int) $row['dv_id'], $f['_saroRow']);
+                if ($saroError !== null) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return ['success' => false, 'message' => $saroError];
+                }
+
                 // Optional ATC Code / Accounting Entries pre-fill — see persistJournalEntry()'s
                 // doc comment. A validation failure here rolls back the DV creation too.
                 if ($f['atc_lines'] || $f['lines']) {
@@ -2338,6 +2638,7 @@ class DisbursementVoucherService
                 return ['success' => false, 'message' => "Only DRAFT or REJECTED disbursement vouchers can be edited (current status: {$cur['status']})."];
             }
 
+            $body = $this->withPayrollAmounts($body);   // a payroll DV's Amount / deductions are the import's
             [$errors, $f] = $this->prepare($body);
             if ($f['_payrollPeriodId'] && ($payrollError = (new PayrollManagementService())->validateDvLink($f['_payrollPeriodId'], $dvId)) !== null) {
                 $errors[] = $payrollError;
@@ -2411,6 +2712,13 @@ class DisbursementVoucherService
                     return ['success' => false, 'message' => $rfaError];
                 }
 
+                $saroError = $this->linkSaro($dvId, $f['_saroRow']);
+                if ($saroError !== null) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return ['success' => false, 'message' => $saroError];
+                }
+
                 // Optional ATC Code / Accounting Entries pre-fill — see persistJournalEntry()'s
                 // doc comment. A validation failure here rolls back the whole update too.
                 if ($f['atc_lines'] || $f['lines']) {
@@ -2439,6 +2747,28 @@ class DisbursementVoucherService
 
             return ['success' => false, 'message' => 'Failed to update disbursement voucher.'];
         }
+    }
+
+    /**
+     * Row-level visibility for LISTING / READING vouchers: null = the user sees every voucher, otherwise a SQL predicate on the
+     * voucher aliased `dv` that keeps only what they may see.
+     *
+     * Superadmin and the offices that work the pipeline (STAGE_RC_LABEL: FMD, Accounting, Treasury — each holds vouchers created by
+     * other offices, so hiding those would stop them doing their review) see everything. Any other office is Originating: it sees only
+     * the vouchers created by a user of its own RC or of an RC under it (GlobalService::getRcIdsInScope(), so a regional office also
+     * sees its district offices'). A user with no RC is unrestricted, same convention as GlobalService::getUserRcScope().
+     */
+    private function visibilitySql(): ?string
+    {
+        $scope = GlobalService::getUserRcScope();
+        $rcId  = $scope['rc_id'] ?? null;
+        if ($scope['is_admin'] || $rcId === null || trim((string) $rcId) === '' || array_key_exists((string) $rcId, self::STAGE_RC_LABEL)) {
+            return null;
+        }
+        $rcIds = GlobalService::getRcIdsInScope((string) $rcId) ?: [(string) $rcId];
+        $in    = implode(', ', array_map(fn ($id) => $this->str($id), $rcIds));
+
+        return "dv.created_by IN (SELECT u.user_id FROM {$this->tableUsers} u WHERE u.rc_id IN ({$in}))";
     }
 
     /** The Responsibility Center (uac.users.rc_id) the current user's account belongs to, if any. */
@@ -2681,7 +3011,16 @@ class DisbursementVoucherService
             // Release any RFA still linked to this voucher (budget_allocation.dv_id) BEFORE deleting
             // it — otherwise dv_id would dangle, and rfaAvailableSql()'s "my cancelled/rejected DV
             // doesn't block the RFA" check can't match a dv_id whose row no longer exists at all.
-            App\Execute("UPDATE {$this->tableRfa} SET dv_id = NULL WHERE dv_id = {$dvId}", 'DB');
+            App\Execute("UPDATE {$this->table} SET rfa_allocation_ids = '{}' WHERE dv_id = {$dvId}", 'DB');
+            App\Execute(
+                "UPDATE {$this->tableRfa} a SET dv_id = (
+                    SELECT dv.dv_id FROM {$this->table} dv
+                    LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
+                    WHERE a.allocation_id = ANY(dv.rfa_allocation_ids) AND COALESCE(st.name, '') NOT IN ('CANCELLED', 'REJECTED')
+                    ORDER BY dv.dv_id DESC LIMIT 1)
+                 WHERE a.dv_id = {$dvId}",
+                'DB'
+            );
             (new PayrollManagementService())->releaseDv($dvId); // same for a payroll month this DV paid
             (new DeductionRemittanceService())->releaseDv($dvId); // and a payroll remittance it paid
             (new RemittanceListService())->releaseDv($dvId); // and the voucher deductions it remitted

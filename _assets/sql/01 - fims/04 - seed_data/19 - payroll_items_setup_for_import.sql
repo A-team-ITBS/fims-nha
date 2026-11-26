@@ -5,9 +5,10 @@
 --
 -- item_code below matches the import form's column header EXACTLY (including
 -- apostrophes and slashes) because the importer matches columns by that code.
--- account_code is left NULL on every row — per fims.payroll_items' own design
--- (01 - table/48), the GL account is assigned later by Accounting from the
--- Payroll setup page; the item is usable for import as soon as it exists here.
+-- account_code is not set here: 20 - chart_of_accounts_payroll_items_alignment.sql
+-- (run right after this file) adds the sub-ledger accounts and points every item
+-- at its account. Accounting can still change it from the Payroll Setup page.
+-- Re-running refreshes name / category / order / status (ON CONFLICT DO UPDATE).
 --
 -- category assignment is a first-pass best guess based on the item's name:
 --   EARNING         -> adds to gross pay (basic pay, allowances, bonuses)
@@ -137,7 +138,53 @@ VALUES
     ('O/P_ADDL_COMPENSATION',        'Overpayment — Additional Compensation',          'DEDUCTION', 1200, 'ACTIVE'),
     ('PFAI_LRI_PREMIUM',             'PFAI LRI Premium',                               'DEDUCTION', 1210, 'ACTIVE'),
     ('GSIS_SOCIAL_INS_CONS',         'GSIS Social Insurance Consolidated',             'DEDUCTION', 1220, 'ACTIVE')
-ON CONFLICT (item_code) DO NOTHING;
+ON CONFLICT (item_code) DO UPDATE SET
+    item_name  = EXCLUDED.item_name,
+    category   = EXCLUDED.category,
+    sort_order = EXCLUDED.sort_order,
+    status     = EXCLUDED.status,
+    updated_at = CURRENT_TIMESTAMP;
+
+-- ── Tax treatment for the year-end annualization (fims.payroll_items.tax_treatment — see 01 - table/48) ──
+-- Following the old ACCOUNTING annualization (PayrollService::taxComponents()): PERA exempt; rice / uniform de minimis;
+-- 13th month, mid-year / year-end bonus, cash gift, loyalty and the incentives under the ₱90,000 ceiling; GSIS,
+-- PhilHealth, Pag-IBIG (and their back premiums) and union dues as non-taxable contributions; everything else paid as
+-- taxable. Loans, payables, PFAI, credit-union items and employer shares are NONE (the column's default).
+-- Accounting can change any item on the Payroll Setup page.
+UPDATE fims.payroll_items pi
+SET tax_treatment = m.tax_treatment
+FROM (VALUES
+    -- EARNING
+    ('BASIC_SALARY', 'TAXABLE'), ('PERA', 'NON_TAXABLE'), ('REPRESENTATION_ALLOWANCE', 'TAXABLE'), ('TRANSPORTATION_ALLOWANCE', 'TAXABLE'),
+    ('MEAL_SUBSIDY', 'TAXABLE'), ('RICE_SUBSIDY', 'DE_MINIMIS'), ('CHILDREN''S_ALLOWANCE', 'TAXABLE'), ('INCENTIVE_DESIGNATION', 'TAXABLE'),
+    ('STEP_INCREMENT', 'TAXABLE'), ('CHILDREN''S_ALLOW_ADJ', 'TAXABLE'), ('MYFA_2017', 'BENEFIT_90K'), ('OTHERS_PERA', 'NON_TAXABLE'),
+    ('SALARY_DIFFERENTIAL', 'TAXABLE'), ('UNIFORM', 'DE_MINIMIS'), ('MEDICAL', 'TAXABLE'), ('MIDYEAR', 'BENEFIT_90K'),
+    ('YEAR_END', 'BENEFIT_90K'), ('CASH_GIFT', 'DE_MINIMIS'), ('3K', 'BENEFIT_90K'), ('50K', 'BENEFIT_90K'),
+    ('SUPP_CLOTHING ALLOW', 'DE_MINIMIS'), ('LOYALTY', 'DE_MINIMIS'),
+    -- REFUND (pay given back → adds; a refunded contribution / tax → takes away)
+    ('OTHERS_LWOP_REFUND', 'TAXABLE'), ('REFUND_PHILHEALTH', 'CONTRIBUTION'), ('REFUND_GSIS_SIC', 'CONTRIBUTION'),
+    ('REFUND_REPRESENTATION', 'TAXABLE'), ('REFUND_TRANSPORTATION', 'TAXABLE'), ('TAX_REFUND', 'WITHHOLDING_TAX'),
+    ('2016_CNA_IN_REF', 'BENEFIT_90K'),
+    -- DEDUCTION (contributions / tax withheld → add; pay taken back → takes away)
+    ('GSIS/SIC', 'CONTRIBUTION'), ('GSIS_SOCIAL_INS_CONS', 'CONTRIBUTION'), ('PHILHEALTH', 'CONTRIBUTION'), ('HDMF', 'CONTRIBUTION'),
+    ('BACKPREMIUM_GSIS', 'CONTRIBUTION'), ('BACKPREMIUM_PHILHEALTH', 'CONTRIBUTION'), ('BPR_PHILHEALTH', 'CONTRIBUTION'), ('BPR_HDMF', 'CONTRIBUTION'),
+    ('UNION_DUES/AGENCY_FEE', 'CONTRIBUTION'),
+    ('WITHHOLDING_TAX', 'WITHHOLDING_TAX'), ('BACKPAYMENT_W/HOLDING', 'WITHHOLDING_TAX'),
+    ('UNDERTIME_W/O_PAY', 'TAXABLE'), ('LEAVE_W/O_PAY', 'TAXABLE'), ('OVERPAYMENT_SAL', 'TAXABLE'), ('OVERPAYMENT_PERA', 'NON_TAXABLE'),
+    ('O/P_TRANS_ALLOWANCE', 'TAXABLE'), ('O/P_REP_ALLOW', 'TAXABLE'), ('O/P_CHILD_ALLOW', 'TAXABLE'), ('O/P_ADDL_COMPENSATION', 'TAXABLE'),
+    ('O/P_MYFA2018', 'BENEFIT_90K')
+) AS m(item_code, tax_treatment)
+WHERE pi.item_code = m.item_code;
+
+-- The de minimis items → their benefit and limit (fims.payroll_de_minimis_benefits, 01 - table/57): rice subsidy → RICE,
+-- uniform / supplementary clothing → UNIFORM, cash gift → CASH_GIFT, loyalty → LOYALTY. SRI / PEI come from separate
+-- (special) payrolls, not this monthly import — they get linked once that template is given.
+UPDATE fims.payroll_items pi
+SET de_minimis_id = d.de_minimis_id
+FROM (VALUES ('RICE_SUBSIDY', 'RICE'), ('UNIFORM', 'UNIFORM'), ('SUPP_CLOTHING ALLOW', 'UNIFORM'),
+             ('CASH_GIFT', 'CASH_GIFT'), ('LOYALTY', 'LOYALTY')) AS m(item_code, de_minimis_code)
+JOIN fims.payroll_de_minimis_benefits d ON d.code = m.de_minimis_code
+WHERE pi.item_code = m.item_code;
 
 -- Sanity check: should return 108 rows affected across all categories.
 -- SELECT category, COUNT(*) FROM fims.payroll_items GROUP BY category ORDER BY category;

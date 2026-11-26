@@ -4,9 +4,6 @@ namespace PHPMaker2024\FIMS;
 $_coa_api = Config('API.FIMS_URL');
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 <style>
     .coa-action-dropdown {
@@ -79,7 +76,7 @@ $_coa_api = Config('API.FIMS_URL');
         display:inline-flex;align-items:center;justify-content:center;
         color:var(--afims-heading-fill, #000E3E);background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2); }
     #coa-root .coa-chip { display:inline-flex;flex-shrink:0;overflow:hidden;border-radius:6px;border:1px solid var(--afims-border, #E4ECF2); }
-    #coa-root .coa-chip-seg { padding:3px 8px;font:700 12px 'IBM Plex Mono',monospace;color:#2F5FD6;background:#EAF1FE;
+    #coa-root .coa-chip-seg { padding:3px 8px;font:700 12px;color:#2F5FD6;background:#EAF1FE;
         border-left:1px solid rgba(15,32,69,.08); }
     #coa-root .coa-chip-seg.is-root { color:#1A1B21;background:#EEF1F7;border-left:0; }
     #coa-root .coa-title { font-weight:700;color:var(--afims-heading-fill, #000E3E); }
@@ -105,27 +102,12 @@ $_coa_api = Config('API.FIMS_URL');
     html.afims-dark[data-bs-theme="dark"] .coa-action-btn { color:#FFFFFF;background:#3861BC; }
     html.afims-dark[data-bs-theme="dark"] .coa-action-btn:hover { background:#2E59B8; }
 
-    /* ── Page header: copied from User Access (.app-page-header in app/fims-css/fims.css — that file is not loaded here,
-          so the rules are repeated, scoped to this page). Stays navy in dark mode too, like User Access. ── */
-    #coa-root .app-page-header { position:relative;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;overflow:hidden;
-        background:linear-gradient(135deg, #000E3E 0%, #001A5E 100%);border-radius:.75rem;padding:1.5rem 1.75rem;margin-bottom:1.5rem; }
-    #coa-root .app-page-header::before,
-    #coa-root .app-page-header::after { content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.05);pointer-events:none; }
-    #coa-root .app-page-header::before { width:180px;height:180px;top:-90px;right:80px; }
-    #coa-root .app-page-header::after { width:120px;height:120px;bottom:-70px;right:-20px;background:rgba(255,255,255,.06); }
-    #coa-root .app-page-header-icon { position:relative;z-index:1;flex:0 0 auto;width:3rem;height:3rem;border-radius:.5rem;
-        display:flex;align-items:center;justify-content:center;font-size:1.25rem;
-        background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#FFFFFF; }
-    #coa-root .app-page-title { position:relative;z-index:1;font-size:1.6rem;font-weight:800;letter-spacing:-.01em;color:#FFFFFF;margin:0 0 .25rem; }
-    #coa-root .app-page-subtitle { position:relative;z-index:1;font-size:.9rem;color:rgba(255,255,255,.75);margin:0;max-width:640px; }
-    /* the Expand / Collapse / Refresh / Add Account buttons stay on the right of the banner, above its decorative circles */
-    #coa-root .app-page-header-actions { position:relative;z-index:1;margin-left:auto;display:flex;flex-wrap:wrap;gap:8px; }
 </style>
 
 <div id="coa-root" class="nha-root">
 
     <!-- ── HEADER ─────────────────────────────────────────── -->
-    <!-- same banner as User Access (app-page-header in app/fims-css/fims.css) -->
+    <!-- same banner as User Access (app-page-header in _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
             <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">

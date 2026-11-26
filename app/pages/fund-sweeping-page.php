@@ -19,19 +19,18 @@
  * the Collections module.
  *
  * Markup/CSS classes (fims-page-header, fims-table-panel, fims-modal-overlay
- * conventions, etc.) match app/fims-css/fims.css, same as collections-page.php.
+ * conventions, etc.) match _shared/css/nha-fims.css, same as collections-page.php.
  */
 
 namespace PHPMaker2024\FIMS;
 
-$fsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
+$fsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css');
 ?>
-<link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= $fsCssVer ?>" />
-<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
+<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= $fsCssVer ?>" />
 
 <div class="fims-wrap" id="fsModule">
 
-    <!-- same banner as User Access: app-page-header (styled by app/fims-css/fims.css, already loaded above) -->
+    <!-- same banner as User Access: app-page-header (styled by the global _shared/css/nha-fims.css) -->
     <div class="app-page-header">
         <div class="app-page-header-icon"><i class="fas fa-broom"></i></div>
         <div>

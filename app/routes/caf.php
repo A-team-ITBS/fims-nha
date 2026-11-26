@@ -59,7 +59,9 @@ $app->get('/caf/read/{id}', function ($request, $response, $args) use ($CafServi
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
-// Add — the creator (user_id) comes from the verified JWT, never from the body
+// Add — the creator (user_id) comes from the verified JWT, never from the body.
+// Only an FMD user (or a superadmin) may create a CAF, only for an Approved RFA and only while it has no CAF (a superadmin: any)
+// — CafService::create() refuses the rest with a 403 (a 409 for an RFA that already has a CAF).
 $app->post('/caf/add', function ($request, $response, $args) use ($CafService) {
     try {
         $userId = $request->getAttribute('user_id');
@@ -68,7 +70,7 @@ $app->post('/caf/add', function ($request, $response, $args) use ($CafService) {
             $userId !== null ? (int) $userId : null
         );
 
-        return $response->withJson($result, $result['success'] ? 201 : 400);
+        return $response->withJson($result, $result['success'] ? 201 : (int) ($result['httpCode'] ?? 400));
     } catch (\Exception $e) {
         LogError('POST /caf/add '.$e->getMessage());
 

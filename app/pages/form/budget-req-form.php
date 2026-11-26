@@ -64,7 +64,7 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     #bgr-overlay { display:none;position:fixed;inset:0;z-index:9100;
         background:rgba(15,32,69,.6);align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px); }
     #bgr-overlay.open { display:flex; }
-    #bgr-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;width:100%;max-width:1440px;
+    #bgr-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;
         max-height:92vh;display:flex;flex-direction:column;overflow:hidden;
         box-shadow:0 32px 80px rgba(0,0,0,.28);font-family:'IBM Plex Sans',sans-serif;
         animation:bgrIn .2s ease; }
@@ -342,7 +342,7 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 </style>
 
 <div id="bgr-overlay">
-    <div id="bgr-card">
+    <div class="u-modal-2xl" id="bgr-card">
 
         <div id="bgr-header">
             <div id="bgr-header-info">

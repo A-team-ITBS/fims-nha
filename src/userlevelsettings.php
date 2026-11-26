@@ -239,7 +239,15 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}merchandise-inventory-page.php","-2","0"],
     ["{FIMS}merchandise-inventory-page.php","0","0"],
     ["{FIMS}bur-page.php","-2","0"],
-    ["{FIMS}bur-page.php","0","0"]];
+    ["{FIMS}bur-page.php","0","0"],
+    ["{FIMS}status-of-fund-page.php","-2","0"],
+    ["{FIMS}status-of-fund-page.php","0","0"],
+    ["{FIMS}soa-generator-page.php","-2","0"],
+    ["{FIMS}soa-generator-page.php","0","0"],
+    ["{FIMS}admin-fee-page.php","-2","0"],
+    ["{FIMS}admin-fee-page.php","0","0"],
+    ["{FIMS}admin-fee-rates-page.php","-2","0"],
+    ["{FIMS}admin-fee-rates-page.php","0","0"]];
 
 /**
  * Tables
@@ -360,4 +368,8 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["property-and-equipment-for-distribution-page.php","property_and_equipment_for_distribution_page","Property and equipment for Distribution",true,"{FIMS}","PropertyAndEquipmentForDistributionPage"],
     ["fixed-assets-page.php","fixed_assets_page","Fixed Assets",true,"{FIMS}","FixedAssetsPage"],
     ["merchandise-inventory-page.php","merchandise_inventory_page","Merchandise Inventory",true,"{FIMS}","MerchandiseInventoryPage"],
-    ["bur-page.php","bur_page","Budget Utilization Report",true,"{FIMS}","BurPage"]];
+    ["bur-page.php","bur_page","Budget Utilization Report",true,"{FIMS}","BurPage"],
+    ["status-of-fund-page.php","status_of_fund_page","Status of Fund",true,"{FIMS}","StatusOfFundPage"],
+    ["soa-generator-page.php","soa_generator_page","SOA Generator",true,"{FIMS}","SoaGeneratorPage"],
+    ["admin-fee-page.php","admin_fee_page","Administration Fees",true,"{FIMS}","AdminFeePage"],
+    ["admin-fee-rates-page.php","admin_fee_rates_page","Administration Fee Rate",true,"{FIMS}","AdminFeeRatesPage"]];
