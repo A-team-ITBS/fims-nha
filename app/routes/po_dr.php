@@ -15,8 +15,17 @@ $app->get('/po-dr/list', function ($request, $response, $args) use ($PoDrService
     return $response->withJson($PoDrService->fetchAlls(
         isset($params['page']) ? (int) $params['page'] : 1,
         isset($params['limit']) ? (int) $params['limit'] : 10,
-        $params['search'] ?? ''
+        $params['search'] ?? '',
+        (string) ($params['rc_id'] ?? ''),        // filter: requesting office (responsibility_code.rc_id)
+        (string) ($params['vendor_id'] ?? ''),    // filter: supplier (vendors.vendor_id)
+        (string) ($params['date_from'] ?? ''),    // filter: PO Date from (YYYY-MM-DD)
+        (string) ($params['date_to'] ?? '')       // filter: PO Date to (YYYY-MM-DD)
     ));
+})->add($jwtMiddleware);
+
+// Values of the list's Requesting Office/Dept and Supplier filter dropdowns (those of the POs that have an IAR)
+$app->get('/po-dr/filter-options', function ($request, $response, $args) use ($PoDrService) {
+    return $response->withJson($PoDrService->filterOptions());
 })->add($jwtMiddleware);
 
 // PO picker: RFA POs of the Budget Allocation (?search= on the PO number) with PO date, office, vendor and PO amount
@@ -30,7 +39,8 @@ $app->get('/po-dr/pos', function ($request, $response, $args) use ($PoDrService)
 $app->get('/po-dr/accounts', function ($request, $response, $args) use ($PoDrService) {
     $params = $request->getQueryParams();
 
-    return $response->withJson($PoDrService->searchAccounts((string) ($params['search'] ?? ''), !empty($params['all'])));
+    // ?infra=1: the Infrastructure tab's picker — the CIP / WIP categories highlighted (see PoDrService::searchInfraAccounts())
+    return $response->withJson($PoDrService->searchAccounts((string) ($params['search'] ?? ''), !empty($params['all']), !empty($params['infra']), (string) ($params['cat'] ?? '')));
 })->add($jwtMiddleware);
 
 // Read one PO with its delivery receipts

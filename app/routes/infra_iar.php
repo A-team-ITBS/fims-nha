@@ -15,8 +15,15 @@ $app->get('/infra-iar/list', function ($request, $response, $args) use ($InfraIa
     return $response->withJson($InfraIarService->fetchAlls(
         isset($params['page']) ? (int) $params['page'] : 1,
         isset($params['limit']) ? (int) $params['limit'] : 10,
-        (string) ($params['search'] ?? '')
+        (string) ($params['search'] ?? ''),
+        (string) ($params['rc_id'] ?? ''),        // filter: Regional Office/District Office
+        (string) ($params['vendor_id'] ?? '')     // filter: Contractor
     ));
+})->add($jwtMiddleware);
+
+// Values of the list's Regional Office/District Office and Contractor filter dropdowns
+$app->get('/infra-iar/filter-options', function ($request, $response, $args) use ($InfraIarService) {
+    return $response->withJson($InfraIarService->filterOptions());
 })->add($jwtMiddleware);
 
 // RFA picker: approved Infrastructure RFAs without a PO that have no IAR yet, with the project details to load
@@ -45,6 +52,14 @@ $app->post('/infra-iar/add', function ($request, $response, $args) use ($InfraIa
 $app->put('/infra-iar/update', function ($request, $response, $args) use ($InfraIarService) {
     $params = $request->getQueryParams();
     $result = $InfraIarService->update((int) ($params['id'] ?? 0), $request->getParsedBody() ?: [], (int) $request->getAttribute('user_id'));
+
+    return $response->withJson($result, $result['success'] ? 200 : 400);
+})->add($jwtMiddleware);
+
+// Add Accomplishment (?id=): one more Statement of Work item { description, cost, accomplishment_pct } without opening the whole edit
+$app->post('/infra-iar/add-accomplishment', function ($request, $response, $args) use ($InfraIarService) {
+    $params = $request->getQueryParams();
+    $result = $InfraIarService->addAccomplishment((int) ($params['id'] ?? 0), $request->getParsedBody() ?: [], (int) $request->getAttribute('user_id'));
 
     return $response->withJson($result, $result['success'] ? 200 : 400);
 })->add($jwtMiddleware);
@@ -105,6 +120,12 @@ $app->get('/infra-iar/work-in-process', function ($request, $response, $args) us
     return $response->withJson($InfraIarService->workInProcess(
         isset($params['page']) ? (int) $params['page'] : 1,
         isset($params['limit']) ? (int) $params['limit'] : 10,
-        (string) ($params['search'] ?? '')
+        (string) ($params['search'] ?? ''),
+        (string) ($params['account'] ?? '')       // a tab: one WIP sub-ledger (1-04-03-020-01 …)
     ));
+})->add($jwtMiddleware);
+
+// The tabs of the Work in Process page: the WIP sub-ledgers
+$app->get('/infra-iar/wip-categories', function ($request, $response, $args) use ($InfraIarService) {
+    return $response->withJson($InfraIarService->wipCategories());
 })->add($jwtMiddleware);

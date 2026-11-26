@@ -137,8 +137,38 @@ html.afims-dark[data-bs-theme="dark"] #amp-root .nha-code { color:#FFFFFF;backgr
                     <button class="nha-filter-clear-btn" id="amp-search-clear" hidden type="button">×</button>
                 </div>
             </div>
+            <!-- searchable dropdowns (built by amp_fcBuild(); the choices come from GET /po-dr/filter-options) -->
+            <div class="nha-filter-group">
+                <label class="nha-filter-label">Requesting Office/Dept</label>
+                <div class="amp-fc" id="amp-fc-office" data-all="All offices"></div>
+            </div>
+            <div class="nha-filter-group">
+                <label class="nha-filter-label">Supplier</label>
+                <div class="amp-fc" id="amp-fc-supplier" data-all="All suppliers"></div>
+            </div>
+            <!-- PO Date range: From starts on Jan 1 of the current year, To is today (both set in amp_initDateRange(); clear a box to drop that limit) -->
+            <div class="nha-filter-group">
+                <label class="nha-filter-label" for="amp-date-from">Date From</label>
+                <input type="date" id="amp-date-from" class="nha-filter-input" title="PO Date from">
+            </div>
+            <div class="nha-filter-group">
+                <label class="nha-filter-label" for="amp-date-to">Date To</label>
+                <input type="date" id="amp-date-to" class="nha-filter-input" title="PO Date to">
+            </div>
         </div>
     </div>
+    <style>
+        .amp-fc { position:relative; min-width:230px; }
+        .amp-fc input { width:100%; box-sizing:border-box; padding-right:28px; }
+        .amp-fc-clear { position:absolute; right:6px; top:50%; transform:translateY(-50%); border:0; background:none; cursor:pointer; font-size:16px; line-height:1; color:var(--afims-text-secondary,#6b7280); padding:2px 4px; }
+        .amp-fc-list { display:none; position:absolute; z-index:60; top:calc(100% + 4px); left:0; min-width:100%; max-height:260px; overflow:auto;
+                       background:var(--afims-surface,#fff); border:1px solid var(--afims-border,#d1d5db); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); }
+        .amp-fc.open .amp-fc-list { display:block; }
+        .amp-fc-opt { padding:8px 12px; font-size:13px; cursor:pointer; white-space:nowrap; }
+        .amp-fc-opt:hover { background:var(--afims-surface-subtle,#F4F7FA); }
+        .amp-fc-opt.active { font-weight:600; color:var(--afims-primary,#1d4ed8); }
+        .amp-fc-empty { padding:8px 12px; font-size:13px; color:var(--afims-text-secondary,#6b7280); }
+    </style>
 
     <!-- ── TABLE ──────────────────────────────────────────── -->
     <div class="nha-table-wrap">
@@ -187,6 +217,15 @@ html.afims-dark[data-bs-theme="dark"] #amp-root .nha-code { color:#FFFFFF;backgr
                         <button class="nha-filter-clear-btn" id="ifr-search-clear" hidden type="button">×</button>
                     </div>
                 </div>
+                <!-- searchable dropdowns (built by ifr_fcBuild() in form/infra-iar-form.php; the choices come from GET /infra-iar/filter-options) -->
+                <div class="nha-filter-group">
+                    <label class="nha-filter-label">Regional Office/District Office</label>
+                    <div class="amp-fc" id="ifr-fc-office" data-all="All offices"></div>
+                </div>
+                <div class="nha-filter-group">
+                    <label class="nha-filter-label">Contractor</label>
+                    <div class="amp-fc" id="ifr-fc-contractor" data-all="All contractors"></div>
+                </div>
             </div>
         </div>
         <div class="nha-table-wrap">
@@ -200,13 +239,14 @@ html.afims-dark[data-bs-theme="dark"] #amp-root .nha-code { color:#FFFFFF;backgr
                             <th>Project Name</th>
                             <th>Contractor</th>
                             <th>Regional Office/District Office</th>
+                            <th>Category</th>
                             <th style="text-align:right;">Revised Contract Cost</th>
                             <th>% Accomplishment</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody id="ifr-tbody">
-                        <tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                        <tr><td colspan="10"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                     </tbody>
                 </table>
             </div>
@@ -263,9 +303,83 @@ function amp_switchTab(tab) {
     amp_syncTab();
 }
 
+/* ── Filters: Requesting Office/Dept and Supplier — searchable dropdowns ───────────────────────────── */
+const AMP_FC = { 'amp-fc-office': { param: 'rc_id', key: 'offices' }, 'amp-fc-supplier': { param: 'vendor_id', key: 'suppliers' } };
+const amp_fcSel  = { rc_id: '', vendor_id: '' };            // the chosen value of each filter ('' = all)
+let   amp_fcData = { offices: [], suppliers: [] };          // [{value, label}] from GET /po-dr/filter-options
+function amp_fcBuild() {
+    Object.entries(AMP_FC).forEach(([id, cfg]) => {
+        const wrap = $amp(id);
+        if (!wrap) return;
+        wrap.innerHTML = '<input type="text" class="nha-filter-input" autocomplete="off" placeholder="' + amp_esc(wrap.dataset.all) + '">'
+            + '<button type="button" class="amp-fc-clear" hidden title="Clear">×</button><div class="amp-fc-list"></div>';
+        const input = wrap.querySelector('input'), list = wrap.querySelector('.amp-fc-list'), clear = wrap.querySelector('.amp-fc-clear');
+        let shown = [];
+        const labelOf = v => (amp_fcData[cfg.key].find(o => String(o.value) === String(v)) || {}).label || '';
+        const sync = () => { input.value = labelOf(amp_fcSel[cfg.param]); clear.hidden = !amp_fcSel[cfg.param]; };
+        const render = () => {
+            const q = input.dataset.typing === '1' ? input.value.trim().toLowerCase() : '';     // the shown label is not a search
+            shown = amp_fcData[cfg.key].filter(o => !q || String(o.label).toLowerCase().includes(q));
+            list.innerHTML = '<div class="amp-fc-opt" data-i="-1">' + amp_esc(wrap.dataset.all) + '</div>'
+                + (shown.length ? shown.map((o, i) => '<div class="amp-fc-opt' + (String(o.value) === String(amp_fcSel[cfg.param]) ? ' active' : '') + '" data-i="' + i + '">' + amp_esc(o.label) + '</div>').join('')
+                                : '<div class="amp-fc-empty">No match</div>');
+        };
+        const choose = v => {
+            amp_fcSel[cfg.param] = v;
+            input.dataset.typing = '0'; wrap.classList.remove('open'); sync();
+            amp_page = 1; amp_load();
+        };
+        input.addEventListener('focus', () => { input.dataset.typing = '0'; input.select(); wrap.classList.add('open'); render(); });
+        input.addEventListener('click', () => { if (!wrap.classList.contains('open')) { wrap.classList.add('open'); render(); } });
+        input.addEventListener('input', () => { input.dataset.typing = '1'; wrap.classList.add('open'); render(); });
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Escape') { wrap.classList.remove('open'); sync(); input.blur(); }
+            if (e.key === 'Enter') { e.preventDefault(); if (shown.length === 1 || (input.dataset.typing === '1' && shown[0])) choose(String(shown[0].value)); }
+        });
+        input.addEventListener('blur', () => { wrap.classList.remove('open'); input.dataset.typing = '0'; sync(); });   // half-typed text goes back to the chosen value
+        list.addEventListener('mousedown', e => {
+            const opt = e.target.closest('.amp-fc-opt');
+            if (!opt) return;
+            e.preventDefault();
+            const i = Number(opt.dataset.i);
+            choose(i < 0 ? '' : String(shown[i].value));
+        });
+        clear.addEventListener('mousedown', e => { e.preventDefault(); choose(''); });
+        wrap._sync = sync;
+        sync();
+    });
+}
+async function amp_loadFilterOptions() {
+    try {
+        const res  = await fetch(`${AMP_API}/filter-options`, { credentials: 'same-origin', headers: amp_authHeaders() });
+        const json = await res.json();
+        if (json.success) {
+            amp_fcData = { offices: json.data.offices || [], suppliers: json.data.suppliers || [] };
+            Object.keys(AMP_FC).forEach(id => $amp(id)?._sync?.());
+        }
+    } catch (e) { /* the filters just stay empty */ }
+}
+
+/* PO Date range: From = Jan 1 of the current year, To = today (local date, not UTC) */
+function amp_initDateRange() {
+    const d = new Date(), pad = n => String(n).padStart(2, '0');
+    const from = $amp('amp-date-from'), to = $amp('amp-date-to');
+    if (from && !from.value) from.value = d.getFullYear() + '-01-01';
+    if (to && !to.value)     to.value   = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    [from, to].forEach(el => el?.addEventListener('change', () => {
+        if (from.value && to.value && from.value > to.value) {           // keep the range valid: move the other end
+            if (el === from) to.value = from.value; else from.value = to.value;
+        }
+        amp_page = 1; amp_load();
+    }));
+}
+
 async function amp_bootstrapLoad() {
     amp_bindEvents();
+    amp_initDateRange();
+    amp_fcBuild();
     amp_syncTab();
+    amp_loadFilterOptions();
     await amp_load();
 }
 if (document.readyState === 'loading') {
@@ -308,6 +422,10 @@ async function amp_load() {
             page   : amp_page,
             limit  : AMP_PAGE_SIZE,
         });
+        if (amp_fcSel.rc_id)     params.set('rc_id', amp_fcSel.rc_id);          // Requesting Office/Dept filter
+        if (amp_fcSel.vendor_id) params.set('vendor_id', amp_fcSel.vendor_id);  // Supplier filter
+        if ($amp('amp-date-from')?.value) params.set('date_from', $amp('amp-date-from').value);   // PO Date range
+        if ($amp('amp-date-to')?.value)   params.set('date_to', $amp('amp-date-to').value);
         const res  = await fetch(`${AMP_API}/list?${params}`, { credentials: 'same-origin', headers: amp_authHeaders() });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const json = await res.json();
@@ -982,6 +1100,7 @@ async function amp_save(ev) {
         amp_toast(json.message || 'Saved.', 'success');
         amp_closeModal();
         amp_load();
+        amp_loadFilterOptions();                               // a new PO can bring a new office / supplier
     } catch (e) {
         amp_showErr(e.message);
         amp_updateTotals();                                    // re-enables Save only while the entry is balanced

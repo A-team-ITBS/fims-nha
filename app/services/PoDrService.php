@@ -59,6 +59,16 @@ class PoDrService
         return false;
     }
 
+    /**
+     * The Infrastructure tab's highlighted account categories (Account Entries picker, GET /po-dr/accounts?infra=1): CIP (construction in
+     * progress) and WIP (work in process), the GL accounts and their sub-ledgers, in this order. Shown first and under a CIP / WIP heading;
+     * typing still searches the whole chart of accounts.
+     */
+    public const INFRA_CATEGORIES = [
+        'CIP' => ['1-06-99-010', '1-06-99-020', '1-06-99-030', '1-06-99-020-01', '1-06-99-020-02', '1-06-99-020-03', '1-06-99-020-04'],
+        'WIP' => ['1-04-03-020', '1-04-03-020-01', '1-04-03-020-02', '1-04-03-020-03', '1-04-03-020-04', '1-04-03-020-05'],
+    ];
+
     /** Pro-forma JEV: the DR total is credited to Accounts Payable. */
     private const PAYABLE_ACCOUNT = '2-01-01-010';
 
@@ -532,8 +542,11 @@ class PoDrService
      * 5-02-03-010-01 "Office Supplies" under 5-02-03-010 "Office Supplies Expenses"; when a GL account has postable SLs only its
      * SLs are offered. Typing the GL code (5-02-03-010) finds its SLs too.
      */
-    public function searchAccounts(string $search = '', bool $all = false): array
+    public function searchAccounts(string $search = '', bool $all = false, bool $infra = false, string $cat = ''): array
     {
+        if ($infra) {
+            return $this->searchInfraAccounts($search, $cat);
+        }
         try {
             $where = "COALESCE(c.posting_allowed, TRUE) AND COALESCE(c.status, 'Active') ILIKE 'active'
                       AND NOT EXISTS (SELECT 1 FROM fims.chart_of_accounts ch
@@ -557,6 +570,48 @@ class PoDrService
                      WHERE {$where}
                      ORDER BY c.account_code
                  ) t ORDER BY prio, account_code LIMIT 30",
+                'DB'
+            ) ?: [];
+
+            return ['success' => true, 'data' => $rows];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Account Entries picker of the Infrastructure tab. Nothing typed: ONLY the CIP / WIP categories (INFRA_CATEGORIES), each tagged
+     * with its group, CIP first. Typing searches the whole postable chart by code or title, the CIP / WIP accounts first (still tagged).
+     * Like the normal picker, a GL account that has sub-ledgers is NOT offered: the amount is entered under one of its sub-ledgers
+     * (so 1-04-03-020 WIP and 1-06-99-020 CIP are replaced by their -01 … sub-ledgers; 1-06-99-010 / -030 have none and are offered).
+     * Rows: { account_code, account_title, group: 'CIP' | 'WIP' | null }.
+     */
+    private function searchInfraAccounts(string $search, string $cat = ''): array
+    {
+        try {
+            $cat = strtoupper(trim($cat));   // the group of the picked RFA ('CIP' | 'WIP'): listed first; '' = CIP then WIP
+            $q       = fn(array $codes) => implode(',', array_map(fn($c) => $this->q($c), $codes));
+            $cip     = $q(self::INFRA_CATEGORIES['CIP']);
+            $wip     = $q(self::INFRA_CATEGORIES['WIP']);
+            $all     = $q(array_merge(self::INFRA_CATEGORIES['CIP'], self::INFRA_CATEGORIES['WIP']));
+            $search  = trim($search);
+            $where   = "COALESCE(c.posting_allowed, TRUE) AND COALESCE(c.status, 'Active') ILIKE 'active'
+                        AND NOT EXISTS (SELECT 1 FROM fims.chart_of_accounts ch
+                              WHERE ch.parent_account_id = c.account_id AND ch.posting_allowed AND COALESCE(ch.status, 'Active') ILIKE 'active')";
+            if ($search !== '') {
+                $s      = $this->q('%' . $search . '%');
+                $where .= " AND (c.account_code ILIKE {$s} OR c.account_title ILIKE {$s})";
+            } else {
+                $where .= " AND c.account_code IN ({$all})";
+            }
+            $rows = App\ExecuteRows(
+                "SELECT account_code, account_title, grp AS \"group\" FROM (
+                    SELECT c.account_code, c.account_title,
+                           CASE WHEN c.account_code IN ({$cip}) THEN 'CIP' WHEN c.account_code IN ({$wip}) THEN 'WIP' END AS grp,
+                           array_position(ARRAY[{$all}]::text[], c.account_code::text) AS pos
+                      FROM fims.chart_of_accounts c
+                     WHERE {$where}
+                 ) t ORDER BY (grp IS NULL), (grp IS DISTINCT FROM " . $this->q($cat) . "), pos, account_code LIMIT 40",
                 'DB'
             ) ?: [];
 
@@ -619,8 +674,40 @@ class PoDrService
                               (SELECT NULLIF(TRIM(CONCAT_WS(' ', NULLIF(TRIM(u.first_name), ''), NULLIF(TRIM(u.middle_name), ''), NULLIF(TRIM(u.last_name), ''), NULLIF(TRIM(u.suffix), ''))), '')
                                  FROM uac.users u WHERE u.user_id = i.delivery_accepted_by) AS inspected_by";
 
+    /**
+     * The values of the list's two filter dropdowns: the requesting offices and suppliers of the POs that have an IAR,
+     * { offices: [{value: rc_id, label: rc_name}], suppliers: [{value: vendor_id, label: vendor_name}] }.
+     */
+    public function filterOptions(): array
+    {
+        try {
+            $from = "FROM {$this->h} i
+                     JOIN fims.budget_allocation f ON UPPER(COALESCE(f.allocation_type, '')) = 'RFA' AND f.deleted_at IS NULL AND f.po_number = i.po_number";
+            $offices = App\ExecuteRows(
+                "SELECT DISTINCT f.requesting_rc_id AS value, COALESCE(rc.rc_name, f.requesting_rc_id) AS label
+                 {$from} LEFT JOIN fims.responsibility_code rc ON rc.rc_id = f.requesting_rc_id
+                 WHERE COALESCE(f.requesting_rc_id, '') <> '' ORDER BY label",
+                'DB'
+            ) ?: [];
+            $suppliers = App\ExecuteRows(
+                "SELECT DISTINCT x.vendor_id::text AS value, x.vendor_name AS label FROM (
+                     SELECT COALESCE(f.vendor_id, pom.vendor_id) AS vendor_id, COALESCE(v.vendor_name, pom.vendor_name) AS vendor_name
+                     {$from}
+                     LEFT JOIN fims.vendors v ON v.vendor_id = f.vendor_id
+                     LEFT JOIN LATERAL (SELECT p.vendor_id, p.vendor_name FROM fims.purchase_orders p
+                                         WHERE p.po_number = f.po_number AND p.status <> 'CANCELLED' ORDER BY p.po_id DESC LIMIT 1) pom ON TRUE
+                 ) x WHERE x.vendor_id IS NOT NULL AND COALESCE(x.vendor_name, '') <> '' ORDER BY label",
+                'DB'
+            ) ?: [];
+
+            return ['success' => true, 'data' => ['offices' => $offices, 'suppliers' => $suppliers]];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
     /** One entry per PO number: { po_number, iar_number, …, receipts: [ … ] } (paginated). */
-    public function fetchAlls(int $page = 1, int $limit = 10, string $search = ''): array
+    public function fetchAlls(int $page = 1, int $limit = 10, string $search = '', string $rcId = '', string $vendorId = '', string $dateFrom = '', string $dateTo = ''): array
     {
         try {
             $where = '1=1';
@@ -630,6 +717,31 @@ class PoDrService
                 $s     = $this->q('%' . $search . '%');
                 $where = "(i.po_number ILIKE {$s} OR i.iar_number ILIKE {$s} OR i.si_number ILIKE {$s} OR i.line_transaction::text ILIKE {$s})";
             }
+            // Filters: the PO's requesting office and supplier (both come from the PO's RFA, as in the list's own columns)
+            $rcId     = trim($rcId);
+            $vendorId = trim($vendorId);
+            // Date From / Date To: the PO Date column of the list (the PO's own date, else the RFA's creation date — see poSource())
+            $dateFrom = $this->validDate(trim($dateFrom)) ? trim($dateFrom) : '';
+            $dateTo   = $this->validDate(trim($dateTo)) ? trim($dateTo) : '';
+            if ($rcId !== '' || $vendorId !== '' || $dateFrom !== '' || $dateTo !== '') {
+                $rfa = "UPPER(COALESCE(f.allocation_type, '')) = 'RFA' AND f.deleted_at IS NULL AND f.po_number = i.po_number";
+                if ($dateFrom !== '' || $dateTo !== '') {
+                    $poDate = "COALESCE((SELECT p.po_date FROM fims.purchase_orders p WHERE p.po_number = f.po_number AND p.status <> 'CANCELLED' ORDER BY p.po_id DESC LIMIT 1), f.created_at)::date";
+                    if ($dateFrom !== '') {
+                        $rfa .= " AND {$poDate} >= " . $this->q($dateFrom) . '::date';
+                    }
+                    if ($dateTo !== '') {
+                        $rfa .= " AND {$poDate} <= " . $this->q($dateTo) . '::date';
+                    }
+                }
+                if ($rcId !== '') {
+                    $rfa .= ' AND f.requesting_rc_id = ' . $this->q($rcId);
+                }
+                if ($vendorId !== '') {
+                    $rfa .= " AND COALESCE(f.vendor_id::text, (SELECT p.vendor_id::text FROM fims.purchase_orders p WHERE p.po_number = f.po_number AND p.status <> 'CANCELLED' ORDER BY p.po_id DESC LIMIT 1)) = " . $this->q($vendorId);
+                }
+                $where .= " AND EXISTS (SELECT 1 FROM fims.budget_allocation f WHERE {$rfa})";
+            }
 
             $limit  = max(1, $limit);
             $page   = max(1, $page);
@@ -637,7 +749,7 @@ class PoDrService
             $total  = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->h} i WHERE {$where}", 'DB');
 
             $rows = App\ExecuteRows(
-                'SELECT ' . self::COLS . " FROM {$this->h} i WHERE {$where} ORDER BY i.iar_id DESC LIMIT {$limit} OFFSET {$offset}",
+                'SELECT ' . self::COLS . " FROM {$this->h} i WHERE {$where} ORDER BY i.delivery_accepted ASC, i.iar_id DESC LIMIT {$limit} OFFSET {$offset}",   // not yet accepted on top, accepted deliveries last (newest first within each)
                 'DB'
             ) ?: [];
 
