@@ -260,6 +260,12 @@ if (!isset($_vf_api)) {
 #vf-root .vf-rfa-opt:hover { background: var(--afims-surface-subtle, #F4F7FA); }
 #vf-root .vf-rfa-opt small { display: block; color: var(--afims-text-muted, #62657E); margin-top: 2px; }
 #vf-root .vf-rfa-opt.vf-rfa-opt-empty { cursor: default; color: var(--afims-text-muted, #62657E); }
+#vf-root .vf-rfa-opt-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+#vf-root .vf-rfa-bal { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+#vf-root .vf-rfa-bal.has  { background: #E7F6EC; color: #16A34A; }
+#vf-root .vf-rfa-bal.none { background: #FDECEE; color: #DC3545; }
+#vf-root .vf-rfa-opt.vf-rfa-opt-nobal { cursor: not-allowed; opacity: .6; }
+#vf-root .vf-rfa-opt.vf-rfa-opt-nobal:hover { background: transparent; }
 #vf-root .vf-rfa-chips { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 #vf-root .vf-rfa-chip { border: 1px solid var(--afims-primary-soft, #E6EBF6); border-radius: 10px; padding: 10px 12px; background: var(--afims-primary-soft, #E6EBF6); }
 #vf-root .vf-rfa-chip-hdr { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
@@ -1062,12 +1068,18 @@ function vf_renderRfaDropdown() {
         .filter(r => !search || r.allocation_number?.toLowerCase().includes(search) || r.request_referrence_no?.toLowerCase().includes(search))
         .slice(0, 30);
 
+    // An RFA with a budget ceiling and nothing left on it can't fund this DV (a ceiling of 0 means "no cap", as in vf_renderRfaBreakdown).
+    const hasBalance = r => !(Number(r.budget_amount) > 0) || (Number(r.remaining_balance) || 0) > 0.005;
     box.innerHTML = options.length
-        ? options.map(r => `
-            <div class="vf-rfa-opt" onclick="vf_selectRfa('${r.allocation_id}')">
-                <strong>${vf_esc(r.allocation_number)}</strong>
+        ? options.map(r => {
+            const ok = hasBalance(r);
+            return `
+            <div class="vf-rfa-opt${ok ? '' : ' vf-rfa-opt-nobal'}"${ok ? ` onclick="vf_selectRfa('${r.allocation_id}')"` : ' title="This RFA has no remaining balance"'}>
+                <span class="vf-rfa-opt-top"><strong>${vf_esc(r.allocation_number)}</strong>
+                    <span class="vf-rfa-bal ${ok ? 'has' : 'none'}">${ok ? 'Balance: ' + vf_peso(r.remaining_balance) : 'No balance'}</span></span>
                 <small>${vf_esc(r.department_name || 'Unassigned Dept.')} &middot; FY ${vf_esc(r.fiscal_year)} &middot; ${vf_peso(r.remaining_balance)} left of ${vf_peso(r.budget_amount)}</small>
-            </div>`).join('')
+            </div>`;
+        }).join('')
         : `<div class="vf-rfa-opt vf-rfa-opt-empty">${vf_esc(vf_rfaEmptyMessage(lockedClass, lockedVendor))}</div>`;
     box.classList.add('open');
 }
