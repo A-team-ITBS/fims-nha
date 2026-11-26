@@ -12,9 +12,6 @@ $apiBase = Config('API.FIMS_URL');
 $apiBaseUrl       = json_encode(rtrim((string) $apiBase, '/') . '/');
 $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
 ?>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <div id="ftla-root" class="nha-root">
@@ -181,7 +178,7 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
 
 <!-- MODAL: Status Tracking -->
 <div id="modal-status-track" class="nha-overlay" role="dialog" aria-modal="true">
-    <div class="nha-modal">
+    <div class="nha-modal u-modal-md">
         <div class="nha-modal-hdr">
             <div>
                 <div class="nha-modal-title">FTLA Status Tracking</div>
@@ -220,7 +217,7 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
 
 <!-- MODAL: Attachments -->
 <div id="modal-attachments" class="nha-overlay" role="dialog" aria-modal="true">
-    <div class="nha-modal nha-modal-md">
+    <div class="nha-modal u-modal-sm">
         <div class="nha-modal-hdr">
             <div>
                 <div class="nha-modal-title">Manage Attachments</div>
@@ -267,7 +264,7 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
 
 <!-- MODAL: View Documents -->
 <div id="modal-view-docs" class="nha-overlay" role="dialog" aria-modal="true" style="display:none">
-    <div class="nha-modal nha-modal-md">
+    <div class="nha-modal u-modal-sm">
         <div class="nha-modal-hdr">
             <div>
                 <div class="nha-modal-title">Uploaded Documents</div>
@@ -291,7 +288,7 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
 
 <!-- MODAL: Print / Download -->
 <div id="modal-print" class="nha-overlay" role="dialog" aria-modal="true" style="display:none">
-    <div class="nha-modal" style="max-width:560px;width:96vw;">
+    <div class="nha-modal u-modal-sm">
         <div class="nha-modal-hdr">
             <div>
                 <div class="nha-modal-title" id="modal-print-title">Fund Transfer Letter of Advice</div>
@@ -335,7 +332,7 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
      document from the FTLA bank letter itself. Print-only: nothing here is saved,
      since the real request memo is sent before any FTLA record exists. -->
 <style>
-    #modal-ftla-request .nha-modal { max-width: 1120px; width: 96vw; max-height: 92vh; display: flex; flex-direction: column; }
+    #modal-ftla-request .nha-modal { max-height: 92vh; display: flex; flex-direction: column; }
     #ftlreq-body-split { flex: 1; display: flex; overflow: hidden; min-height: 0; }
     #ftlreq-fields { flex: 1 1 380px; min-width: 0; overflow-y: auto; padding: 20px 24px; }
     #ftlreq-preview-panel {
@@ -358,7 +355,7 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
 </style>
 
 <div id="modal-ftla-request" class="nha-overlay" role="dialog" aria-modal="true" style="display:none">
-    <div class="nha-modal">
+    <div class="nha-modal u-modal-xl">
         <div class="nha-modal-hdr">
             <div>
                 <div class="nha-modal-title">FTLA Request Memo</div>
@@ -696,7 +693,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 <!-- Remarks overlay for workflow actions that require a reason -->
 <div id="ftla-remarks-overlay" style="display:none;position:fixed;inset:0;z-index:10200;background:rgba(15,32,69,.5);align-items:center;justify-content:center;padding:16px;">
-    <div style="background:var(--afims-surface, #FFFFFF);border-radius:14px;width:440px;max-width:100%;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:'IBM Plex Sans',sans-serif;">
+    <div class="u-modal-sm" style="background:var(--afims-surface, #FFFFFF);border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:'IBM Plex Sans',sans-serif;">
         <div style="background:var(--afims-heading-fill, #000E3E);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;">
             <span style="font-size:14px;font-weight:700;color:var(--afims-pure-white, #FFFFFF);" id="ftla-remarks-title">Remarks Required</span>
             <button onclick="ftla_closeRemarks()" style="background:none;border:none;color:rgba(255,255,255,.6);font-size:22px;line-height:1;cursor:pointer;">&times;</button>

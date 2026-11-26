@@ -14,14 +14,10 @@ namespace PHPMaker2024\FIMS;
 $_pr_api = rtrim((string) Config('API.FIMS_URL'), '/');
 $_pr_api = preg_match('~/api$~', $_pr_api) ? $_pr_api : $_pr_api . '/api';
 ?>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="<?php echo GetUrl('_shared/css/nha-fims.css'); ?>?v=<?php echo @filemtime(dirname(__DIR__, 2).'/_shared/css/nha-fims.css'); ?>" />
 <style>
 #pr-root .nha-summary { grid-template-columns: repeat(4, 1fr); }
 #pr-root .pr-num { text-align: right; font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
-#pr-root .pr-modal { max-width: 640px; }
 #pr-root .pr-form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 #pr-root .pr-form .pr-full { grid-column: 1 / -1; }
 #pr-root .pr-form label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
@@ -39,8 +35,6 @@ $_pr_api = preg_match('~/api$~', $_pr_api) ? $_pr_api : $_pr_api . '/api';
 @media (max-width: 900px) { #pr-root .nha-summary { grid-template-columns: repeat(2, 1fr); } }
 #pr-root .pr-pane { display: none; }
 #pr-root .pr-pane.active { display: block; }
-#pr-root .pr-modal-xl { max-width: 1200px; width: 96%; }
-#pr-root .pr-modal-md { max-width: 760px; width: 94%; }
 #pr-root .pr-modal-body-scroll { max-height: 70vh; overflow: auto; }
 #pr-root .pr-sub { font-size: 11.5px; color: var(--afims-text-muted, #62657E); }
 #pr-root .pr-tfoot td { font-weight: 700; background: var(--afims-surface-subtle, #F4F7FA); }
@@ -86,26 +80,11 @@ $_pr_api = preg_match('~/api$~', $_pr_api) ? $_pr_api : $_pr_api . '/api';
 #pr-root .pr-cat-DEDUCTION { border-left: 3px solid var(--afims-warning, #E0A100); }
 #pr-root .pr-cat-EMPLOYER_SHARE { border-left: 3px solid var(--afims-danger, #DC3545); }
 
-/* ── Page header: copied from User Access (.app-page-header in app/fims-css/fims.css — that file is not loaded here,
-      so the rules are repeated, scoped to this page). Stays navy in dark mode too, like User Access. ── */
-#pr-root .app-page-header { position:relative;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;overflow:hidden;
-    background:linear-gradient(135deg, #000E3E 0%, #001A5E 100%);border-radius:.75rem;padding:1.5rem 1.75rem;margin-bottom:1.5rem; }
-#pr-root .app-page-header::before,
-#pr-root .app-page-header::after { content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.05);pointer-events:none; }
-#pr-root .app-page-header::before { width:180px;height:180px;top:-90px;right:80px; }
-#pr-root .app-page-header::after { width:120px;height:120px;bottom:-70px;right:-20px;background:rgba(255,255,255,.06); }
-#pr-root .app-page-header-icon { position:relative;z-index:1;flex:0 0 auto;width:3rem;height:3rem;border-radius:.5rem;
-    display:flex;align-items:center;justify-content:center;font-size:1.25rem;
-    background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#FFFFFF; }
-#pr-root .app-page-title { position:relative;z-index:1;font-size:1.6rem;font-weight:800;letter-spacing:-.01em;color:#FFFFFF;margin:0 0 .25rem; }
-#pr-root .app-page-subtitle { position:relative;z-index:1;font-size:.9rem;color:rgba(255,255,255,.75);margin:0;max-width:640px; }
-/* the Refresh / Import Payroll buttons stay on the right of the banner, above its decorative circles */
-#pr-root .app-page-header-actions { position:relative;z-index:1;margin-left:auto;display:flex;flex-wrap:wrap;gap:8px; }
 </style>
 
 <div id="pr-root" class="nha-root">
 
-    <!-- same banner as User Access (app-page-header in app/fims-css/fims.css) -->
+    <!-- same banner as User Access (app-page-header in _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
             <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.36-1.86M17 20H7m10 0v-2c0-.66-.13-1.28-.36-1.86M7 20H2v-2a3 3 0 015.36-1.86M7 20v-2c0-.66.13-1.28.36-1.86m0 0a5 5 0 019.28 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
@@ -368,7 +347,7 @@ $_pr_api = preg_match('~/api$~', $_pr_api) ? $_pr_api : $_pr_api . '/api';
 
     <!-- Import modal -->
     <div id="pr-overlay" class="nha-overlay">
-        <div class="nha-modal pr-modal" role="dialog" aria-modal="true" aria-labelledby="pr-modal-title">
+        <div class="nha-modal pr-modal u-modal-md" role="dialog" aria-modal="true" aria-labelledby="pr-modal-title">
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title" id="pr-modal-title">Import Monthly Payroll</h3>
                 <button type="button" class="nha-modal-close" id="pr-close" aria-label="Close">&times;</button>

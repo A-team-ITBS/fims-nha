@@ -74,9 +74,6 @@ $cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], ar
 
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 
 <?php if ($cbaAsModal): ?>
 <style>
@@ -105,8 +102,6 @@ $cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], ar
 	.nha-modal {
 		display: flex;
 		flex-direction: column;
-		width: 100%;
-		max-width: 680px;
 		max-height: 90vh;
 		overflow: hidden;
 		background: var(--afims-surface, #FFFFFF);
@@ -114,9 +109,6 @@ $cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], ar
 		box-shadow: 0 24px 64px rgba(0, 0, 0, .22);
 	}
 
-	.nha-modal-xl {
-		max-width: 1100px;
-	}
 
 	.nha-modal-hdr {
 		display: flex;
@@ -166,7 +158,7 @@ $cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], ar
      (they are scoped to .nha-root); padding/background are neutralised so it takes no space. -->
 <div class="nha-root" style="padding:0;background:none;">
 <div id="cba-overlay" class="nha-overlay">
-	<div class="nha-modal nha-modal-xl cba-modal">
+	<div class="nha-modal cba-modal u-modal-xl">
 		<div class="nha-modal-hdr">
 			<h3 class="nha-modal-title" id="cba-modal-title">New Memo Request</h3>
 			<button type="button" class="nha-modal-close" id="cba-modal-close" onclick="cbaCancel()" aria-label="Close">&times;</button>

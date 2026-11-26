@@ -156,7 +156,10 @@ route. Recipe, with a real example (`BudgetReqPage`):
    (§2).
 3. **Page body** — `app/pages/budget-req-page.php`. Plain PHP+HTML+JS. Reads `CurrentUserLevel()`
    for role-based UI gating (see §5), fetches data client-side with
-   `'X-Authorization': 'Bearer ' + ew.API_JWT_TOKEN`.
+   `'X-Authorization': 'Bearer ' + ew.API_JWT_TOKEN`. Styling: wrap the page in
+   `<div id="<x>-root" class="nha-root">`, start it with the `app-page-header` banner and build it from the
+   global classes in `_shared/css/nha-fims.css` — no new stylesheet, no font `<link>`, no hard-coded font
+   sizes (see **§5 → Global styles**).
 4. **Page class** — `models/BudgetReqPage.php`. Clone of an existing single-page model
    (e.g. `models/MainDashboard.php`), renaming `PageObjName` / `CurrentPageName` / breadcrumb /
    heading. PSR-4 autoload — no `composer dump-autoload` needed for a new class under `models/`.
@@ -234,6 +237,120 @@ as of this writing `$accessMiddleware` in `app/api.php` is a pass-through stub (
 API routes are JWT-authenticated but not yet permission-gated at the route layer; the enforcement
 today is the in-page `CurrentUserLevel()` checks described above. Don't assume the route itself
 blocks unauthorized calls.
+
+### Global styles — one stylesheet for every page
+
+The whole app has **one stylesheet**: `_shared/css/nha-fims.css`. PHPMaker loads it on every page
+(`src/config.php` → `STYLESHEET_FILES`, after `_shared/css/custom.css`, which holds the theme colour tokens
+`--afims-*` and the dark palette). The old `app/fims-css/fims.css` and `_shared/css/fmd.css` were merged into
+it and deleted (2026-11-26). The file is organised in numbered sections (see its header comment): fonts →
+tokens → global defaults → `u-` utilities → modal sizes → `.nha-*` components → `fims-*` / `app-*` components →
+the opt-in `.nha-legacy` form kit → token wiring.
+
+**Rules for a new page or a new UI feature**
+
+- Do **not** create another stylesheet or `<link>` one, and do **not** `<link>` Google Fonts — the fonts are
+  imported once at the top of `nha-fims.css`. The only `<link>` a page may have is the one cache-busting line the
+  existing pages use, so a CSS change shows without a hard refresh:
+  `<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />`
+- Wrap the page in `<div id="<x>-root" class="nha-root">` and build it from the shared components:
+  `app-page-header` (banner), `nha-filters`, `nha-tbl`, `nha-sc` (KPI cards), `nha-bdg`, `nha-btn-*`,
+  `nha-overlay` / `nha-modal`. The class list is in the comment above section 6 of the file.
+- Use the **type scale** and **`u-` utilities** instead of hard-coded `font-size` / `font-weight` / `font-family`.
+- Colours: use the `--afims-*` tokens (or the `.nha-root` vars such as `--navy`, `--txt`, `--muted`), never a bare
+  hex, so dark mode works by itself. Dark-mode overrides use `html.afims-dark[data-bs-theme="dark"] …`.
+- Page-only rules go in a `<style>` block in the page, every selector scoped under the page root id
+  (`#bgr-root .my-thing { … }`). If a rule would help other pages, add it to `nha-fims.css` instead.
+- Do not copy the `app-page-header` CSS into a page — it is global.
+- **Page container**: the page root (`.nha-root`, `.fims-wrap`, or a Bootstrap `.container-fluid`) sitting directly in
+  PHPMaker's layout gets the same 20px space on every side from one global rule (tokens `--page-gutter`, `--page-pad-y`,
+  `--page-max-width`). Don't give the root its own outer padding / margin, and don't wrap it in another container.
+
+**Fonts** (imported at the top of `nha-fims.css`)
+
+| Role | Font | Token | Utility |
+|---|---|---|---|
+| Body text, tables, forms, buttons | IBM Plex Sans 400 / 700 | `--font-body` | `u-font-body` |
+| Page / section / modal titles, KPI numbers | Barlow Semi Condensed 500 | `--font-heading` | `u-font-heading` |
+| Money and code columns | IBM Plex Mono 400 / 600 | `--font-mono` | `u-font-mono` |
+
+IBM Plex Sans is loaded in 400 and 700 only, so `u-font-medium` / `u-font-semibold` render with the nearest loaded
+weight. The titles listed in section 9 of the file (`app-page-title`, `nha-hdr-title`, `nha-modal-title`,
+`fims-modal-title`, `.modal-title`, `fims-panel-title`, `nha-sc-val`, headings inside `.nha-root`) get the heading
+font automatically.
+
+**Recommended font sizes** (the type scale — the page default is `--fs-base`, 13px)
+
+| Token | Utility | Size | Use for |
+|---|---|---|---|
+| `--fs-2xs` | `u-text-2xs` | 10px | badges, tiny tags, KPI labels |
+| `--fs-xs` | `u-text-xs` | 11px | table headers, filter labels, hints |
+| `--fs-sm` | `u-text-sm` | 12px | dense table cells, secondary text, small buttons |
+| `--fs-base` | `u-text-base` | 13px | **body, table cells, inputs, buttons** |
+| `--fs-md` | `u-text-md` | 14px | form controls inside modals, page subtitle, emphasised text |
+| `--fs-lg` | `u-text-lg` | 16px | card / panel / section titles |
+| `--fs-xl` | `u-text-xl` | 18px | modal titles, `nha-hdr-title` |
+| `--fs-2xl` | `u-text-2xl` | 22px | KPI values |
+| `--fs-3xl` | `u-text-3xl` | 26px | page title (`app-page-title`) |
+
+The shared components already take their sizes from these tokens (section 9 of the file), so a page built from them
+needs no font-size rules. In a page `<style>` write `font-size: var(--fs-sm)`, not `12px`.
+
+**Utility classes** (Tailwind-like, prefixed `u-` so they never clash with Bootstrap's `.fs-*` / `.fw-*` /
+`.text-*`; all use `!important`, so a utility on an element always wins)
+
+| Group | Classes |
+|---|---|
+| Font family | `u-font-body` `u-font-heading` `u-font-mono` |
+| Font size | `u-text-2xs` `u-text-xs` `u-text-sm` `u-text-base` `u-text-md` `u-text-lg` `u-text-xl` `u-text-2xl` `u-text-3xl` |
+| Font weight | `u-font-normal` (400) `u-font-medium` (500) `u-font-semibold` (600) `u-font-bold` (700) |
+| Style / numbers | `u-italic` `u-not-italic` `u-tabular-nums` (lines up digits in money columns) |
+| Line height | `u-leading-none` `u-leading-tight` `u-leading-snug` `u-leading-normal` `u-leading-relaxed` |
+| Letter spacing | `u-tracking-tight` `u-tracking-normal` `u-tracking-wide` `u-tracking-wider` |
+| Case | `u-uppercase` `u-lowercase` `u-capitalize` `u-normal-case` |
+| Alignment | `u-text-left` `u-text-center` `u-text-right` |
+| Wrapping | `u-truncate` (one line with …) `u-nowrap` `u-break-words` |
+| Colour (dark-aware) | `u-text-heading` `u-text-body` `u-text-muted` `u-text-primary` `u-text-success` `u-text-danger` `u-text-warning` `u-text-white` |
+
+Example: `<td class="u-font-mono u-text-right u-tabular-nums">1,250,000.00</td>`,
+`<span class="u-text-xs u-uppercase u-tracking-wide u-text-muted">Status</span>`.
+
+**Modal sizes** — put one class on the modal's box (`.nha-modal`, `.fims-modal-dialog`, Bootstrap `.modal-dialog`
+or a hand-built card), instead of a per-page `max-width` rule. Modal widths are responsive: **laptop / desktop (992px and wider) 70% of the screen, tablet (768–991px) 90%, phone (under 768px) the full width** (tokens `--modal-desktop`, `--modal-tablet`).
+
+| Class | Width / height |
+|---|---|
+| `u-modal-md` / `u-modal-lg` / `u-modal-xl` / `u-modal-2xl` (and a box with no class) | 70% of the screen on laptop / desktop (all four are the same width now; the names stay so a size can be changed per class later) |
+| `u-modal-sm` | 480px on laptop / desktop — for confirm / remarks dialogs |
+| `u-modal-full` | 96% of the screen on laptop / desktop |
+| `u-modal-w-50` … `u-modal-w-90` (steps of 10) | 50–90% of the screen width on laptop / desktop |
+| any of the above | 90% on a tablet, the full width on a phone |
+| `u-modal-h-50` … `u-modal-h-90` (steps of 10) | fixed 50–90% of the screen height; the modal body scrolls |
+
+Example: `<div class="nha-modal u-modal-lg u-modal-h-80">…</div>`.
+
+The `u-modal-*` classes are the **only** way a modal gets its size. The old `nha-modal-sm / -md / -lg / -xl / -full`
+modifiers were removed (2026-11-26), and no page may set `width` / `max-width` on a modal box in its own `<style>` or
+inline. A box with no class is `u-modal-md` wide. To change a modal's size from JavaScript, swap the class
+(`box.classList.replace('u-modal-lg', 'u-modal-xl')`), never set `style.maxWidth`.
+
+**Page header** — every page starts with the User Access banner (global, no CSS needed):
+
+```html
+<div class="app-page-header">
+    <div class="app-page-header-icon"><i class="fas fa-file-invoice"></i></div>
+    <div>
+        <h1 class="app-page-title">Page Title</h1>
+        <p class="app-page-subtitle">One line on what the page is for.</p>
+    </div>
+    <div class="app-page-header-actions"><!-- Refresh / Add buttons --></div>
+</div>
+```
+
+**Legacy form kit** — the CAF / CBA form and read-page classes from the old `fmd.css` (`.caf-form-container`,
+`.form-section`, `.form-row`, `.rd-*`, `.tl-*`, `.alloc-bar-*` …) are kept but only work inside a
+`<div class="nha-legacy">` wrapper, so they can't restyle Bootstrap's `.form-select` / `.form-label` elsewhere. Don't use
+them for new work.
 
 ### CSS: PHPMaker gives every text input `min-width: 250px`
 
@@ -425,7 +542,7 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
   the user-entered `iar_number` (required, unique, editable), the Sales Invoice # / date (once per PO) and
   `line_transaction` (JSONB **array**, one element per delivery receipt — the same idea as
   `budget_allocation.line_transaction`):
-  `[{dr_number, delivery_date, total_amount, lines:[{account_code, account_title, amount}], items?:[{description,
+  `[{dr_number, delivery_date, total_amount, lines:[{account_code, amount}], items?:[{description,
   serial_no, amount, property_no}]}]`. `items` (any number of items, **one line each**) is present only when
   a row of 50,000 or more on a property / equipment account was entered (see "Items are per account row" below). There are no separate DR / entry tables and no FK: deleting the PO's row deletes its DRs.
   A DR is identified inside its PO by its `dr_number` (unique within the PO); a serial number is unique across all
@@ -470,8 +587,22 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
 - **PO comes from the Budget Allocation.** The PO Number field is a search-and-pick combobox
   (`GET /po-dr/pos?search=`), not free text. It lists the `po_number` of `fims.budget_allocation` rows with
   `allocation_type = 'RFA'` (one per PO number, PO number + PO date shown). **A PO that already has an IAR row is not offered** (nor one with an active DV or no balance left):
-  further delivery receipts are added from that row's **Actions → Add Deliveries** (shown while the balance is above 0; opens the form with the PO and IAR number locked and the
-  RFA lines pre-filled — `GET /po-dr/read` returns `lines` for this — then the same `POST /po-dr/add` appends the DR). Picking one fills the read-only
+  further delivery receipts are added from that row's **Actions → Add Deliveries** (shown while the balance is above 0 and the delivery is not accepted; opens the form with the PO and IAR number locked and the
+  RFA lines pre-filled — `GET /po-dr/read` returns `lines` for this — then the same `POST /po-dr/add` appends the DR).
+  **Actions → Delivery Acceptance** (`POST /po-dr/accept-delivery {po_number, subject_to, inspection_notes?}`, `PoDrService::acceptDelivery()`): the button is offered **only when the pro-forma JEV of
+  every delivery receipt has been submitted** (each DR has a `jev_id`; the server enforces it and lists the DRs still missing). It opens a form with **Date** (backend, read-only),
+  **Subject to ICS/PAR** (required, typed → `subject_to`) and **Inspection Notes** (optional → `inspection_notes`); **Inspected By** is not on the form — the server stores the logged-in user
+  (`delivery_accepted_by`) and the name is read live from `uac.users` as `inspected_by`. Saving sets **`delivery_accepted = TRUE`** (+ `delivery_accepted_at`) on the IAR row — one-way, independent of the PO balance;
+  other modules can key off the flag. Clicking Delivery Acceptance on an accepted row shows Date, Inspected By, Subjected To and Inspection Notes read-only. An accepted PO shows an **Accepted** pill,
+  loses Add Deliveries and Edit, and `create()`, `update()` and `delete()` refuse it (View and Pro-forma still work).
+  **GSD is notified**: after the acceptance is saved, `PoDrService::notifyGsd()` calls `NotificationService::toRc('010', …)` (`GSD_RC`, General Services Department) — one notification per active user of RC 010,
+  "**Delivery Acceptance**: PO …" (the wording is "Delivery Acceptance", not "Delivery accepted") with the IAR no., Subject to and notes, **linking to `Voucher?po=<po_number>` — the DV page, not the IAR module**.
+  `voucher.php` reads `?po=` (`VL_PO`, then clears it from the URL) and calls `vf_openForPo()` (`voucher/form.php`): it opens the new-DV modal and picks the approved RFA carrying that PO, so the PO Number, the
+  **Vendor (Supplier / Contractor)**, Dept/Project, amount and particulars fill in exactly as when the RFA is picked by hand (a payroll month is still chosen in the same Vendor dropdown; the field is optional). When no
+  approved, DV-free RFA holds that PO the modal opens with an explanation instead. The notification's `event_key` is `delivery_accepted:<po>:<user_id>`, so it is never sent twice; the accepting user is skipped; a failure is only
+  logged and never undoes the acceptance. The GSD sample account is seeded by `00 - uac/04 - seed_data/07 - gsd_role.sql` (user level **17 GSD Officer**, pages: Voucher, IAR module, Property Records, dashboard,
+  notifications) and `01 - fims/04 - seed_data/26 - gsd_user.sql` (user **`gsd.officer`**, RC 010, password `password123` — change it on a real server). Add more GSD users with RC 010 and they are notified too. Columns: `25 - fims_inspection_acceptance_report.sql` (idempotent `ADD COLUMN IF NOT EXISTS`;
+  re-run it on an existing DB). Picking a PO fills the read-only
   Requesting Office/Dept (`responsibility_code.rc_name` of `requesting_rc_id`), Vendor (`vendors.vendor_name`),
   PO Date and PO Amount. **PO Amount = sum of `requested_amount` over `line_transaction`**.
   `PoDrService::create()` (and `update()` when the PO number changes) rejects a PO that isn't an RFA PO.
@@ -498,8 +629,11 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
   superadmin only). A DR with a JEV cannot be submitted again (409): its Pro-forma is **read-only** (saved rows, no Add row / Submit, "Submitted as … JEV"), and **Print JEV**
   prints with the JEV number and date. `PoDrService::shape()` must return `jev_id` / `jev_no` or the lock silently fails.
 - **Infrastructure tab** (second tab of the IAR page; `form/infra-iar-form.php` + `InfraIarService.php` + `app/routes/infra_iar.php`; table `fims.statement_work_accomplishments`,
-  `01 - table/50`; sample RFAs / locations `02 - sample_data/12`). One record per **approved Infrastructure RFA without a PO** (`allocation_type='RFA'`, status Approved, category
-  Infrastructure, no `po_number`, no active DV, no record yet). The header button reads **Add Infrastructure Record**; the list shows SWA Number, RFA Number, Project Name, Contractor,
+  `01 - table/50`; sample RFAs / locations `02 - sample_data/12`). One record per **approved Infrastructure RFA without a PO** (`allocation_type='RFA'`, status Approved,
+  no `po_number`, no active DV, no record yet, and **at least one line on an infrastructure account** — the RFAs have no category, so the rule is by account code:
+  `InfraIarService::INFRA_RFA_ACCOUNTS` = 1-04-03-020, 1-05-01-010, 1-05-01-020, 1-06-01-010, 1-06-02-990, 1-06-04-010, 1-06-04-990, 1-06-09-020 or a sub-ledger of one; edit that constant to change the list).
+  **Account titles are never stored** — `line_transaction` lines (here and in Deliveries) keep only `account_code` + `amount`; titles are read live from `fims.chart_of_accounts`
+  (`PoDrService::accountTitles()` / `withTitles()`), because a title can be renamed; the table scripts `25` / `50` migrate older rows. The header button reads **Add Infrastructure Record**; the list shows SWA Number, RFA Number, Project Name, Contractor,
   **Regional Office/District Office**, Revised Contract Cost and % Accomplishment.
   - **What is stored**: only `swa_number`, `allocation_id`, **Contract**, the dates / duration and `line_transaction`. Everything the RFA already knows — RFA number, project code / name, program,
     contractor, location, regional / district office **and the cost figures** (original contract cost, variation order, revised contract cost, `rfa_amount`) — is **read live** by
@@ -864,6 +998,8 @@ Cross-cutting code used by every page — coordinate before changing:
 
 | Component | Path |
 |---|---|
+| Global stylesheet (fonts, type scale, `u-` utilities, modal sizes, all components) | `_shared/css/nha-fims.css` — see §5 → Global styles |
+| Theme colour tokens + dark palette | `_shared/css/custom.css` |
 | Auth | `_shared/auth.php` |
 | Page permissions | `_shared/PagePermission.php` (+ `_shared/README-PagePermission.md`) |
 | Notifications | `_shared/notification.php` (bell UI), `_shared/mqtt-notification.js` (optional MQTT push) — design in `_shared/NOTIFICATION-IMPLEMENTATION-PLAN.md`, usage in `_shared/NOTIFICATION_README.md`, summary in §8.11 |

@@ -235,7 +235,7 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
 ?>
 
 <link rel="stylesheet"
-	href="/app/fims-css/fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css') ?>" />
+	href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <!-- Main content -->
 <div class="container-fluid app-uac-page">
@@ -642,7 +642,7 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
 <?php if ($canAddUser): ?>
 <!-- Add User modal (self-contained, no Bootstrap JS dependency) -->
 <div id="addUserOverlay" class="user-modal-overlay">
-	<div class="add-user-modal-shell">
+	<div class="add-user-modal-shell u-modal-md">
 		<div class="card mb-0 add-user-modal-card">
 			<div class="card-header d-flex justify-content-between align-items-center">
 				<h3 class="card-title mb-0">Add New User</h3>
@@ -818,7 +818,7 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
 <?php if ($canEditUser): ?>
 <!-- Edit User modal (self-contained, no Bootstrap JS dependency) -->
 <div id="editUserOverlay" class="user-modal-overlay">
-	<div class="add-user-modal-shell">
+	<div class="add-user-modal-shell u-modal-md">
 		<div class="card mb-0 add-user-modal-card">
 			<div class="card-header d-flex justify-content-between align-items-center">
 				<h3 class="card-title mb-0">Edit User</h3>

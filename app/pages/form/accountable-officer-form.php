@@ -28,8 +28,7 @@
     #ao-overlay::after { content:'';display:inline-block;height:100%;vertical-align:middle; }
 
     #ao-card {
-        display:inline-block;text-align:left;vertical-align:middle;
-        width:100%;max-width:70%;box-sizing:border-box;
+        display:inline-block;text-align:left;vertical-align:middle;box-sizing:border-box;
         background:var(--afims-surface, #FFFFFF);border-radius:16px;
         box-shadow:0 32px 80px rgba(0,0,0,.28);font-family:'IBM Plex Sans',sans-serif;
     }
@@ -78,8 +77,6 @@
     #ao-footer .ao-btn-navy:hover:not(:disabled) { opacity:.92; }
 
     @media (max-width:560px) { .ao-row { grid-template-columns:1fr; } }
-    /* 70% is too narrow on tablets/phones — use the full width there. */
-    @media (max-width:991.98px) { #ao-card { max-width:100%; } }
 
     /* "+ Create Sub-Ledger Account" sits in the body, so the #ao-footer button rules never reached it
        (it showed as a bare grey browser button stretched across the whole row). */
@@ -118,7 +115,7 @@
 </style>
 
 <div id="ao-overlay">
-    <div id="ao-card">
+    <div class="u-modal-w-70" id="ao-card">
 
         <div id="ao-header">
             <div id="ao-header-info">

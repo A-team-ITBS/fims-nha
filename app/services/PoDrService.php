@@ -605,11 +605,19 @@ class PoDrService
             'iar_number' => $r['iar_number'],
             'si_number'  => $r['si_number'],
             'si_date'    => $r['si_date'],
+            'delivery_accepted'    => in_array($r['delivery_accepted'] ?? false, [true, 't', 'true', 1, '1'], true),
+            'delivery_accepted_at' => $r['delivery_accepted_at'] ?? null,   // "Date"
+            'inspected_by'         => $r['inspected_by'] ?? null,           // "Inspected By": the user's name, read live from uac.users
+            'subject_to'           => $r['subject_to'] ?? null,
+            'inspection_notes'     => $r['inspection_notes'] ?? null,
             'receipts'   => array_map(fn($d) => $this->shape($d), $this->drsFrom($r['line_transaction'])),
         ];
     }
 
-    private const COLS = "i.po_number, i.iar_number, i.si_number, TO_CHAR(i.si_date, 'YYYY-MM-DD') AS si_date, i.line_transaction";
+    private const COLS = "i.po_number, i.iar_number, i.si_number, TO_CHAR(i.si_date, 'YYYY-MM-DD') AS si_date, i.line_transaction,
+                              i.delivery_accepted, TO_CHAR(i.delivery_accepted_at, 'YYYY-MM-DD') AS delivery_accepted_at, i.subject_to, i.inspection_notes,
+                              (SELECT NULLIF(TRIM(CONCAT_WS(' ', NULLIF(TRIM(u.first_name), ''), NULLIF(TRIM(u.middle_name), ''), NULLIF(TRIM(u.last_name), ''), NULLIF(TRIM(u.suffix), ''))), '')
+                                 FROM uac.users u WHERE u.user_id = i.delivery_accepted_by) AS inspected_by";
 
     /** One entry per PO number: { po_number, iar_number, …, receipts: [ … ] } (paginated). */
     public function fetchAlls(int $page = 1, int $limit = 10, string $search = ''): array
@@ -830,6 +838,84 @@ class PoDrService
         return $r ? (string) ($r[0]['dv_no'] ?: 'DV') : null;
     }
 
+    /**
+     * Actions -> Delivery Acceptance: marks the PO's delivery as accepted (delivery_accepted = TRUE, with when / who). One-way; no more
+     * delivery receipts can be added afterwards. Other modules can key off the flag.
+     */
+    public function acceptDelivery(string $poNumber, ?int $userId = null, string $subjectTo = '', string $notes = ''): array
+    {
+        try {
+            $po        = trim($poNumber);
+            $subjectTo = trim($subjectTo);
+            $notes     = trim($notes);
+            if ($subjectTo === '') {
+                return ['success' => false, 'message' => 'Subject to ICS/PAR is required.'];
+            }
+            if (mb_strlen($subjectTo) > 100) {
+                return ['success' => false, 'message' => 'Subject to ICS/PAR must be 100 characters or fewer.'];
+            }
+            if (mb_strlen($notes) > 2000) {
+                return ['success' => false, 'message' => 'Inspection notes must be 2,000 characters or fewer.'];
+            }
+            $cur = App\ExecuteRows("SELECT delivery_accepted, line_transaction FROM {$this->h} WHERE po_number = " . $this->q($po), 'DB');
+            if (!$cur) {
+                return ['success' => false, 'message' => "PO '{$po}' has no IAR yet.", 'httpCode' => 404];
+            }
+            if (in_array($cur[0]['delivery_accepted'], [true, 't', 'true', 1, '1'], true)) {
+                return ['success' => false, 'message' => "The delivery of PO '{$po}' was already accepted.", 'httpCode' => 409];
+            }
+            // every delivery receipt's pro-forma JEV must have been submitted first
+            $pending = [];
+            foreach ($this->drsFrom($cur[0]['line_transaction']) as $d) {
+                if (empty($d['jev_id'])) {
+                    $pending[] = (string) ($d['dr_number'] ?? '');
+                }
+            }
+            if ($pending) {
+                return ['success' => false, 'message' => 'Submit the pro-forma JEV of every delivery receipt first. Not yet submitted: ' . implode(', ', $pending) . '.'];
+            }
+            $by = $userId ? (int) $userId : 'NULL';
+            App\Execute("UPDATE {$this->h} SET delivery_accepted = TRUE, delivery_accepted_at = CURRENT_TIMESTAMP, delivery_accepted_by = {$by}, "
+                . 'subject_to = ' . $this->q($subjectTo) . ', inspection_notes = ' . $this->sqlOrNull($notes === '' ? null : $notes)
+                . " WHERE po_number = " . $this->q($po), 'DB');
+
+            $this->notifyGsd($po, $userId, $subjectTo, $notes);
+
+            return ['success' => true, 'message' => "Delivery of PO '{$po}' accepted."];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /** The Responsibility Center of the General Services Department (fims.responsibility_code): notified of every delivery acceptance. */
+    private const GSD_RC = '010';
+
+    /**
+     * Tell every active GSD user (uac.users.rc_id = GSD_RC) that a delivery was accepted. Never throws and never blocks the acceptance —
+     * the acceptance is already saved. The sender is left out of the recipients; event_key makes a repeat harmless.
+     */
+    private function notifyGsd(string $po, ?int $userId, string $subjectTo, string $notes): void
+    {
+        try {
+            $r    = App\ExecuteRows("SELECT iar_number FROM {$this->h} WHERE po_number = " . $this->q($po), 'DB');
+            $iar  = $r ? (string) $r[0]['iar_number'] : '';
+            $body = "Delivery Acceptance for PO {$po}" . ($iar !== '' ? " (IAR {$iar})" : '') . ". Subject to: {$subjectTo}." . ($notes !== '' ? " Notes: {$notes}" : '')
+                . ' Open it to prepare the Disbursement Voucher.';
+            try {   // the link goes to the DV (Voucher page), which opens the new-DV modal with this PO (and its vendor) filled in — not to the IAR module
+                $link = '/' . ltrim((string) App\GetUrl('Voucher'), '/');
+            } catch (\Throwable $e) {
+                $link = '/Voucher';
+            }
+            $link .= '?po=' . rawurlencode($po);
+            NotificationService::toRc(self::GSD_RC, "Delivery Acceptance: PO {$po}", $body, $link, [
+                'sender_id' => $userId && $userId > 0 ? $userId : null,
+                'event_key' => "delivery_accepted:{$po}",
+            ]);
+        } catch (\Throwable $e) {
+            App\LogError("PoDrService: could not notify GSD of the acceptance of PO {$po} — " . $e->getMessage());
+        }
+    }
+
     public function create(array $body, ?int $userId = null): array
     {
         try {
@@ -850,7 +936,12 @@ class PoDrService
 
             App\Execute('BEGIN', 'DB');
             try {
-                $cur = App\ExecuteRows("SELECT iar_number, line_transaction FROM {$this->h} WHERE po_number = " . $this->q($po) . ' FOR UPDATE', 'DB');
+                $cur = App\ExecuteRows("SELECT iar_number, line_transaction, delivery_accepted FROM {$this->h} WHERE po_number = " . $this->q($po) . ' FOR UPDATE', 'DB');
+                if ($cur && in_array($cur[0]['delivery_accepted'], [true, 't', 'true', 1, '1'], true)) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return ['success' => false, 'message' => "The delivery of PO '{$po}' was already accepted, so no more delivery receipts can be added."];
+                }
                 if ($cur && $cur[0]['iar_number'] !== $iar) {
                     App\Execute('ROLLBACK', 'DB');
 
@@ -907,6 +998,9 @@ class PoDrService
             $check = $this->fetchByPo($oldPo);
             if (!$check['success']) {
                 return $check;
+            }
+            if (!empty($check['data']['delivery_accepted'])) {   // Delivery Acceptance locks the record: no more deliveries and no edits
+                return ['success' => false, 'message' => "The delivery of PO '{$oldPo}' was already accepted, so the record can no longer be edited."];
             }
 
             // the PO of an IAR cannot be changed
@@ -1022,6 +1116,9 @@ class PoDrService
             $check = $this->fetchByPo($poNumber);
             if (!$check['success']) {
                 return $check;
+            }
+            if (!empty($check['data']['delivery_accepted'])) {
+                return ['success' => false, 'message' => "The delivery of PO '{$poNumber}' was already accepted, so the record can no longer be deleted."];
             }
             App\Execute("DELETE FROM {$this->h} WHERE po_number = " . $this->q($poNumber), 'DB');
 

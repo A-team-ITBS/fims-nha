@@ -37,7 +37,7 @@
  *
  * Markup/CSS classes (fims-page-header, fims-stat-grid, fims-table-panel,
  * fims-tabs-underline, fims-modal-overlay, etc.) match the real classes
- * defined in app/fims-css/fims.css (merged in from the TREASURY reference
+ * defined in _shared/css/nha-fims.css (merged in from the TREASURY reference
  * project's own fims-treasury.css), verified against actual usage in its
  * source pages rather than guessed.
  *
@@ -58,24 +58,20 @@
 
 namespace PHPMaker2024\FIMS;
 
-$cpCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
+$cpCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css');
 $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js');
 ?>
-<link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= $cpCssVer ?>" />
+<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= $cpCssVer ?>" />
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" defer></script>
 <script src="/app/fims-js/fims-treasury.js?v=<?= $cpJsVer ?>" defer></script>
 <!-- Required by the embedded FTLA tab (app/pages/ftla-page.php) — its own
      head assets, duplicated here since that file is included mid-page
      rather than as a full standalone page render. -->
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <div class="fims-wrap" id="cpModule">
 
-    <!-- same banner as User Access: app-page-header (styled by app/fims-css/fims.css, already loaded above) -->
+    <!-- same banner as User Access: app-page-header (styled by the global _shared/css/nha-fims.css) -->
     <div class="app-page-header">
         <div class="app-page-header-icon"><i class="fas fa-money-check-alt"></i></div>
         <div>
@@ -164,7 +160,11 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
          MODAL: Prepare Check (primary action)
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-prepare-check" style="display:none;">
+<<<<<<< HEAD
         <div class="fims-modal-dialog" style="max-width:1160px;width:95vw;">
+=======
+        <div class="fims-modal-dialog u-modal-md">
+>>>>>>> 33ce84f4f241f54e59e521b27a33e5fa2136f59e
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title">Prepare Check</div></div>
@@ -233,7 +233,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
          in this module sets on its own.
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-set-check-status" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:420px;width:95vw;">
+        <div class="fims-modal-dialog u-modal-sm">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title">Set Check Status</div><p class="fims-modal-subtitle" id="setStatusSubtitle" style="margin:0;font-size:12px;color:var(--fims-text-subtle);"></p></div>
@@ -290,7 +290,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
          table actions and its own Prepare Check "Preview" button actually use.
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-check-preview" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:900px;width:95vw;">
+        <div class="fims-modal-dialog u-modal-lg">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div>
@@ -323,7 +323,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
          (http://127.0.0.1:9123), ported from TREASURY's check-preparation.php.
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-print-options" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:480px;width:95vw;">
+        <div class="fims-modal-dialog u-modal-sm">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title">Print Check</div></div>
@@ -361,7 +361,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
          checkboxes; this modal only picks the template + confirms.
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-batch-print" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:640px;width:95vw;">
+        <div class="fims-modal-dialog u-modal-md">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title">Batch Print</div></div>
@@ -394,7 +394,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
          opened it) and a bundled monthly notice to a region/department.
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-send-notice" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:720px;width:95vw;">
+        <div class="fims-modal-dialog u-modal-md">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title">Send Notice</div></div>
@@ -443,7 +443,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
          MODAL: Cancel Check (tab 5 primary action)
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-cancel-check" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:560px;width:95vw;">
+        <div class="fims-modal-dialog u-modal-sm">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title">Cancel Check</div></div>
@@ -1230,7 +1230,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
     // in the .nha-chk CSS from this page's own stylesheet so the agent's
     // file:/// load can still resolve it via the real web server.
     function buildCheckHtml(c, opts) {
-        const cssHref = new URL('/app/fims-css/fims.css', window.location.origin).href;
+        const cssHref = new URL('/_shared/css/nha-fims.css', window.location.origin).href;
         return '<!DOCTYPE html><html><head><meta charset="UTF-8">' +
             '<link rel="stylesheet" href="' + cssHref + '">' +
             '<style>@page{size:8.1in 3in;margin:0} body{margin:0;}</style></head><body>' +

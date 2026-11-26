@@ -4,9 +4,6 @@ namespace PHPMaker2024\FIMS;
 $_ao_api = Config('API.FIMS_URL');
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 <style>
 /* ── Actions dropdown menu ──────────────────────────────────── */
@@ -147,7 +144,7 @@ $_ao_api = Config('API.FIMS_URL');
     #ao-sl-overlay { display:none;position:fixed;inset:0;z-index:9100;
         background:rgba(15,32,69,.6);align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px); }
     #ao-sl-overlay.open { display:flex; }
-    #ao-sl-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;width:100%;max-width:600px;
+    #ao-sl-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;
         max-height:85vh;display:flex;flex-direction:column;overflow:hidden;
         box-shadow:0 32px 80px rgba(0,0,0,.28);font-family:'IBM Plex Sans',sans-serif;
         animation:aoSlIn .2s ease; }
@@ -193,7 +190,7 @@ $_ao_api = Config('API.FIMS_URL');
 </style>
 
 <div id="ao-sl-overlay">
-    <div id="ao-sl-card">
+    <div class="u-modal-md" id="ao-sl-card">
         <div id="ao-sl-header">
             <div id="ao-sl-header-info">
                 <div>

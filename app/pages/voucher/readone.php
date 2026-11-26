@@ -36,6 +36,11 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 #vr-root dl.vr-dl dt { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin: 0; }
 #vr-root dl.vr-dl dd { font-size: 14px; font-weight: 600; color: var(--afims-text, #1e293b); margin: 2px 0 0; }
 #vr-root .vr-particulars { font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+#vr-root .vr-a-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 20px; }
+#vr-root .vr-a-f dt { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin: 0; }
+#vr-root .vr-a-f dd { font-size: 14px; font-weight: 600; color: var(--afims-text, #1e293b); margin: 2px 0 0; word-break: break-word; }
+#vr-root .vr-a-full { grid-column: 1 / -1; }
+@media (max-width: 768px) { #vr-root .vr-a-grid { grid-template-columns: 1fr; } }
 #vr-root .vr-ledger { border-collapse: collapse; width: 100%; font-size: 13px; }
 #vr-root .vr-ledger td { padding: 6px 4px; border-bottom: 1px solid var(--afims-surface-subtle, #F4F7FA); }
 #vr-root .vr-ledger td.vr-l-label { color: var(--afims-text-muted, #62657E); font-weight: 600; width: 55%; }
@@ -54,11 +59,47 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 #vr-root .vje-row .vje-remove { position: absolute; top: 0; right: 0; }
 #vr-root .vje-grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 6px; }
 #vr-root .vje-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 6px; }
+/* Deduction / ATC rows laid out like the entry form's (form.php .vf-ded-row / .vf-atc-row): name on the left, Rate and Amount
+   columns on the right, one hairline between rows. The VAT block keeps its own layout. */
+#vr-root .vje-ded-row:not([data-vat="1"]), #vr-root .vr-ro-ded, #vr-root .vje-atc-row, #vr-root .vr-ro-atc {
+    display: grid; grid-template-columns: minmax(0, 1fr) 180px 170px 44px; align-items: center; margin: 0; padding: 10px 14px; border-top: 1px solid #E4ECF6; }
+#vr-root .vje-ded-row:not([data-vat="1"]) > .vr-ded-label, #vr-root .vr-ro-ded > .vr-ded-label { grid-column: 1; grid-row: 1; margin: 0; font-weight: 400; font-size: 14px; color: var(--afims-text, #1C1E29); }
+#vr-root .vje-ded-row:not([data-vat="1"]) > .vje-grid2, #vr-root .vr-ro-ded > .vje-grid2, #vr-root .vje-atc-row > .vje-grid3, #vr-root .vr-ro-atc > .vje-grid3 { display: contents; }
+#vr-root .vje-ded-row:not([data-vat="1"]) > .vje-grid2 > .vje-fg:nth-child(1), #vr-root .vr-ro-ded > .vje-grid2 > .vje-fg:nth-child(1) { grid-column: 2; grid-row: 1; padding-right: 14px; margin: 0; }
+#vr-root .vje-ded-row:not([data-vat="1"]) > .vje-grid2 > .vje-fg:nth-child(2), #vr-root .vr-ro-ded > .vje-grid2 > .vje-fg:nth-child(2) { grid-column: 3; grid-row: 1; margin: 0; }
+#vr-root .vje-ded-row:not([data-vat="1"]) > .vje-grid2 label, #vr-root .vr-ro-ded > .vje-grid2 label,
+#vr-root .vje-atc-row > .vje-atc-codefg label, #vr-root .vr-ro-atc > .vje-fg label, #vr-root .vje-atc-row .vr-ded-label, #vr-root .vr-ro-atc .vr-ded-label { display: none; }
+#vr-root .vje-ded-row:not([data-vat="1"]) input, #vr-root .vr-ro-ded input, #vr-root .vje-atc-row input, #vr-root .vr-ro-atc input { text-align: right; }
+#vr-root .vje-atc-row > .vje-atc-codefg, #vr-root .vr-ro-atc > .vje-fg { grid-column: 1; grid-row: 1; margin: 0; padding-right: 14px; }
+#vr-root .vje-atc-row > .vje-atc-codefg input, #vr-root .vr-ro-atc > .vje-fg input { text-align: left; }
+#vr-root .vje-atc-row > .vje-grid3 > .vje-fg:nth-child(1), #vr-root .vr-ro-atc > .vje-grid3 > .vje-fg:nth-child(1) { grid-column: 2; grid-row: 1; padding-right: 14px; margin: 0; }
+#vr-root .vje-atc-row > .vje-grid3 > .vje-fg:nth-child(3), #vr-root .vr-ro-atc > .vje-grid3 > .vje-fg:nth-child(3) { grid-column: 3; grid-row: 1; margin: 0; }
+#vr-root .vje-atc-row > .vje-grid3 > .vje-fg:nth-child(2), #vr-root .vr-ro-atc > .vje-grid3 > .vje-fg:nth-child(2) { grid-column: 2 / 4; grid-row: 2; margin-top: 8px; }
+#vr-root .vje-ded-row:not([data-vat="1"]) > .vje-fg, #vr-root .vr-ro-ded > .vje-fg { grid-column: 1 / -1; grid-row: 2; }
+#vr-root .vje-ded-row:not([data-vat="1"]) > .vje-remove, #vr-root .vje-atc-row > .vje-remove { position: static; grid-column: 4; grid-row: 1; justify-self: center; }
+#vr-root .vr-ded-section > :first-child, #vr-root #vje-ded-list > :first-child { border-top: 0; }
 #vr-root .vje-fg label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin-bottom: 3px; }
 #vr-root .vje-fg input, #vr-root .vje-fg select { width: 100%; font-size: 13px; padding: 8px 12px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 8px; box-sizing: border-box; font-family: inherit; background: var(--afims-surface, #fff); color: var(--afims-text, #1e293b); }
 #vr-root .vje-fg input[readonly] { background: var(--afims-surface-subtle, #F4F7FA); cursor: default; pointer-events: none; user-select: none; }
 #vr-root .vje-fg input[readonly]:focus { outline: none; box-shadow: none; border-color: var(--afims-border, #E4ECF2); }
-#vr-root .vr-ded-types { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Amount column: the box text sits 12px inside its box, so the header, Gross and Net values are inset the same 12px to line up with it */
+#vr-root .vr-bd-table th:nth-child(4), #vr-root .vr-bd-gross td:nth-child(4) { padding-right: 26px; }
+#vr-root .vr-net-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 70px 12px 14px; background: #E3EBF8; border-top: 1px solid #D5E0F0; font-size: 14px; color: #0B1B43; }
+#vr-root .vr-net-row b { font-family: "IBM Plex Mono", monospace; font-size: 15px; }
+#vr-root .vr-acct-hint { font-family: "IBM Plex Mono", monospace; font-size: 12px; font-weight: 400; color: var(--afims-text-muted, #62657E); white-space: nowrap; }
+#vr-root .vr-ded-label .vr-acct-hint { margin-left: 6px; }
+#vr-root .vje-atc-codefg, #vr-root .vr-ro-atc > .vje-fg:first-child { display: flex; align-items: center; gap: 10px; }
+#vr-root .vje-atc-codefg > input, #vr-root .vr-ro-atc > .vje-fg:first-child > input { flex: 0 1 430px; min-width: 0; }
+/* the Tax Base line only matters when the base is split over several ATC rows */
+#vr-root .vr-ded-section:not(.vr-atc-multi) .vr-ro-atc > .vje-grid3 > .vje-fg:nth-child(2),
+#vr-root #vje-ded-list:not(.vr-atc-multi) .vje-atc-row > .vje-grid3 > .vje-fg:nth-child(2) { display: none; }
+#vr-root .vr-ded-types { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid #E4ECF6; }
+#vr-root .vr-ded-less { font-size: 13px; color: var(--afims-text, #1C1E29); }
+#vr-root .vr-ded-add-select {
+    width: auto; min-width: 190px; padding: 7px 12px; border: 1px dashed var(--afims-border, #B9C4D0); border-radius: 8px;
+    background: transparent; color: var(--afims-text-muted, #62657E); font-size: 13px; font-family: inherit; cursor: pointer;
+}
+#vr-root .vr-ded-add-select:hover, #vr-root .vr-ded-add-select:focus { border-color: var(--afims-heading-fill, #000E3E); outline: none; }
 #vr-root .vr-ded-type-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 20px; border: 1px solid var(--afims-border, #E4ECF2); background: var(--afims-surface, #FFFFFF);
     color: var(--afims-heading-fill, #000E3E); font-size: 12px; font-weight: 600; letter-spacing: .02em; cursor: pointer; transition: background .15s, border-color .15s; }
 #vr-root .vr-ded-type-btn:hover { background: var(--afims-surface-subtle, #F4F7FA); border-color: var(--afims-heading-fill, #000E3E); }
@@ -70,6 +111,43 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 #vr-root .vje-auto-tag { display: inline-block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
     padding: 1px 6px; border-radius: 999px; background: var(--afims-primary-soft, #E6EBF6); color: var(--afims-primary-text, #0035A9); margin-left: 4px; }
 /* Section B mirrors the entry form: RFA Breakdown, then plain deduction / ATC rows (no borders), all in one box. */
+/* Section B as one table-like box (same as the entry form): RFA lines, Gross, "Less:" rows. */
+#vr-root .vr-b-card { padding: 0; overflow: hidden; border-color: #D5E0F0; }
+#vr-root .vr-b-card .vr-ded-section { margin: 0 !important; padding: 0 !important; border-top: 1px solid #E4ECF6 !important; }
+#vr-root .vr-b-card > .vr-ded-section:first-child { border-top: 0 !important; }
+#vr-root .vr-bd-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 14px; }
+#vr-root .vr-bd-table th:nth-child(2), #vr-root .vr-bd-table td:nth-child(2) { width: 170px; }
+#vr-root .vr-bd-table th:nth-child(3), #vr-root .vr-bd-table td:nth-child(3) { width: 180px; }
+#vr-root .vr-bd-table th:nth-child(4), #vr-root .vr-bd-table td:nth-child(4) { width: 170px; }
+#vr-root .vr-bd-table th:nth-child(5), #vr-root .vr-bd-table td:nth-child(5) { width: 44px; }
+#vr-root .vr-bd-table th { padding: 12px 14px; background: #EEF3FB; color: #0B1B43; font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+#vr-root .vr-bd-table td { padding: 10px 14px; border-top: 1px solid #E4ECF6; vertical-align: middle; }
+#vr-root .vr-bd-table tbody td:nth-child(2) { color: var(--afims-text-muted, #62657E); }
+#vr-root .vr-bd-table td:nth-child(3), #vr-root .vr-bd-table td:nth-child(4) { text-align: right; }
+#vr-root .vr-bd-table .vr-bd-amt { padding: 8px 12px; border: 1px solid var(--afims-border, #D7DCE6); border-radius: 8px; display: block; text-align: right; background: var(--afims-surface-subtle, #F4F7FA); }
+#vr-root .vr-bd-gross td { background: #E3EBF8; border-top: 1px solid #D5E0F0; padding: 8px 14px; }
+#vr-root .vr-bd-gross .vr-bd-muted { color: var(--afims-text-muted, #62657E); font-size: 13px; }
+#vr-root .vr-less { font-weight: 400; margin-right: 4px; }
+/* read-only VAT row: Less: VAT withheld (Inclusive | Exclusive) | rate | amount, VAT computation on a muted line beneath */
+#vr-root .vr-ro-vat { display: grid; grid-template-columns: minmax(0, 1fr) 180px 170px 44px; align-items: center; padding: 10px 14px; border-top: 1px solid #E4ECF6; }
+#vr-root .vr-ro-vat > .vr-ded-label { grid-column: 1; grid-row: 1; margin: 0; font-weight: 400; font-size: 14px; }
+#vr-root .vr-ro-vat .vr-vat-tag { font-size: 12px; margin-left: 10px; padding: 3px 10px; border-radius: 999px; background: #E3EBF8; color: #0B1B43; font-weight: 600; }
+#vr-root .vr-ro-vat > .vje-fg:nth-of-type(2) { grid-column: 2; grid-row: 1; padding-right: 14px; margin: 0; }
+#vr-root .vr-ro-vat > .vje-fg:nth-of-type(3) { grid-column: 3; grid-row: 1; margin: 0; }
+#vr-root .vr-ro-vat .vje-fg label { display: none; }
+#vr-root .vr-ro-vat input { text-align: right; }
+#vr-root .vr-ro-vat > .vr-vat-info { grid-column: 1 / -1; grid-row: 2; margin-top: 6px; font-size: 12px; color: var(--afims-text-muted, #62657E); }
+/* C. Accounting Entry (auto-generated) */
+#vr-root .vr-ap-card { padding: 0; overflow: hidden; }
+#vr-root .vr-ap-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+#vr-root .vr-ap-table th { padding: 12px 16px; text-align: left; font-size: 12.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; color: var(--afims-text-muted, #475069); background: #F7F9FC; border-bottom: 1px solid #E4ECF6; }
+#vr-root .vr-ap-table td { padding: 10px 16px; border-bottom: 1px solid #EEF2F8; }
+#vr-root .vr-ap-table td:nth-child(1) { font-family: "IBM Plex Mono", monospace; font-size: 13px; letter-spacing: .02em; }
+#vr-root .vr-ap-table td:nth-child(3), #vr-root .vr-ap-table td:nth-child(4) { text-align: right; }
+#vr-root .vr-ap-table td.vr-ap-cr { padding-left: 40px; }
+#vr-root .vr-ap-sub:not(:empty) { margin-top: 2px; font-size: 12px; color: var(--afims-text-muted, #62657E); }
+#vr-root .vr-ap-table tr.vr-ap-total td { font-weight: 700; border-bottom: 0; }
+#vr-root .vr-ap-table tr.vr-ap-bad td:nth-child(3), #vr-root .vr-ap-table tr.vr-ap-bad td:nth-child(4) { color: var(--afims-danger-text, #8F222D); }
 #vr-root .vr-ded-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--afims-border, #E4ECF2); }
 #vr-root .vr-card > .vr-ded-section:first-child { margin-top: 0; padding-top: 0; border-top: none; }
 #vr-root .vr-ded-section + .vr-ded-section { margin-top: 10px; padding-top: 0; border-top: none; } /* Deductions and ATC read as one list */
@@ -125,8 +203,9 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
    renamed. */
 #vr-root .vr-doc-section { margin-bottom: 22px; }
 #vr-root .vr-doc-section-hdr {
-    font-size: 15px; font-weight: 700; color: var(--afims-heading-fill, #000E3E);
-    margin: 0 0 12px; letter-spacing: .01em;
+    font-size: 14px; font-weight: 700; color: #fff; background: #0B1B43;
+    margin: 0 0 12px; padding: 10px 14px; border-radius: 8px;
+    text-transform: uppercase; letter-spacing: .02em;
 }
 #vr-root .vr-doc-table { width: 100%; border-collapse: collapse; border: 1px solid var(--afims-border, #D7DCE6); margin-bottom: 14px; }
 #vr-root .vr-doc-table td { border: 1px solid var(--afims-border, #D7DCE6); padding: 10px 14px; vertical-align: top; width: 50%; }
@@ -136,7 +215,7 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 #vr-root .vr-doc-summary-table td { border: 1px solid var(--afims-border, #D7DCE6); padding: 10px 14px; font-size: 13px; }
 #vr-root .vr-doc-summary-table td:first-child { font-weight: 600; color: var(--afims-text, #1C1E29); }
 #vr-root .vr-doc-summary-table td:last-child { text-align: right; font-family: "IBM Plex Mono", monospace; font-weight: 600; width: 220px; }
-#vr-root .vr-doc-summary-table tr.vr-doc-summary-final td { font-weight: 700; background: var(--afims-surface-subtle, #F4F7FA); text-transform: uppercase; font-size: 12.5px; }
+#vr-root .vr-doc-summary-table tr.vr-doc-summary-final td { font-weight: 700; background: #E8EEF9; color: #0B1B43; text-transform: uppercase; font-size: 12.5px; }
 #vr-root .vr-doc-summary-table tr.vr-doc-summary-final td:last-child { text-transform: none; font-size: 14px; }
 
 @media print {
@@ -149,7 +228,7 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 
 <div id="vr-root" class="nha-root">
     <div id="vr-overlay" class="nha-overlay no-print">
-        <div class="nha-modal nha-modal-full" role="dialog" aria-modal="true" aria-labelledby="vr-modal-title">
+        <div class="nha-modal u-modal-xl" role="dialog" aria-modal="true" aria-labelledby="vr-modal-title">
 
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title" id="vr-modal-title">Disbursement Voucher</h3>
@@ -210,7 +289,7 @@ async function vr_open(id) {
         // vje_groupedEntriesCard() needs GL account titles even outside the Accounting stage (a
         // RELEASED voucher's printout should still show its entries) — vje_init() only loads this
         // while vje_visible(dv), so fetch it here too whenever there's a JEV to show at all.
-        if (!VJE_COA.length && (vr_dv.jev?.lines ?? []).length) {
+        if (!VJE_COA.length) {
             try {
                 const coaJson = await vr_authFetch(`${VR_API}/chart_of_accounts/all?postable_only=1`).then(r => r.json());
                 VJE_COA = (coaJson.data ?? []).filter(a => a.posting_allowed);
@@ -280,18 +359,15 @@ function vr_render(dv) {
     // The PAYMENT JEV cards ("Payment Entry — JEV-… (TREASURY — CHECK NO. …)") and the "Prepare Payment JEV" prompt are not shown
     // here — a released voucher's payment entry lives in the Journal Entry Voucher register.
     const dEntriesHtml = dHiddenStage ? '' : (vje_visible(dv) ? vje_entriesCard(dv) : vje_groupedEntriesCard(dv));
-    const dSection = dEntriesHtml ? `
-        <div class="vr-doc-section" style="margin-bottom:0;">
-            <p class="vr-doc-section-hdr">D. Pro Forma Journal Entry</p>
+    // One entry section, not two: once Accounting has entries (editable grid, or the saved/grouped table) THAT is section C;
+    // before that — and for a regular DV with nothing saved — section C is the auto-generated preview built from the DV.
+    const cSection = dEntriesHtml ? `
+        <div class="vr-doc-section">
+            <p class="vr-doc-section-hdr">C. Accounting Entry</p>
             ${dEntriesHtml}
-        </div>` : '';
+        </div>` : vr_acctEntryHtml(dv);
 
-    // Section A shows only what this voucher actually has — a Remittance DV, for one, has no RFA, PO or claimant address.
-    const claimantItems = [['Claimant', vr_esc(dv.claimant_name) || '—']];
-    const addrTin = [dv.claimant_address, dv.employee_no_tin].filter(x => x && String(x).trim() !== '').map(vr_esc).join(' / ');
-    if (addrTin) claimantItems.push(['Address / Employee No. / TIN', addrTin]);
-    if (dv.po_number) claimantItems.push(['PO Number', vr_esc(dv.po_number)]);
-    if (Number(dv.po_amount) > 0) claimantItems.push(['PO Amount', vr_peso(dv.po_amount)]);
+
 
     $vr('vr-body').innerHTML = `
         ${rejection}
@@ -304,40 +380,31 @@ function vr_render(dv) {
              section A: Claimant/RFA, DV No./Date, Particulars. ══ -->
         <div class="vr-doc-section">
             <p class="vr-doc-section-hdr">A. Voucher Information</p>
-            ${(dv.rfas ?? []).length ? `<div class="vr-card">
-                <p class="vr-card-title">Request for Allotment (RFA)</p>
-                ${vr_rfaSection(dv)}
-            </div>` : ''}
             <div class="vr-card">
-                <p class="vr-card-title">Claimant</p>
-                <dl class="vr-dl">
-                    ${claimantItems.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}
-                </dl>
+                <div class="vr-a-grid">
+                    <div class="vr-a-f"><dt>DV Date</dt><dd>${vr_fmtDate(dv.dv_date)}</dd></div>
+                    <div class="vr-a-f"><dt>Payee Name</dt><dd>${vr_esc(dv.claimant_name) || '—'}</dd></div>
+                    <div class="vr-a-f"><dt>Address</dt><dd>${vr_esc(dv.claimant_address) || '—'}</dd></div>
+                    <div class="vr-a-f"><dt>TIN / Employee No.</dt><dd>${vr_esc(dv.employee_no_tin) || '—'}</dd></div>
+                    <div class="vr-a-f"><dt>Vendor (Supplier / Contractor) or Payroll</dt><dd>${vr_esc(dv.vendor_name || (dv.rfas ?? []).find(r => r.vendor_name)?.vendor_name) || '—'}</dd></div>
+                    <div class="vr-a-f"><dt>PO / Contract</dt><dd>${vr_esc(dv.po_number) || '—'}${Number(dv.po_amount) > 0 ? ` <small>(${vr_peso(dv.po_amount)})</small>` : ''}</dd></div>
+                    <div class="vr-a-f vr-a-full"><dt>Status</dt><dd><span class="nha-bdg ${vr_statusClass(dv.status)}">${vr_esc(dv.status === 'REJECTED' ? 'RETURNED' : dv.status)}</span></dd></div>
+                    <div class="vr-a-f vr-a-full"><dt>Particulars</dt><dd class="vr-particulars" style="font-weight:400;">${vr_esc(dv.particulars) || '—'}</dd></div>
+                </div>
             </div>
             ${vr_remitScheduleHtml(dv)}
-            <table class="vr-doc-table">
-                <tr>
-                    <td><p class="vr-doc-k">DV No.</p><p class="nha-mono" style="margin:0;">${vr_esc(dv.dv_no)}</p></td>
-                    <td><p class="vr-doc-k">DV Date</p><p style="margin:0;">${vr_fmtDate(dv.dv_date)}</p></td>
-                </tr>
-                ${dv.particulars ? `<tr>
-                    <td class="vr-doc-full" colspan="2">
-                        <p class="vr-doc-k">Particulars</p>
-                        <p class="vr-particulars" style="margin:0;">${vr_esc(dv.particulars)}</p>
-                    </td>
-                </tr>` : ''}
-            </table>
         </div>
 
         <!-- ══ B. AMOUNT AND DEDUCTIONS — laid out like the entry form (form.php): the RFA Breakdown with the
              deduction / ATC rows under it in one box, then the Gross / Less / Net summary. ══ -->
         <div class="vr-doc-section">
             <p class="vr-doc-section-hdr">B. Amount and Deductions</p>
-            ${breakdownHtml || dedAtcHtml ? `<div class="vr-card">
+            ${breakdownHtml || dedAtcHtml ? `<div class="vr-card vr-b-card">
                 ${breakdownHtml}
                 ${dedAtcHtml}
+                <div class="vr-net-row"><span>Net amount</span><b id="vr-sum-net-vis">${vr_peso(dv.net_amount)}</b></div>
             </div>` : ''}
-            <table class="vr-doc-summary-table">
+            <table class="vr-doc-summary-table" style="display:none;">
                 <tr><td>Gross Amount</td><td>${vr_peso(dv.gross_amount)}</td></tr>
                 <tr><td>Less: Total Deductions</td><td id="vr-sum-ded">${vr_peso(totalDeductions)}</td></tr>
                 <tr><td>Less: Withholding Tax (ATC)</td><td id="vr-sum-wh">${vr_peso((dv.atc_lines ?? []).reduce((s, a) => s + (Number(a.withholding_tax) || 0), 0))}</td></tr>
@@ -346,17 +413,15 @@ function vr_render(dv) {
             ${dv.remarks ? `<p class="vr-particulars" style="margin:14px 0 0;"><strong>Remarks:</strong> ${vr_esc(dv.remarks)}</p>` : ''}
         </div>
 
-        <!-- ══ C. SUPPORTING DOCUMENTS ══ -->
+        <!-- ══ C. ACCOUNTING ENTRY (AUTO-GENERATED) — same read-only entry the entry form previews, rebuilt here from the saved DV. ══ -->
+        ${cSection}
+
+        <!-- ══ D. SUPPORTING DOCUMENTS ══ -->
         <div class="vr-doc-section">
-            <p class="vr-doc-section-hdr">C. Supporting Documents</p>
+            <p class="vr-doc-section-hdr">D. Supporting Documents</p>
             ${attachmentsHtml || '<p class="vr-hint" style="margin:0;">None — no supporting documents attached.</p>'}
         </div>
 
-        <!-- ══ D. PRO FORMA JOURNAL ENTRY — Accounting's section: the Accounting Entries grid (editable
-             while Accounting is actively preparing it, read-only/grouped afterwards) — the Payment Entry
-             is not shown here. Hidden while Originating/FMD hold the voucher (DRAFT / FOR_FMD_REVIEW / REJECTED)
-             and whenever there is nothing to show, so they never see an empty heading. ══ -->
-        ${dSection}
 
         <div class="vr-card" style="margin-bottom:0;">
             <p class="vr-card-title">Workflow History</p>
@@ -618,39 +683,38 @@ function vje_groupedTable(lines, dv = null) {
         g.credit += Number(it.line.credit) || 0;
     });
 
-    const rows = groups.map(g => `<tr style="border-bottom:1px solid var(--afims-surface-subtle, #F4F7FA);">
-                <td style="padding:10px 4px;font-size:13px;color:var(--afims-text, #1e293b);">${vr_codeChip(g.account_code)} <span style="margin-left:6px;">${vr_esc(g.account_title || '—')}</span></td>
-                <td style="padding:10px 4px;">${vje_groupSubLabels(g, dv)}</td>
-                <td style="padding:10px 4px;text-align:right;font-size:13px;color:var(--afims-text, #1e293b);font-family:'IBM Plex Mono',monospace;width:130px;">${Number(g.debit) > 0 ? vr_peso(g.debit) : '0.00'}</td>
-                <td style="padding:10px 4px;text-align:right;font-size:13px;color:var(--afims-text, #1e293b);font-family:'IBM Plex Mono',monospace;width:130px;">${Number(g.credit) > 0 ? vr_peso(g.credit) : '0.00'}</td>
+    // Same format as the auto-generated entry (section C): Account Code | Account Description | Debit | Credit, debit rows first,
+    // credit-only rows indented, a bold Total row. Sub-ledger detail stays under the title, muted.
+    const isCr = g => !(Number(g.debit) > 0) && Number(g.credit) > 0;
+    const ordered = groups.filter(g => !isCr(g)).concat(groups.filter(isCr));
+    const num = n => Number(n) > 0 ? vr_fmtNum(n) : '';
+    const rows = ordered.map(g => `<tr>
+                <td>${vr_esc(g.account_code)}</td>
+                <td${isCr(g) ? ' class="vr-ap-cr"' : ''}>${vr_esc(g.account_title || '—')}<div class="vr-ap-sub">${vje_groupSubLabels(g, dv)}</div></td>
+                <td>${num(g.debit)}</td>
+                <td>${num(g.credit)}</td>
             </tr>`).join('');
+    const bad = Math.abs(totalDebit - totalCredit) > 0.005;
 
-    return `<div style="overflow-x:auto;">
-        <table class="vje-grp-table" style="min-width:100%;border-collapse:collapse;">
-            <thead><tr style="border-bottom:2px solid var(--afims-border, #E4ECF2);background:var(--afims-surface, #fff);">
-                <th style="text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--afims-text-muted, #62657E);padding:10px 4px;">Account Code</th>
-                <th style="text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--afims-text-muted, #62657E);padding:10px 4px;">Particular</th>
-                <th style="text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--afims-text-muted, #62657E);padding:10px 4px;width:130px;">Debit (₱)</th>
-                <th style="text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--afims-text-muted, #62657E);padding:10px 4px;width:130px;">Credit (₱)</th>
+    return `<table class="vr-ap-table">
+            <thead><tr>
+                <th style="width:150px;">Account Code</th>
+                <th>Account Description</th>
+                <th style="text-align:right;width:190px;">Debit</th>
+                <th style="text-align:right;width:190px;">Credit</th>
             </tr></thead>
-            <tbody>${rows}</tbody>
-            <tfoot><tr style="border-top:2px solid var(--afims-border, #E4ECF2);font-weight:700;background:var(--afims-surface-subtle, #F4F7FA);">
-                <td colspan="2" style="text-align:right;padding:10px 4px;font-size:13px;">Total</td>
-                <td style="text-align:right;padding:10px 4px;font-size:13px;font-family:'IBM Plex Mono',monospace;">${vr_peso(totalDebit)}</td>
-                <td style="text-align:right;padding:10px 4px;font-size:13px;font-family:'IBM Plex Mono',monospace;">${vr_peso(totalCredit)}</td>
-            </tr></tfoot>
-        </table>
-        </div>`;
+            <tbody>${rows}
+                <tr class="vr-ap-total${bad ? ' vr-ap-bad' : ''}"><td></td><td>Total</td><td>${vr_fmtNum(totalDebit)}</td><td>${vr_fmtNum(totalCredit)}</td></tr>
+            </tbody>
+        </table>`;
 }
 
 function vje_groupedEntriesCard(dv) {
     const lines = dv.jev?.lines ?? [];
     if (!lines.length) return '';
 
-    return `<div class="vr-card">
-        <p class="vr-card-title">Accounting Entries${dv.jev?.book_name ? ` — ${vr_esc(dv.jev.book_name)}` : ''}</p>
-        ${vje_groupedTable(lines, dv)}
-    </div>`;
+    return `${dv.jev?.book_name ? `<p class="vr-hint" style="margin:0 0 8px;">Book: ${vr_esc(dv.jev.book_name)}</p>` : ''}
+    <div class="vr-card vr-ap-card">${vje_groupedTable(lines, dv)}</div>`;
 }
 
 /** Editable at the Accounting stage — was a static read-only table set only by Originating at
@@ -837,6 +901,18 @@ function vje_liveGrossLessDeductions() {
 
 /* ── Deduction + ATC rows (editable — Accounting can add/change/remove them here too, not just Originating at creation).
    Same blocks as the entry form: one list (#vje-ded-list), each new row added below the previous one. ───────────── */
+/** "2-04-01-040 Guaranty/Security Deposits Payable" — an account code with its Chart of Accounts title. */
+function vr_acctLabel(code) {
+    if (!code) return '';
+    const t = (VJE_COA.find(a => a.account_code === code) || {}).account_title || '';
+    return [code, t].filter(Boolean).join(' ');
+}
+function vje_atcAcctHint(tr) {
+    const el = tr.querySelector('.vr-acct-hint');
+    if (!el) return;
+    el.textContent = vr_acctLabel((VJE_ATC.find(c => c.atc_code === tr.querySelector('.vje-atc-code').value) || {}).account_code);
+}
+function vje_markAtcMulti() { $vr('vje-ded-list').classList.toggle('vr-atc-multi', vje_atcRows().length > 1); }
 function vje_dedRows() { return $vr('vje-ded-list').querySelectorAll('.vje-ded-row'); }
 function vje_atcRows() { return $vr('vje-ded-list').querySelectorAll('.vje-atc-row'); }
 
@@ -845,8 +921,19 @@ function vje_renderDedTypeButtons() {
     const box = $vr('vje-ded-types');
     if (!box) return;
     const types = VJE_DED.filter(t => vje_dv?.payroll || !String(t.code || '').startsWith('PAYROLL_'));
-    box.innerHTML = types.map(t => `<button type="button" class="vr-ded-type-btn" onclick="vje_addDeductionLine({deduction_type_id:'${vr_esc(t.deduction_type_id)}'})">+ ${vr_esc(t.name).toUpperCase()}</button>`).join('')
-        + '<button type="button" class="vr-ded-type-btn" onclick="vje_addAtcLine()">+ ATC ROW</button>';
+    // One "Less: + Add deduction…" dropdown (same as the entry form) instead of a pill per type: picking an option adds that row, then it resets.
+    box.innerHTML = `<span class="vr-ded-less">Less:</span>
+        <select class="vr-ded-add-select" id="vje-ded-add" aria-label="Add deduction">
+            <option value="">+ Add deduction…</option>
+            ${types.map(t => `<option value="t:${vr_esc(t.deduction_type_id)}">${vr_esc(t.name)}</option>`).join('')}
+            <option value="atc">ATC row (withholding tax)</option>
+        </select>`;
+    $vr('vje-ded-add').addEventListener('change', e => {
+        const v = e.target.value;
+        e.target.value = '';
+        if (v === 'atc') vje_addAtcLine();
+        else if (v.startsWith('t:')) vje_addDeductionLine({ deduction_type_id: v.slice(2) });
+    });
 }
 
 /* Retention, Advance Recoupment and Penalty Tax are one figure per voucher (VAT too) — same rule as the entry form's
@@ -880,7 +967,7 @@ function vje_addDeductionLine(d = null) {
     div.id = `vje-ded-row-${idx}`;
     div.innerHTML = `
         <button type="button" class="vje-remove" title="Remove" onclick="vje_removeDeductionLine(${idx})">&times;</button>
-        <div class="vr-ded-label">${vr_esc(type?.name || d?.name) || '—'}</div>
+        <div class="vr-ded-label"><span class="vr-less">Less:</span> <b>${vr_esc(type?.name || d?.name) || '—'}</b>${type?.account_code ? `<span class="vr-acct-hint">${vr_esc(vr_acctLabel(type.account_code))}</span>` : ''}</div>
         <input type="hidden" class="vje-ded-type" value="${vr_esc(typeId)}">
         <div class="vje-grid2">
             <div class="vje-fg"><label>Rate (%)</label><input type="number" class="vje-ded-rate" min="0" step="0.01" placeholder="e.g. 10"></div>
@@ -1034,7 +1121,7 @@ function vje_addAtcLine(a = null) {
     div.innerHTML = `
         <button type="button" class="vje-remove" title="Remove" onclick="vje_removeAtcLine(${idx})">&times;</button>
         <div class="vr-ded-label">ATC (Withholding Tax)</div>
-        <div class="vje-fg" style="margin-top:6px;"><label>ATC Code — Description</label><input type="text" class="vje-atc-code" placeholder="Search ATC code…"></div>
+        <div class="vje-fg vje-atc-codefg"><label>ATC Code — Description</label><input type="text" class="vje-atc-code" placeholder="Search ATC code…"><span class="vr-acct-hint"></span></div>
         <div class="vje-grid3">
             <div class="vje-fg"><label>Rate (%)</label><input type="number" class="vje-atc-rate" min="0" max="100" step="0.01" placeholder="0.00"></div>
             <div class="vje-fg"><label>Tax Base (₱)</label><input type="text" inputmode="decimal" class="vje-atc-base" placeholder="0.00"></div>
@@ -1057,6 +1144,8 @@ function vje_addAtcLine(a = null) {
     div.querySelector('.vje-atc-base').addEventListener('input', () => vje_setAtcShare(div)); // typed by hand: its share of the base changes
     div.querySelectorAll('.vje-atc-rate, .vje-atc-base').forEach(el => el.addEventListener('input', () => vje_recalcAtcLine(idx)));
     $vr('vje-ded-list').appendChild(div);
+    vje_markAtcMulti();
+    vje_atcAcctHint(div);
     vje_setAtcShare(div);
     // Bound after the row is attached to the DOM — nhaSearchableSelect reads the input's live
     // parentElement to anchor the dropdown, which is unreliable on a still-detached node.
@@ -1066,6 +1155,7 @@ function vje_addAtcLine(a = null) {
 
 function vje_removeAtcLine(idx) {
     $vr(`vje-atc-row-${idx}`)?.remove();
+    vje_markAtcMulti();
     vje_recalcAtc();
     vje_syncAutoLines();
 }
@@ -1086,6 +1176,7 @@ function vje_onAtcCodeSelect(idx) {
     const rateEl = tr.querySelector('.vje-atc-rate');
     const rcEl   = tr.querySelector('.vje-atc-rc');
 
+    vje_atcAcctHint(tr);
     if (atcDef && isFinite(Number(atcDef.tax_rate))) rateEl.value = Number(atcDef.tax_rate).toFixed(2);
 
     if (!rcEl.value) {
@@ -1206,6 +1297,7 @@ function vje_refreshSummary() {
     $vr('vr-sum-ded').textContent = vr_peso(ded);
     $vr('vr-sum-wh').textContent  = vr_peso(wh);
     $vr('vr-sum-net').textContent = vr_peso(net);
+    const netVis = $vr('vr-sum-net-vis'); if (netVis) netVis.textContent = vr_peso(net);
     const top = $vr('vr-top-net');
     if (top) top.textContent = vr_peso(net);
 }
@@ -1665,18 +1757,89 @@ function vr_rfaBreakdownHtml(dv) {
         <td>${label(r.code, r.text)}</td>
         ${r.first ? `<td rowspan="${r.span}" style="vertical-align:top;">${vr_esc(r.rfa.allocation_number)}</td>
         <td rowspan="${r.span}" style="text-align:right;vertical-align:top;">${vr_peso(r.rfa.remaining_balance)}</td>` : ''}
-        <td style="text-align:right;width:150px;">${r.amount ? vr_peso(r.amount) : '—'}</td>
+        <td><span class="vr-bd-amt">${r.amount ? vr_fmtNum(r.amount) : '—'}</span></td>
+        <td></td>
     </tr>`).join('');
-    return `<p class="vr-card-title">RFA Breakdown</p>
-        <div style="overflow-x:auto;"><table class="vr-ledger">
+    const rfaBal = (dv.rfas ?? []).reduce((a, r) => a + (Number(r.remaining_balance) || 0), 0);
+    return `<table class="vr-bd-table">
             <thead><tr>
-                <th style="text-align:left;">Account Code - Description</th>
+                <th style="text-align:left;">Account Code &ndash; Description</th>
                 <th style="text-align:left;">RFA</th>
-                <th style="text-align:right;">RFA Balance</th>
+                <th style="text-align:right;">RFA Balance / %</th>
                 <th style="text-align:right;">Amount</th>
+                <th></th>
             </tr></thead>
             <tbody>${body}</tbody>
-        </table></div>`;
+            <tfoot><tr class="vr-bd-gross">
+                <td colspan="2"><b>Gross amount</b> &middot; ${(dv.rfas ?? []).map(r => vr_esc(r.allocation_number)).join(', ')}</td>
+                <td class="vr-bd-muted">${vr_peso(rfaBal)}</td>
+                <td><b>${vr_peso(gross)}</b></td>
+                <td></td>
+            </tr></tfoot>
+        </table>`;
+}
+
+function vr_fmtNum(v) {
+    return Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/* C. Accounting Entry (auto-generated) — read-only, built from the saved DV exactly like the entry form's live preview
+   (and Accounting's vje_syncAutoLines()): Dr each RFA account line, Cr each deduction's / ATC's payable account, Cr Accounts
+   Payable for the rest. Omitted for payroll / remittance DVs, which carry their own entries. */
+function vr_acctEntryHtml(dv) {
+    if (dv.payroll || dv.remittance || dv.dv_remit) return '';
+    const title = code => (VJE_COA.find(a => a.account_code === code) || {}).account_title || '';
+    const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+    const gross = Number(dv.gross_amount) || 0;
+    const drs = [], crs = [];
+    // debit lines: the same gross spread over the RFA lines as the breakdown above
+    const lines = [];
+    (dv.rfas ?? []).forEach(r => {
+        const ls = (r.lines || []).length
+            ? r.lines.map(l => ({ code: l.account_code, text: l.account_title || l.description, cap: Number(l.amount) || 0 }))
+            : [{ code: r.account_code, text: r.account_title || r.description, cap: Number(r.remaining_balance) || 0 }];
+        ls.forEach(l => lines.push(l));
+    });
+    let left = gross;
+    lines.forEach((l, i) => {
+        const v = r2(i === lines.length - 1 ? left : Math.min(l.cap, left));
+        left -= v;
+        if (v > 0) drs.push({ code: l.code || '', desc: l.text || title(l.code), amt: v });
+    });
+    if (!drs.length && gross > 0) drs.push({ code: dv.account_code || '', desc: dv.account_title || title(dv.account_code) || dv.claimant_name || '', amt: gross });
+    if (!drs.length) return '';
+
+    let credited = 0;
+    (dv.deductions ?? []).forEach(d => {
+        const amt = Number(d.deduction_amount) || 0, code = d.type_account_code || d.account_code || '';
+        if (amt <= 0) return;
+        credited += amt;
+        crs.push({ code, desc: title(code) || d.name || '', amt });
+    });
+    (dv.atc_lines ?? []).forEach(a => {
+        const amt = Number(a.withholding_tax) || 0;
+        if (amt <= 0) return;
+        credited += amt;
+        crs.push({ code: a.account_code || '', desc: title(a.account_code) || a.atc_description || a.atc_code || '', amt });
+    });
+    const ap = r2(drs.reduce((x, d) => x + d.amt, 0) - credited);
+    if (ap > 0.004) {
+        const apCode = dv.vendor_ap_account_code || '2-01-01-010';
+        crs.push({ code: apCode, desc: title(apCode) || 'Accounts Payable', amt: ap });
+    }
+    const totalDr = drs.reduce((x, d) => x + d.amt, 0), totalCr = crs.reduce((x, d) => x + d.amt, 0);
+    const bad = Math.abs(totalDr - totalCr) > 0.005;
+    return `<div class="vr-doc-section">
+        <p class="vr-doc-section-hdr">C. Accounting Entry (Auto-generated)</p>
+        <div class="vr-card vr-ap-card"><table class="vr-ap-table">
+            <thead><tr><th style="width:150px;">Account Code</th><th>Account Description</th><th style="text-align:right;width:190px;">Debit</th><th style="text-align:right;width:190px;">Credit</th></tr></thead>
+            <tbody>
+                ${drs.map(d => `<tr><td>${vr_esc(d.code)}</td><td>${vr_esc(d.desc)}</td><td>${vr_fmtNum(d.amt)}</td><td></td></tr>`).join('')}
+                ${crs.map(c => `<tr><td>${vr_esc(c.code)}</td><td class="vr-ap-cr">${vr_esc(c.desc)}</td><td></td><td>${vr_fmtNum(c.amt)}</td></tr>`).join('')}
+                <tr class="vr-ap-total${bad ? ' vr-ap-bad' : ''}"><td></td><td>Total</td><td>${vr_fmtNum(totalDr)}</td><td>${vr_fmtNum(totalCr)}</td></tr>
+            </tbody>
+        </table></div>
+    </div>`;
 }
 
 /* Read-only deduction + ATC rows — the SAME blocks Accounting sees (vje_addDeductionLine() / vje_addAtcLine()) and the entry
@@ -1691,31 +1854,25 @@ function vr_dedAtcRowsHtml(dv) {
         const type  = vje_vatTypeOf(gross, d.gross_amount);
         const { vat, base } = vje_vatSplit(gross, type);
         const opt = (value, title, sub) => `<span class="vje-vat-opt${type === value ? ' active' : ''}">${type === value ? '● ' : '○ '}${title} <small>${sub}</small></span>`;
-        return `<div class="vje-row">
-            <div class="vr-ded-label">VAT</div>
-            <div class="vje-vat-types">${opt('inclusive', 'VAT Inclusive', 'Gross already includes VAT')}${opt('exclusive', 'VAT Exclusive', 'VAT is added on top of gross')}</div>
-            <div class="vje-vat-block info">
-                <div class="vje-vat-block-title">VAT Computation <span>— informational, not deducted</span></div>
-                <div class="vje-grid3">${ro('Statutory VAT Rate (%)', VJE_VAT_RATE)}${ro('VAT Amount (₱)', vr_peso(vat))}${ro('Tax Base (₱)', vr_peso(base))}</div>
-            </div>
-            <div class="vje-vat-block real">
-                <div class="vje-vat-block-title">Withholding VAT <span>— deducted from Net Amount Payable</span></div>
-                <div class="vje-grid2">${ro('Withholding VAT Rate (%)', d.rate != null ? d.rate : '')}${ro('Withholding VAT Amount (₱)', vr_peso(d.deduction_amount))}</div>
-            </div>
+        return `<div class="vr-ro-vat">
+            <div class="vr-ded-label"><span class="vr-less">Less:</span> <b>VAT withheld</b><span class="vr-vat-tag">${type === 'inclusive' ? 'VAT Inclusive' : 'VAT Exclusive'}</span></div>
+            ${ro('Withholding VAT Rate (%)', d.rate != null ? d.rate : '')}
+            ${ro('Withholding VAT Amount (₱)', vr_fmtNum(d.deduction_amount))}
+            <div class="vr-vat-info">VAT computation (informational, not deducted): statutory ${VJE_VAT_RATE}% &middot; VAT ${vr_fmtNum(vat)} &middot; Tax base ${vr_fmtNum(base)}</div>
         </div>`;
     };
     // a payroll DV's deductions come from the import, which has amounts only — no Rate box for them
-    const ded = (dv.deductions ?? []).map(d => d.code === 'VAT' && !vje_isFlatVat(d) ? vatBlock(d) : `<div class="vje-row">
-        <div class="vr-ded-label">${vr_esc(d.name) || '—'}</div>
+    const ded = (dv.deductions ?? []).map(d => d.code === 'VAT' && !vje_isFlatVat(d) ? vatBlock(d) : `<div class="vje-row vr-ro-ded">
+        <div class="vr-ded-label"><span class="vr-less">Less:</span> <b>${vr_esc(d.name) || '—'}</b>${d.type_account_code ? `<span class="vr-acct-hint">${vr_esc(vr_acctLabel(d.type_account_code))}</span>` : ''}</div>
         ${dv.payroll ? ro('Deduction Amount (₱)', vr_peso(d.deduction_amount)) : `<div class="vje-grid2">
             ${ro('Rate (%)', d.rate != null ? d.rate : '')}
             ${ro('Deduction Amount (₱)', vr_peso(d.deduction_amount))}
         </div>`}
         ${!d.type_account_code && d.account_code ? ro('Posting Account', d.account_code, ' style="margin-top:6px;"') : ''}
     </div>`);
-    const atc = (dv.atc_lines ?? []).map(a => `<div class="vje-row">
+    const atc = (dv.atc_lines ?? []).map(a => `<div class="vje-row vr-ro-atc">
         <div class="vr-ded-label">ATC (Withholding Tax)</div>
-        ${ro('ATC Code — Description', [a.atc_code, a.atc_description].filter(Boolean).join(' — '), ' style="margin-top:6px;"')}
+        <div class="vje-fg"><label>ATC Code — Description</label><input type="text" readonly tabindex="-1" value="${vr_esc([a.atc_code, a.atc_description].filter(Boolean).join(' — '))}"><span class="vr-acct-hint">${vr_esc(vr_acctLabel(a.account_code))}</span></div>
         <div class="vje-grid3">
             ${ro('Rate (%)', a.rate != null ? a.rate : '')}
             ${ro('Tax Base (₱)', vr_peso(a.tax_base))}
@@ -1723,7 +1880,7 @@ function vr_dedAtcRowsHtml(dv) {
         </div>
     </div>`);
     const all = ded.concat(atc);
-    return all.length ? `<div class="vr-ded-section">${all.join('')}</div>` : '';
+    return all.length ? `<div class="vr-ded-section${atc.length > 1 ? ' vr-atc-multi' : ''}">${all.join('')}</div>` : '';
 }
 
 function vr_accountCodeDisplay(dv) {

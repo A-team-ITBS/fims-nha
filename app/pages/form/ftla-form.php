@@ -30,9 +30,7 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
 
     #ftlm-card {
         background: var(--afims-surface, #FFFFFF);
-        border-radius: 16px;
-        width: 96vw;
-        max-width: 1060px;
+        border-radius: 16px;
         max-height: 94vh;
         display: flex;
         flex-direction: column;
@@ -42,7 +40,6 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
         animation: ftlmSlideIn .22s ease;
         transition: max-width .2s ease;
     }
-    #ftlm-card.ftlm-wide { max-width: 1200px; }
 
     @keyframes ftlmSlideIn {
         from { opacity: 0; transform: translateY(20px) scale(.98); }
@@ -393,13 +390,12 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
     @media (max-width: 800px) {
         #ftlm-preview-panel { display: none; }
         #ftlm-form-panel { flex: 1; border-right: none; }
-        #ftlm-card { max-width: 600px; }
         #ftlm-card .ftlm-grid-2 { grid-template-columns: 1fr; }
     }
 </style>
 
 <div id="ftlm-overlay" role="dialog" aria-modal="true" aria-labelledby="ftlm-title">
-    <div id="ftlm-card">
+    <div class="u-modal-xl" id="ftlm-card">
 
         <!-- Header -->
         <div id="ftlm-header">
