@@ -36,6 +36,8 @@ $_prp_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 .nha-root .prp-frame-wrap { background: #eceff1; border-radius: var(--rs, 7px); overflow: hidden; }
 .nha-root .prp-frame { display: block; width: 100%; height: 72vh; border: 0; background: #eceff1; }
 .nha-root .prp-lh-open .prp-frame { height: calc(72vh - 300px); min-height: 230px; }
+/* 'full' forms (the GCG Quarterly Report — every column on one line): u-modal-full width + a taller frame */
+.nha-root .nha-modal.prp-full .prp-frame { height: 80vh; }
 .nha-root .prp-msg { padding: 60px 20px; text-align: center; color: var(--subtle, #62657E); font-size: 13px; }
 .nha-root .prp-err {
     margin-top: 10px; padding: 8px 12px; border-radius: var(--rs, 7px);
@@ -128,7 +130,7 @@ $_prp_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 <!-- ── PRINT PREVIEW MODAL ───────────────────────────── -->
 <div id="prp-root" class="nha-root">
     <div id="prp-overlay" class="nha-overlay no-print">
-        <div class="nha-modal nha-modal-lg" role="dialog" aria-modal="true" aria-labelledby="prp-title">
+        <div class="nha-modal u-modal-lg" role="dialog" aria-modal="true" aria-labelledby="prp-title">
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title" id="prp-title">Print Preview — Certificate of Budget Allocation</h3>
                 <button type="button" class="nha-modal-close" id="prp-close" aria-label="Close">&times;</button>
@@ -183,6 +185,7 @@ $_prp_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
             <div class="nha-modal-foot">
                 <button type="button" class="nha-btn nha-btn-outline" id="prp-lh-toggle" style="margin-right:auto;" aria-expanded="false" aria-controls="prp-lh">Edit Letterhead</button>
                 <button type="button" class="nha-btn nha-btn-ghost" id="prp-cancel">Close</button>
+                <button type="button" class="nha-btn nha-btn-outline" id="prp-xlsx" hidden disabled>Export to Excel</button>
                 <button type="button" class="nha-btn nha-btn-outline" id="prp-docx" disabled>Download DOCX</button>
                 <button type="button" class="nha-btn nha-btn-primary" id="prp-pdf" disabled>Download PDF</button>
             </div>
@@ -222,6 +225,9 @@ const PRP_TYPES = {
     // payload { dv_id }; `prefill` — the details panel (prp_ffOpen()): payee + signatory prefilled from the DV / settings, editable
     BIR2307: { title: 'BIR Form 2307 — Certificate of Creditable Tax Withheld at Source', print: 'print/bir2307', pdfOnly: true,
                prefill: p => 'print/prefill/bir2307/' + encodeURIComponent(p.dv_id), form: 'prp_ffForm2307' },
+    // payload { fiscal_yr, employee_id } — Payroll Management → Annualization → Annualization of Income; `excel`: the modal's Export to Excel
+    ANNUALWS: { title: 'Annualization of Income', print: 'print/annualws', pdfOnly: true, excel: 'print/annualws/excel' },
+    GCG:      { title: 'GCG Quarterly Report', print: 'print/gcg', pdfOnly: true, excel: 'print/gcg/excel', full: true },
     // payload { fiscal_yr, employee_id } — from Payroll Management → Annualization
     BIR2316: { title: 'BIR Form 2316 — Certificate of Compensation Payment / Tax Withheld', print: 'print/bir2316', pdfOnly: true,
                prefill: p => 'print/prefill/bir2316?year=' + encodeURIComponent(p.fiscal_yr) + '&employee_id=' + encodeURIComponent(p.employee_id),
@@ -272,6 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $prp('prp-cancel')?.addEventListener('click', prp_close);
     $prp('prp-pdf')?.addEventListener('click', () => prp_download('pdf'));
     $prp('prp-docx')?.addEventListener('click', () => prp_download('docx'));
+    $prp('prp-xlsx')?.addEventListener('click', () => prp_download('xlsx'));
     $prp('prp-lh-toggle')?.addEventListener('click', prp_lhToggle);
     document.querySelectorAll('#prp-tabs .prp-tab').forEach(b => b.addEventListener('click', () => prp_ffTab(b.dataset.tab)));
 
@@ -320,6 +327,7 @@ document.addEventListener('keydown', e => {
 function prp_setReady(ready) {
     $prp('prp-pdf').disabled  = !ready;
     $prp('prp-docx').disabled = !ready;
+    $prp('prp-xlsx').disabled = !ready;
 }
 
 function prp_showError(message) {
@@ -357,11 +365,17 @@ async function prp_open(payload, opts = {}) {
     const pdfOnly = !!PRP_TYPES[prp_type].pdfOnly;
     const letterhead = !pdfOnly && PRP_TYPES[prp_type].letterhead !== false;   // editable letterhead?
     $prp('prp-docx').hidden = pdfOnly;
+    $prp('prp-xlsx').hidden = !PRP_TYPES[prp_type].excel;   // a form with its own Excel export (the annualization worksheet)
     $prp('prp-lh-toggle').hidden = !letterhead;
     if (!letterhead && !$prp('prp-lh').hidden) prp_lhToggle();   // close a designer left open by another form
-    const dialog = $prp('prp-overlay').querySelector('.nha-modal');   // landscape forms ('wide') get the xl modal
-    dialog.classList.toggle('nha-modal-xl', !!PRP_TYPES[prp_type].wide);
-    dialog.classList.toggle('nha-modal-lg', !PRP_TYPES[prp_type].wide);
+    // landscape forms ('wide') get u-modal-xl, a sheet as wide as the screen ('full' — the GCG Quarterly Report)
+    // u-modal-full, the rest u-modal-lg
+    const dialog = $prp('prp-overlay').querySelector('.nha-modal');
+    const full = !!PRP_TYPES[prp_type].full;
+    dialog.classList.toggle('u-modal-xl', !!PRP_TYPES[prp_type].wide && !full);
+    dialog.classList.toggle('u-modal-full', full);
+    dialog.classList.toggle('u-modal-lg', !PRP_TYPES[prp_type].wide && !full);
+    dialog.classList.toggle('prp-full', full);   // + a taller preview frame
     $prp('prp-overlay').classList.add('open');
     if (pdfOnly && PRP_TYPES[prp_type].prefill) {   // its Edit Form tab first (prefilled values), the PDF on Form Preview
         await prp_ffOpen();
@@ -965,13 +979,16 @@ function prp_close() {
 }
 
 async function prp_download(format) {
-    const btn = $prp(format === 'pdf' ? 'prp-pdf' : 'prp-docx');
+    const btn = $prp({ pdf: 'prp-pdf', docx: 'prp-docx', xlsx: 'prp-xlsx' }[format]);
     const label = btn.textContent;
     prp_showError('');
     prp_setReady(false);
     btn.textContent = 'Generating…';
     try {
-        const json = await prp_request(format);
+        // Excel: the form's own export endpoint (PRP_TYPES[…].excel) with the same payload; PDF / DOCX: the print endpoint
+        const json = format === 'xlsx'
+            ? await prp_fetchJson(PRP_API + '/' + PRP_TYPES[prp_type].excel, { method: 'POST', headers: prp_headers(true), body: JSON.stringify(prp_payload) })
+            : await prp_request(format);
         const bin = atob(json.data);
         const bytes = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);

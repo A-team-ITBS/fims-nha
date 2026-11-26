@@ -156,7 +156,10 @@ route. Recipe, with a real example (`BudgetReqPage`):
    (§2).
 3. **Page body** — `app/pages/budget-req-page.php`. Plain PHP+HTML+JS. Reads `CurrentUserLevel()`
    for role-based UI gating (see §5), fetches data client-side with
-   `'X-Authorization': 'Bearer ' + ew.API_JWT_TOKEN`.
+   `'X-Authorization': 'Bearer ' + ew.API_JWT_TOKEN`. Styling: wrap the page in
+   `<div id="<x>-root" class="nha-root">`, start it with the `app-page-header` banner and build it from the
+   global classes in `_shared/css/nha-fims.css` — no new stylesheet, no font `<link>`, no hard-coded font
+   sizes (see **§5 → Global styles**).
 4. **Page class** — `models/BudgetReqPage.php`. Clone of an existing single-page model
    (e.g. `models/MainDashboard.php`), renaming `PageObjName` / `CurrentPageName` / breadcrumb /
    heading. PSR-4 autoload — no `composer dump-autoload` needed for a new class under `models/`.
@@ -234,6 +237,120 @@ as of this writing `$accessMiddleware` in `app/api.php` is a pass-through stub (
 API routes are JWT-authenticated but not yet permission-gated at the route layer; the enforcement
 today is the in-page `CurrentUserLevel()` checks described above. Don't assume the route itself
 blocks unauthorized calls.
+
+### Global styles — one stylesheet for every page
+
+The whole app has **one stylesheet**: `_shared/css/nha-fims.css`. PHPMaker loads it on every page
+(`src/config.php` → `STYLESHEET_FILES`, after `_shared/css/custom.css`, which holds the theme colour tokens
+`--afims-*` and the dark palette). The old `app/fims-css/fims.css` and `_shared/css/fmd.css` were merged into
+it and deleted (2026-11-26). The file is organised in numbered sections (see its header comment): fonts →
+tokens → global defaults → `u-` utilities → modal sizes → `.nha-*` components → `fims-*` / `app-*` components →
+the opt-in `.nha-legacy` form kit → token wiring.
+
+**Rules for a new page or a new UI feature**
+
+- Do **not** create another stylesheet or `<link>` one, and do **not** `<link>` Google Fonts — the fonts are
+  imported once at the top of `nha-fims.css`. The only `<link>` a page may have is the one cache-busting line the
+  existing pages use, so a CSS change shows without a hard refresh:
+  `<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />`
+- Wrap the page in `<div id="<x>-root" class="nha-root">` and build it from the shared components:
+  `app-page-header` (banner), `nha-filters`, `nha-tbl`, `nha-sc` (KPI cards), `nha-bdg`, `nha-btn-*`,
+  `nha-overlay` / `nha-modal`. The class list is in the comment above section 6 of the file.
+- Use the **type scale** and **`u-` utilities** instead of hard-coded `font-size` / `font-weight` / `font-family`.
+- Colours: use the `--afims-*` tokens (or the `.nha-root` vars such as `--navy`, `--txt`, `--muted`), never a bare
+  hex, so dark mode works by itself. Dark-mode overrides use `html.afims-dark[data-bs-theme="dark"] …`.
+- Page-only rules go in a `<style>` block in the page, every selector scoped under the page root id
+  (`#bgr-root .my-thing { … }`). If a rule would help other pages, add it to `nha-fims.css` instead.
+- Do not copy the `app-page-header` CSS into a page — it is global.
+- **Page container**: the page root (`.nha-root`, `.fims-wrap`, or a Bootstrap `.container-fluid`) sitting directly in
+  PHPMaker's layout gets the same 20px space on every side from one global rule (tokens `--page-gutter`, `--page-pad-y`,
+  `--page-max-width`). Don't give the root its own outer padding / margin, and don't wrap it in another container.
+
+**Fonts** (imported at the top of `nha-fims.css`)
+
+| Role | Font | Token | Utility |
+|---|---|---|---|
+| Body text, tables, forms, buttons | IBM Plex Sans 400 / 700 | `--font-body` | `u-font-body` |
+| Page / section / modal titles, KPI numbers | Barlow Semi Condensed 500 | `--font-heading` | `u-font-heading` |
+| Money and code columns | IBM Plex Mono 400 / 600 | `--font-mono` | `u-font-mono` |
+
+IBM Plex Sans is loaded in 400 and 700 only, so `u-font-medium` / `u-font-semibold` render with the nearest loaded
+weight. The titles listed in section 9 of the file (`app-page-title`, `nha-hdr-title`, `nha-modal-title`,
+`fims-modal-title`, `.modal-title`, `fims-panel-title`, `nha-sc-val`, headings inside `.nha-root`) get the heading
+font automatically.
+
+**Recommended font sizes** (the type scale — the page default is `--fs-base`, 13px)
+
+| Token | Utility | Size | Use for |
+|---|---|---|---|
+| `--fs-2xs` | `u-text-2xs` | 10px | badges, tiny tags, KPI labels |
+| `--fs-xs` | `u-text-xs` | 11px | table headers, filter labels, hints |
+| `--fs-sm` | `u-text-sm` | 12px | dense table cells, secondary text, small buttons |
+| `--fs-base` | `u-text-base` | 13px | **body, table cells, inputs, buttons** |
+| `--fs-md` | `u-text-md` | 14px | form controls inside modals, page subtitle, emphasised text |
+| `--fs-lg` | `u-text-lg` | 16px | card / panel / section titles |
+| `--fs-xl` | `u-text-xl` | 18px | modal titles, `nha-hdr-title` |
+| `--fs-2xl` | `u-text-2xl` | 22px | KPI values |
+| `--fs-3xl` | `u-text-3xl` | 26px | page title (`app-page-title`) |
+
+The shared components already take their sizes from these tokens (section 9 of the file), so a page built from them
+needs no font-size rules. In a page `<style>` write `font-size: var(--fs-sm)`, not `12px`.
+
+**Utility classes** (Tailwind-like, prefixed `u-` so they never clash with Bootstrap's `.fs-*` / `.fw-*` /
+`.text-*`; all use `!important`, so a utility on an element always wins)
+
+| Group | Classes |
+|---|---|
+| Font family | `u-font-body` `u-font-heading` `u-font-mono` |
+| Font size | `u-text-2xs` `u-text-xs` `u-text-sm` `u-text-base` `u-text-md` `u-text-lg` `u-text-xl` `u-text-2xl` `u-text-3xl` |
+| Font weight | `u-font-normal` (400) `u-font-medium` (500) `u-font-semibold` (600) `u-font-bold` (700) |
+| Style / numbers | `u-italic` `u-not-italic` `u-tabular-nums` (lines up digits in money columns) |
+| Line height | `u-leading-none` `u-leading-tight` `u-leading-snug` `u-leading-normal` `u-leading-relaxed` |
+| Letter spacing | `u-tracking-tight` `u-tracking-normal` `u-tracking-wide` `u-tracking-wider` |
+| Case | `u-uppercase` `u-lowercase` `u-capitalize` `u-normal-case` |
+| Alignment | `u-text-left` `u-text-center` `u-text-right` |
+| Wrapping | `u-truncate` (one line with …) `u-nowrap` `u-break-words` |
+| Colour (dark-aware) | `u-text-heading` `u-text-body` `u-text-muted` `u-text-primary` `u-text-success` `u-text-danger` `u-text-warning` `u-text-white` |
+
+Example: `<td class="u-font-mono u-text-right u-tabular-nums">1,250,000.00</td>`,
+`<span class="u-text-xs u-uppercase u-tracking-wide u-text-muted">Status</span>`.
+
+**Modal sizes** — put one class on the modal's box (`.nha-modal`, `.fims-modal-dialog`, Bootstrap `.modal-dialog`
+or a hand-built card), instead of a per-page `max-width` rule. Modal widths are responsive: **laptop / desktop (992px and wider) 70% of the screen, tablet (768–991px) 90%, phone (under 768px) the full width** (tokens `--modal-desktop`, `--modal-tablet`).
+
+| Class | Width / height |
+|---|---|
+| `u-modal-md` / `u-modal-lg` / `u-modal-xl` / `u-modal-2xl` (and a box with no class) | 70% of the screen on laptop / desktop (all four are the same width now; the names stay so a size can be changed per class later) |
+| `u-modal-sm` | 480px on laptop / desktop — for confirm / remarks dialogs |
+| `u-modal-full` | 96% of the screen on laptop / desktop |
+| `u-modal-w-50` … `u-modal-w-90` (steps of 10) | 50–90% of the screen width on laptop / desktop |
+| any of the above | 90% on a tablet, the full width on a phone |
+| `u-modal-h-50` … `u-modal-h-90` (steps of 10) | fixed 50–90% of the screen height; the modal body scrolls |
+
+Example: `<div class="nha-modal u-modal-lg u-modal-h-80">…</div>`.
+
+The `u-modal-*` classes are the **only** way a modal gets its size. The old `nha-modal-sm / -md / -lg / -xl / -full`
+modifiers were removed (2026-11-26), and no page may set `width` / `max-width` on a modal box in its own `<style>` or
+inline. A box with no class is `u-modal-md` wide. To change a modal's size from JavaScript, swap the class
+(`box.classList.replace('u-modal-lg', 'u-modal-xl')`), never set `style.maxWidth`.
+
+**Page header** — every page starts with the User Access banner (global, no CSS needed):
+
+```html
+<div class="app-page-header">
+    <div class="app-page-header-icon"><i class="fas fa-file-invoice"></i></div>
+    <div>
+        <h1 class="app-page-title">Page Title</h1>
+        <p class="app-page-subtitle">One line on what the page is for.</p>
+    </div>
+    <div class="app-page-header-actions"><!-- Refresh / Add buttons --></div>
+</div>
+```
+
+**Legacy form kit** — the CAF / CBA form and read-page classes from the old `fmd.css` (`.caf-form-container`,
+`.form-section`, `.form-row`, `.rd-*`, `.tl-*`, `.alloc-bar-*` …) are kept but only work inside a
+`<div class="nha-legacy">` wrapper, so they can't restyle Bootstrap's `.form-select` / `.form-label` elsewhere. Don't use
+them for new work.
 
 ### CSS: PHPMaker gives every text input `min-width: 250px`
 
@@ -386,7 +503,7 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
 |---|---|---|---|
 | Budget Request | `app/pages/budget-req-page.php` + `form/budget-req-form.php` + `form/budget-processing-form.php` + `readone/budget-req-readone.php` + `readone/budget-preview-readone.php` + `BudgetReqService.php` + `app/routes/budget_req.php` | `fims.budget_req`, `budget_req_program`, `budget_req_project`, `budget_line_items` + reference tables | The richest service in `app/` — not flat CRUD. One request (per fiscal year) holds nested Program → Project → COA-line-item blocks. `/budget_req/add` adds one Program-block (auto-creates the request header if absent); `/budget_req/program/update/{id}` replaces one Program-block. State machine: `submit-for-review` → `endorse` → `approve`/`return`, moving status `Draft → For Review → Endorsed → Approved`/`Returned`. `budget-processing-form.php` is the "Endorse" modal (Type of Fund + Component required per line, Suggested Amount optional). Role-gated: level 2 = Budget Officer (no Add/Edit/Delete), level 8 = Budget Head (no Add; sees Budget Preview) — the **only** page in `app/` with inline per-level UI gating |
 | Budget Proposal | `app/pages/budget-prop-page.php` (+ the shared `form/budget-req-form.php` helpers, `form/budget-processing-form.php`, `readone/budget-preview-readone.php`) + `BudgetReqService.php` + `app/routes/fmd_budget_req.php` | `fims.budget_req` (+ its program / project / line-item tables) | The Financial Management Department's list of every Regional / District office's request: Submission Ref No., Region / Originating Unit, Submitted Date (`budget_req.submitted_at`), Amount, Status. Fetched from `GET /fmd/budget_req/list`, which fixes the scope server-side (every Regional / District office, for any logged-in user — no longer FMD only) — the page sends no RC parameters |
-| Budget Revision | `app/pages/budget-revision-page.php` + `form/budget-rev-form.php` + `form/budget-rev-review.php` + `BudgetRevisionService.php` + `app/routes/budget_revision.php` | `fims.budget_req`, `budget_revision` | Revises an existing approved request; the Add/Edit form has Revision / Realignment tabs (a Realignment moves funds to a To budget line) and the table's Type column shows `budget_revision.request_type`; `budget-rev-review.php` is the approve/reject reviewer modal (`PUT /budget_revision/review/{id}`) |
+| Budget Revision | `app/pages/budget-revision-page.php` + `form/budget-rev-form.php` + `form/budget-rev-review.php` + `BudgetRevisionService.php` + `app/routes/budget_revision.php` | `fims.budget_req`, `budget_revision` | Revises an existing approved request; the Add/Edit form has Revision / Realignment / Supplemental tabs (a Realignment moves funds to a To budget line; a Supplemental request adds a NEW SARO-funded project — its project, budget lines and ledger rows are only created when it is approved, with a generated project code and the amount going to the COB's Amendment column) and the table's Type column shows `budget_revision.request_type`; `budget-rev-review.php` is the approve/reject reviewer modal (`PUT /budget_revision/review/{id}`) |
 | Memo Request (CBA / RFA / LAA) | `app/pages/memo-req-page.php` (list, tabbed CBA/RFA/LAA) + `form/budget-allocation-form.php` (the Add/Edit form, opened as a modal, `window.cbaModal`) + `readone/memo-process-readone.php` (FMD's Approve/Return review screen) + `BudgetAllocationService.php` + `app/routes/budget_allocation.php` | `fims.budget_allocation`, `fims.budget_line_item_earmark` (+ `budget_line_items` it reserves against) | Built out 2026-11-10/12 (§7.3/§7.5's old issues are resolved by this — see there). One table, one `allocation_type` column drives three document types: **CBA** (Certificate of Budget Allocation, the root reservation against a budget line item — no Program/Sub-Program/Project fields in the form), **RFA** (Request for Fund Allotment, draws down a parent CBA, used under ₱50M) and **LAA** (Letter of Advice of Allotment, same conversion as RFA, ₱50M and up) — both require picking a Parent CBA (`GET /budget_allocation/all?allocation_type=CBA&status=Approved`). FMD review chain (`PATCH /budget_allocation/process/{id}`): `For Review` (Section Chief) → `For Division Manager` → `For Department Manager` → `Approved`, or returned one step back; only FMD users (rc_code `35-074-0000000-032`) holding the current step's user level may act — everyone else gets a read-only "Process" action hidden and sees only their own office's requests (server-decided, not client-sent). On final Approval the request gets a server-generated `allocation_number` (template varies by type — `CBA 2026-42-86-01` / `2642-87-01` / `LAA 2026-42-01`, see `app/routes/README.md`) and an `active` row is inserted/converted in `budget_line_item_earmark` (see `system_docs/ERD/README.md` §2.1). An Approved RFA also soft-links (`budget_allocation.dv_id`, no FK) to the one Disbursement Voucher it's currently drawn into — LAA isn't wired into the DV module yet. Supporting Documents upload via `file_upload.php` (§8.5-adjacent, see `app/routes/README.md`) |
 | Corporate Operating Budget (COB) — Monitoring menu | `app/pages/cob-page.php` + `readone/cob-readone.php` (the View modal, `window.cobModal`) + `readone/cob-report-readone.php` (Generate Report → PDF / Excel, `window.cobReport`) + `CobService.php` + `CobReportService.php` + `XlsxWriter.php` + `app/routes/cob.php` | `fims.budget_req` and what hangs off it: `budget_req_program`, `budget_req_project`, `budget_line_items`, `budget_req_project_attachment`, plus `budget_line_item_earmark` / `budget_allocation` for what CBAs / RFAs / LAAs drew | Read-only monitoring of **Approved** budget requests only, in the columns of the Corporate Operating Budget Monitoring sheet (Approved Amount, Revision / Realignment, Revised Amount, CBA Requested, Available for Earmarking, RFA Approved, LAA Issued, Remaining Balance; Approved Amount = `budget_line_items.suggested_amount`). See `system_docs/modules/COB-MONITORING.md` |
 | Fiscal Year | `FiscalYearService.php` + `app/routes/fiscal_year.php` | `fims.fiscal_year` (reads `budget_req`) | Read key is `{fiscal_yr}`, not `{id}`. Create/delete only, no update route. No dedicated page — feeds dropdowns on the budget pages |
@@ -881,6 +998,8 @@ Cross-cutting code used by every page — coordinate before changing:
 
 | Component | Path |
 |---|---|
+| Global stylesheet (fonts, type scale, `u-` utilities, modal sizes, all components) | `_shared/css/nha-fims.css` — see §5 → Global styles |
+| Theme colour tokens + dark palette | `_shared/css/custom.css` |
 | Auth | `_shared/auth.php` |
 | Page permissions | `_shared/PagePermission.php` (+ `_shared/README-PagePermission.md`) |
 | Notifications | `_shared/notification.php` (bell UI), `_shared/mqtt-notification.js` (optional MQTT push) — design in `_shared/NOTIFICATION-IMPLEMENTATION-PLAN.md`, usage in `_shared/NOTIFICATION_README.md`, summary in §8.11 |

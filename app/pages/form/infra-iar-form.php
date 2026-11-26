@@ -29,7 +29,7 @@ $_ifr_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     #ifr-overlay { display:none;position:fixed;inset:0;z-index:9100;box-sizing:border-box;padding:16px;
         background:rgba(15,32,69,.55);align-items:center;justify-content:center;overflow-y:auto; }
     #ifr-overlay.open { display:flex; }
-    #ifr-card { display:flex;flex-direction:column;width:100%;max-width:1360px;max-height:92vh;overflow:hidden;
+    #ifr-card { display:flex;flex-direction:column;max-height:92vh;overflow:hidden;
         background:var(--afims-surface, #FFFFFF);border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.22);
         font-family:'IBM Plex Sans',sans-serif;font-size:14px;color:var(--afims-text, #1A1B21);animation:ampIn .18s ease; }
     #ifr-card *, #ifr-card *::before, #ifr-card *::after { box-sizing:border-box; }
@@ -116,7 +116,7 @@ $_ifr_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 </style>
 
 <div id="ifr-overlay">
-    <div id="ifr-card">
+    <div class="u-modal-2xl" id="ifr-card">
         <div id="ifr-header">
             <h3 class="amp-hdr-title" id="ifr-modal-title">Add Infrastructure Record</h3>
             <button type="button" id="ifr-modal-close" aria-label="Close">&times;</button>
@@ -628,7 +628,7 @@ async function ifr_aaSave(ev) {
 
 function amp_view_set(title, ref, html) {
     ifr_$('amp-view-body').innerHTML = html;
-    ifr_$('amp-view-card').classList.remove('amp-wide');
+    ifr_$('amp-view-card').classList.remove('amp-wide', 'u-modal-2xl'); ifr_$('amp-view-card').classList.add('u-modal-xl');
     ifr_$('amp-view-title').textContent = title;
     ifr_$('amp-view-ref').textContent = ref;
     ifr_$('amp-view-overlay').classList.add('open');
@@ -667,7 +667,7 @@ async function ifr_proforma(id) {
             } catch (e) { /* keep the pro-forma rows */ }
         }
         amp_renderProforma(0);
-        ifr_$('amp-view-card').classList.add('amp-wide');
+        ifr_$('amp-view-card').classList.add('amp-wide', 'u-modal-2xl'); ifr_$('amp-view-card').classList.remove('u-modal-xl');
         ifr_$('amp-view-title').textContent = 'Pro-forma JEV';
         ifr_$('amp-view-ref').textContent = d.swa_number || '';
         ifr_$('amp-view-overlay').classList.add('open');

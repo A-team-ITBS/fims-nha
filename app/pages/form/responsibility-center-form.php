@@ -20,7 +20,7 @@
     #rc-overlay { display:none;position:fixed;inset:0;z-index:9100;
         background:rgba(15,32,69,.6);align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px); }
     #rc-overlay.open { display:flex; }
-    #rc-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;width:100%;max-width:60%;
+    #rc-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;
         max-height:92vh;display:flex;flex-direction:column;overflow:hidden;
         box-shadow:0 32px 80px rgba(0,0,0,.28);font-family:'IBM Plex Sans',sans-serif;
         animation:rcIn .2s ease; }
@@ -73,8 +73,6 @@
     #rc-footer .rc-btn-navy:hover:not(:disabled) { opacity:.92; }
 
     @media (max-width: 560px) { .rc-row { grid-template-columns:1fr; } }
-    /* 60% is too narrow on tablets/phones — use the full width there. */
-    @media (max-width: 991.98px) { #rc-card { max-width:100%; } }
 
     /* ── Dark mode — the selects rendered with the browser's native grey; match the text inputs and the theme ── */
     html.afims-dark[data-bs-theme="dark"] #rc-card { color-scheme:dark; }
@@ -94,7 +92,7 @@
 </style>
 
 <div id="rc-overlay">
-    <div id="rc-card">
+    <div class="u-modal-w-60" id="rc-card">
 
         <div id="rc-header">
             <div id="rc-header-info">

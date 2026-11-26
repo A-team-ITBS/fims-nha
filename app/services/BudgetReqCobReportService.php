@@ -97,6 +97,16 @@ class BudgetReqCobReportService
     // -------------------------------------------------------------------------
 
     /**
+     * ' AND li.supplemental_revision_id IS NULL' — this is the PROPOSAL report ("Export to Excel" / "Preview and Print" of View Proposal), so the lines of the projects added by approved
+     * SUPPLEMENTAL budget revisions (tagged, 03 - alter_table/63) are left out of every CO query below. '' on a database that has not had that column yet (nothing is tagged there).
+     * A COE line is headless and never tagged, so the COE queries need no filter.
+     */
+    private function noSuppSql(): string
+    {
+        return BudgetReqService::excludeSupplemental(true) ? ' AND li.supplemental_revision_id IS NULL' : '';
+    }
+
+    /**
      * Every headless line (budget_req_project_id IS NULL), sub-classified PS ('5-01…') / MOOE ('5-02…') by
      * account code. $fyWhere / $scopeWhere are the already-built ' AND br.xxx = …' fragments (possibly '').
      *
@@ -181,7 +191,7 @@ class BudgetReqCobReportService
                  FROM region_tree rt
                  JOIN {$this->tableBudgetReq} br ON br.rc_id = rt.rc_id
                  JOIN {$this->tableLineItems} li ON li.budget_reference_number = br.budget_reference_number
-                 WHERE li.budget_req_project_id IS NOT NULL{$fyWhere}
+                 WHERE li.budget_req_project_id IS NOT NULL{$this->noSuppSql()}{$fyWhere}
                  GROUP BY rt.region_id",
                 'DB'
             ) ?: [];
@@ -349,7 +359,7 @@ class BudgetReqCobReportService
                  LEFT JOIN {$this->tableProgram} pg ON pg.program_code = brp.program_code
                  LEFT JOIN {$this->tableSubProgram} sp ON sp.sub_program_code = brp.sub_program_code
                  LEFT JOIN {$this->tableProject} pj ON pj.project_code = bprj.project_code
-                 WHERE li.budget_req_project_id IS NOT NULL{$fyWhere}{$scopeWhere}
+                 WHERE li.budget_req_project_id IS NOT NULL{$this->noSuppSql()}{$fyWhere}{$scopeWhere}
                  GROUP BY brp.program_code, pg.program_name, brp.sub_program_code, sp.sub_program_name, bprj.project_code, pj.project_name
                  ORDER BY brp.program_code ASC NULLS LAST, brp.sub_program_code ASC NULLS LAST, bprj.project_code ASC NULLS LAST",
                 'DB'
@@ -492,7 +502,7 @@ class BudgetReqCobReportService
                  JOIN {$this->tableBudgetReqProgram} brp ON brp.budget_req_program_id = bprj.budget_req_program_id
                  JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = brp.budget_reference_number
                  LEFT JOIN {$this->tableProgram} pg ON pg.program_code = brp.program_code
-                 WHERE li.budget_req_project_id IS NOT NULL{$fyWhere}{$scopeWhere}
+                 WHERE li.budget_req_project_id IS NOT NULL{$this->noSuppSql()}{$fyWhere}{$scopeWhere}
                  GROUP BY brp.program_code, pg.program_name
                  ORDER BY brp.program_code ASC NULLS LAST",
                 'DB'
@@ -599,7 +609,7 @@ class BudgetReqCobReportService
                  LEFT JOIN {$this->tableSubProgram} sp ON sp.sub_program_code = brp.sub_program_code
                  LEFT JOIN {$this->tableProject} pj ON pj.project_code = bprj.project_code
                  LEFT JOIN fims.chart_of_accounts coa ON coa.account_id = li.account_id
-                 WHERE li.budget_req_project_id IS NOT NULL{$fyWhere}{$scopeWhere}
+                 WHERE li.budget_req_project_id IS NOT NULL{$this->noSuppSql()}{$fyWhere}{$scopeWhere}
                  ORDER BY brp.program_code ASC NULLS LAST, brp.sub_program_code ASC NULLS LAST,
                           bprj.project_code ASC NULLS LAST, coa.account_code ASC NULLS LAST",
                 'DB'

@@ -20,6 +20,12 @@ namespace PHPMaker2024\FIMS;
  * The Amount field means something different on each tab: a Revision's is the line's NEW amount, a Realignment's is the amount TRANSFERRED to
  * the To line. Either way the request is stored as the From line's amount before → after (from_amount → to_amount; a Realignment saves
  * to_amount = from_amount − the amount transferred), so the table's From / To / Change columns and the approval work the same for both.
+ *
+ * A third tab, SUPPLEMENTAL, files a NEW project released by a DBM SARO that is not in the approved COB (a Program / Sub-Program, a SARO, the project's
+ * name and location, and its line items: account, particulars, amount — no Project Code field: the code is generated on approval). It has no budget line, so the
+ * table, the details modal and the form describe it by its own supp_* fields. It is filed, processed and reviewed like the others; APPROVING it is what
+ * adds the project to the budget — one transaction (BudgetRevisionService::approveSupplemental()): the project, its budget lines (suggested_amount left at 0)
+ * and a SUPPLEMENTAL ledger row per line, so the amount shows in the COB's Amendment column and not in its Approved Amount.
  */
 @session_start();
 $_brv_api = Config('API.FIMS_URL');
@@ -63,9 +69,6 @@ try {
 $_brv_canReview = $_brv_isFmd || $_brv_isAdmin;
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <?php /* GetUrl() without a leading slash adds the app's base path (the app may live in a sub-folder / virtual directory), and the
           cache-buster is read from the file next to this page, not from DOCUMENT_ROOT — so a changed stylesheet is never served
           from a browser's stale cache. */ ?>
@@ -108,27 +111,12 @@ $_brv_canReview = $_brv_isFmd || $_brv_isAdmin;
     white-space: nowrap;
 }
 
-/* ── Page header: copied from User Access (.app-page-header in app/fims-css/fims.css — that file is not loaded here,
-      so the rules are repeated, scoped to this page). Stays navy in dark mode too, like User Access. ── */
-#brv-root .app-page-header { position:relative;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;overflow:hidden;
-    background:linear-gradient(135deg, #000E3E 0%, #001A5E 100%);border-radius:.75rem;padding:1.5rem 1.75rem;margin-bottom:1.5rem; }
-#brv-root .app-page-header::before,
-#brv-root .app-page-header::after { content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.05);pointer-events:none; }
-#brv-root .app-page-header::before { width:180px;height:180px;top:-90px;right:80px; }
-#brv-root .app-page-header::after { width:120px;height:120px;bottom:-70px;right:-20px;background:rgba(255,255,255,.06); }
-#brv-root .app-page-header-icon { position:relative;z-index:1;flex:0 0 auto;width:3rem;height:3rem;border-radius:.5rem;
-    display:flex;align-items:center;justify-content:center;font-size:1.25rem;
-    background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#FFFFFF; }
-#brv-root .app-page-title { position:relative;z-index:1;font-size:1.6rem;font-weight:800;letter-spacing:-.01em;color:#FFFFFF;margin:0 0 .25rem; }
-#brv-root .app-page-subtitle { position:relative;z-index:1;font-size:.9rem;color:rgba(255,255,255,.75);margin:0;max-width:640px; }
-/* the Refresh / Add Request buttons stay on the right of the banner, above its decorative circles */
-#brv-root .app-page-header-actions { position:relative;z-index:1;margin-left:auto;display:flex;flex-wrap:wrap;gap:8px; }
 </style>
 
 <div id="brv-root" class="nha-root">
 
     <!-- ── HEADER ─────────────────────────────────────────── -->
-    <!-- same banner as User Access (app-page-header in app/fims-css/fims.css) -->
+    <!-- same banner as User Access (app-page-header in _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
             <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
@@ -138,8 +126,8 @@ $_brv_canReview = $_brv_isFmd || $_brv_isAdmin;
         <div>
             <h1 class="app-page-title">Budget Amendment Requests</h1>
             <p class="app-page-subtitle" id="brv-hdr-sub"><?php echo $_brv_canReview
-                ? 'Review the amendment and realignment requests the offices have submitted — approve or decline them.'
-                : 'File an amendment or realignment request and save it, then Process it to submit it for review — and follow its status.'; ?></p>
+                ? 'Review the amendment, realignment and supplemental requests the offices have submitted — approve or decline them.'
+                : 'File an amendment, realignment or supplemental request and save it, then Process it to submit it for review — and follow its status.'; ?></p>
         </div>
         <div class="app-page-header-actions">
             <button id="brv-refresh" type="button" class="nha-btn-hdr" title="Refresh">
@@ -273,8 +261,10 @@ const BRV_STATUS = {
 // sends it as request_type (a column of fims.budget_revision); the To line is the fallback for a database that has not had
 // "03 - alter_table/42" yet, whose rows have no request_type.
 const BRV_TYPE = {
-    REVISION   : { label: 'Amendment',   cls: 'nha-bdg-blue' },
-    REALIGNMENT: { label: 'Realignment', cls: 'nha-bdg-teal' },
+    REVISION    : { label: 'Amendment',    cls: 'nha-bdg-blue'  },
+    REALIGNMENT : { label: 'Realignment',  cls: 'nha-bdg-teal'  },
+    // a NEW project released by a SARO — no budget line until it is approved (see form/budget-rev-form.php, BudgetRevisionService::approveSupplemental())
+    SUPPLEMENTAL: { label: 'Supplemental', cls: 'nha-bdg-amber' },
 };
 function brv_typeOf(r) {
     const t = String(r?.request_type || '').toUpperCase();
@@ -283,6 +273,14 @@ function brv_typeOf(r) {
 function brv_typeBadge(r) {
     const t = BRV_TYPE[brv_typeOf(r)];
     return `<span class="nha-bdg ${t.cls}">${t.label}</span>`;
+}
+
+// A Supplemental request has no budget line, so the list and the details describe it by its own fields: where the new project goes
+// ("101 — Socialized Housing Program › 101-003 — Resettlement Housing Units") and the SARO it was released under.
+function brv_suppPlace(r) {
+    const withName = (code, name) => (code ? code + (name ? ' — ' + name : '') : '');
+    const where = [withName(r.supp_program_code, r.supp_program_name), withName(r.supp_sub_program_code, r.supp_sub_program_name)].filter(Boolean).join(' › ');
+    return [where, r.supp_saro_no ? 'SARO NO. ' + r.supp_saro_no : ''].filter(Boolean).join(' · ');
 }
 
 const $brv = id => document.getElementById(id);
@@ -401,6 +399,7 @@ function brv_renderTable(rows) {
         return;
     }
     tbody.innerHTML = rows.map(r => {
+        const supp   = brv_typeOf(r) === 'SUPPLEMENTAL';   // a new project: its fiscal year / program / SARO are the request's own (supp_*), it has no budget line
         const diff   = Number(r.to_amount || 0) - Number(r.from_amount || 0);
         const trend  = diff > 0 ? 'brv-up' : (diff < 0 ? 'brv-down' : '');
         const reason = r.reason ? brv_esc(r.reason) : '<span class="nha-td-sub">—</span>';
@@ -408,12 +407,12 @@ function brv_renderTable(rows) {
         return `<tr>
         <td>
             <code class="nha-code">#${brv_esc(r.id)}</code>
-            <div class="nha-td-sub">FY ${brv_esc(r.fiscal_yr ?? '—')}</div>
+            <div class="nha-td-sub">FY ${brv_esc((supp ? r.supp_fiscal_yr : r.fiscal_yr) ?? '—')}</div>
         </td>
         <td>${brv_typeBadge(r)}</td>
         <td>
-            <div class="nha-td-bold">${brv_esc(brv_lineTitle(r, ''))}</div>
-            <div class="nha-td-sub">${brv_esc(brv_linePlace(r, ''))}</div>
+            <div class="nha-td-bold">${brv_esc(supp ? (r.supp_project_name || '—') : brv_lineTitle(r, ''))}</div>
+            <div class="nha-td-sub">${brv_esc(supp ? brv_suppPlace(r) : brv_linePlace(r, ''))}</div>
             ${r.to_budget_line_item_id ? `<div class="nha-td-sub" title="Funds move to this budget line">→ To: ${brv_esc(brv_lineTitle(r, 'to_'))}${r.to_budget_reference_number ? ' (' + brv_esc(r.to_budget_reference_number) + ')' : ''}</div>` : ''}
         </td>
         <td class="text-end">${brv_fmtMoney(r.from_amount)}</td>
@@ -540,6 +539,12 @@ function brv_openModal(mode, row = null) {
     // the Revision / Realignment tabs: a new request starts as a Revision; an existing one opens on the kind it was filed as
     // (the form hides the To budget line for a Revision — see form/budget-rev-form.php)
     window.brvForm?.setType(row ? brv_typeOf(row) : 'REVISION');
+    // a Supplemental request has no budget line: its own panel (window.brvSupp, form/budget-rev-form.php) shows the saved request
+    if (row && brv_typeOf(row) === 'SUPPLEMENTAL') {
+        window.brvSupp?.fill(row);
+        $brv('brv-overlay').classList.add('open');
+        return;
+    }
     // the From / To budget line fields are searchable dropdowns owned by form/budget-rev-form.php
     if (window.brvForm) window.brvForm.setBudgetLine(row?.from_budget_line_item_id ?? '', row?.to_budget_line_item_id ?? '');
     else {
@@ -582,10 +587,44 @@ async function brv_edit(id) {
     }
 }
 
+// Save a Supplemental request — a new project, so it has its own body (window.brvSupp.payload(), form/budget-rev-form.php) and no From / To lines or amounts.
+async function brv_saveSupplemental(mode, id) {
+    const problem = window.brvSupp?.validate?.() || '';
+    if (problem) { brv_toast(problem, 'error'); return; }
+    const payload = window.brvSupp.payload();
+
+    window.PagePreloader?.show();
+    try {
+        const url    = mode === 'edit' ? `${BRV_API}/update/${id}` : `${BRV_API}/add`;
+        const method = mode === 'edit' ? 'PUT' : 'POST';
+        const res    = await fetch(url, {
+            method,
+            credentials: 'same-origin',
+            headers: brv_apiHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify(payload),
+        });
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json || !json.success) throw new Error(json?.message || 'Failed to save the supplemental request.');
+
+        brv_toast(mode === 'edit'
+            ? 'Supplemental request updated. Choose Process to submit it for review.'
+            : 'Supplemental request saved. Choose Process in its Actions menu to submit it for review.', 'success');
+        brv_closeModal();
+        brv_load();
+    } catch (e) {
+        brv_toast(e.message, 'error');
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
 async function brv_save(ev) {
     ev.preventDefault();
     const mode = $brv('brv-mode').value;
     const id   = $brv('brv-id').value;
+
+    // the Supplemental tab files a new project, not a change to a budget line
+    if ($brv('brv-type').value === 'SUPPLEMENTAL') { await brv_saveSupplemental(mode, id); return; }
 
     const type = $brv('brv-type').value === 'REALIGNMENT' ? 'REALIGNMENT' : 'REVISION';   // the tab the form is on
     // What was typed in the Amount field: a Revision's new amount, or the amount a Realignment TRANSFERS. The form turns it into the
@@ -681,6 +720,12 @@ function brv_openView(r) {
     $brv('brv-view-id').value = r.id;
     $brv('brv-view-title').textContent = `Budget ${BRV_TYPE[brv_typeOf(r)].label} Request #${r.id}`;
 
+    // a Supplemental request has no budget lines: its own block (the project, the SARO, the line items) replaces the From / To / Amendment one
+    const supp = brv_typeOf(r) === 'SUPPLEMENTAL';
+    $brv('brv-view-std').hidden  = supp;
+    $brv('brv-view-supp').hidden = !supp;
+    if (supp) { brv_fillSuppView(r); brv_viewTail(r); return; }
+
     // the budget line being revised: its request's status, its account, where it sits (request · office · fiscal year, program ›
     // project, particulars) and its CURRENT amount — its remaining balance, the "Current balance" the form shows. One that no longer exists says so.
     brv_paintStatus($brv('brv-view-type'), r.budget_req_status_name, r.budget_req_status_color);
@@ -709,6 +754,11 @@ function brv_openView(r) {
     change.className = 'brv-v-cell-v' + (diff > 0 ? ' is-up' : diff < 0 ? ' is-down' : '');
     brv_renderEffect(r);
 
+    brv_viewTail(r);
+}
+
+// What the details of every kind of request share: the reason, who filed it and when, the status, and the review buttons.
+function brv_viewTail(r) {
     const reason = $brv('brv-view-reason');
     reason.textContent = r.reason || 'No reason provided.';
     reason.classList.toggle('is-empty', !r.reason);
@@ -735,6 +785,37 @@ function brv_openView(r) {
 
 function brv_closeView() {
     $brv('brv-view-overlay').classList.remove('open');
+}
+
+// The details of a Supplemental request: the new project and where it goes, the SARO, the line items, and what approving does.
+// Nothing of it exists in the budget until it is approved; the project code is generated then (supp_project_code is empty before).
+function brv_fillSuppView(r) {
+    const withName = (code, name) => (code ? code + (name ? ' — ' + name : '') : '');
+    const where    = [withName(r.supp_program_code, r.supp_program_name), withName(r.supp_sub_program_code, r.supp_sub_program_name)].filter(Boolean).join(' › ');
+    const total    = brv_fmtMoney(r.to_amount);
+    const fy       = r.supp_fiscal_yr ?? '—';
+
+    $brv('brv-view-sp-project').textContent = r.supp_project_name || '—';
+    $brv('brv-view-sp-sub').textContent = [where, r.supp_location ? 'Location: ' + r.supp_location : '', r.supp_project_code ? 'Project code: ' + r.supp_project_code : ''].filter(Boolean).join('\n');
+
+    const dt = (/^(\d{4})-(\d{2})-(\d{2})/.exec(String(r.supp_saro_date || '')) || []);
+    $brv('brv-view-sp-saro').textContent = r.supp_saro_no
+        ? 'SARO NO. ' + r.supp_saro_no + (dt.length ? ` dtd. ${dt[2]}-${dt[3]}-${dt[1]}` : '')
+        : 'SARO no longer found';
+    $brv('brv-view-sp-saro-sub').textContent = [`FY ${fy}`, Number(r.supp_saro_amount) > 0 ? 'SARO amount ' + brv_fmtMoney(r.supp_saro_amount) : ''].filter(Boolean).join(' · ');
+
+    $brv('brv-view-sp-items').innerHTML = (r.items || []).map(it => `<tr>
+        <td>${brv_esc(it.account_code || it.account_id)}${it.account_title ? ' — ' + brv_esc(it.account_title) : ''}</td>
+        <td>${brv_esc(it.particulars)}</td>
+        <td class="brv-v-num">${brv_fmtMoney(it.amount)}</td>
+    </tr>`).join('') || '<tr><td colspan="3">No line items.</td></tr>';
+    $brv('brv-view-sp-total').textContent = total;
+
+    const effect = $brv('brv-view-sp-effect');
+    effect.classList.remove('is-warn');
+    effect.textContent = r.status === 'APPROVED' ? `Approved — the project${r.supp_project_code ? ' ' + r.supp_project_code : ''} was added to the FY ${fy} budget with ${total} as an Amendment.`
+        : r.status === 'DECLINED' ? 'Declined — nothing was added to the budget.'
+        : `On approval the project is added to the FY ${fy} budget${where ? ' under ' + where : ''} with ${total} as an Amendment (not as an Approved Amount), and its project code is generated.`;
 }
 
 // What approving does to the two budget lines. Only shown when the revision has a To line: then it MOVES
@@ -776,7 +857,11 @@ async function brv_review(status) {
 
     // Approving changes money, so say exactly what will happen before asking.
     let question = `Are you sure you want to ${verb} budget amendment request #${id}?`;
-    if (status === 'APPROVED' && brv_viewRow) {
+    if (status === 'APPROVED' && brv_viewRow && brv_typeOf(brv_viewRow) === 'SUPPLEMENTAL') {
+        // a new project, not a change to a budget line: say what approving adds
+        question += `\n\nThe project "${brv_viewRow.supp_project_name || ''}" will be added to the FY ${brv_viewRow.supp_fiscal_yr ?? ''} budget of the office that filed it, `
+                  + `with a generated project code, and ${brv_fmtMoney(brv_viewRow.to_amount)} will be recorded as an Amendment (the Approved Amount stays 0).`;
+    } else if (status === 'APPROVED' && brv_viewRow) {
         const v       = brv_viewRow;
         const current = Number(v.line_amount || 0);
         const target  = Number(v.to_amount || 0);

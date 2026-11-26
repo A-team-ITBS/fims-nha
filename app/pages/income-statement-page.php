@@ -13,15 +13,11 @@ $_is_api = rtrim((string) Config('API.FIMS_URL'), '/');
 $_is_api = preg_match('~/api$~', $_is_api) ? $_is_api : $_is_api . '/api';
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
-<link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css') ?>" />
 
 <style>
-    /* Table styling (.fims-report-table*) lives in app/fims-css/fims.css. Only page-specific, non-table rules remain here. */
+    /* Table styling (.fims-report-table*) lives in _shared/css/nha-fims.css. Only page-specific, non-table rules remain here. */
     #is-root .is-report-title { text-align: center; margin: 0 0 18px; }
     #is-root .is-report-title div { font-weight: 700; font-size: 14px; line-height: 1.6; }
     #is-root .is-report-title .is-report-date { font-weight: 400; }
@@ -37,11 +33,30 @@ $_is_api = preg_match('~/api$~', $_is_api) ? $_is_api : $_is_api . '/api';
     #is-root .nha-error               { font-size: 0.875rem; }   /* 14px */
     #is-root .nha-hint                { font-size: 0.875rem; padding: 0 16px; margin: 0 0 14px; color: var(--afims-text-muted, #62657E); }   /* 14px; 16px side padding lines it up with the filter card */
 
-    /* the page header's Refresh button sits on the right of the banner, above its decorative circles (fims.css has no rule for it) */
-    #is-root .app-page-header { flex-wrap: wrap; }
-    #is-root .app-page-header-actions { position: relative; z-index: 1; margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; }
 
     html.afims-dark[data-bs-theme="dark"] #is-root .is-sample { background: #3A2F10; color: #F5D98A; border-color: #6B5A22; }
+    /* Print / Export — one header button → PDF | Excel menu → preview modal (Print / Download on a bar above the preview) */
+    #is-root .is-menu-item { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; cursor: pointer; font-family: inherit; }
+    #is-root .is-menu-item:hover, #is-root .is-menu-item:focus-visible { background: var(--afims-surface-subtle, #F4F7FA); outline: none; }
+    #is-root .is-menu-item strong { display: block; font-size: 13px; color: var(--afims-text, #1e293b); }
+    #is-root .is-menu-item small  { display: block; font-size: 11.5px; color: var(--afims-text-muted, #62657E); }
+    #is-root .isx-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+    #is-root .isx-info { font-size: 12.5px; color: var(--afims-text-muted, #62657E); }
+    #is-root .isx-actions { display: flex; gap: 8px; }
+    #is-root .isx-actions [hidden] { display: none !important; }
+    #is-root .isx-stage { position: relative; height: 68vh; overflow: auto; background: #E8ECF2; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; }
+    #is-root .isx-frame { display: block; width: 100%; height: 100%; border: 0; background: #E8ECF2; }
+    #is-root .isx-msg { padding: 60px 20px; text-align: center; font-size: 13px; color: var(--afims-text-muted, #62657E); }
+    #is-root .isx-err { margin-top: 10px; padding: 8px 12px; border-radius: 7px; background: #FDECEC; color: #B42318; font-size: 13px; }
+    #is-root .isx-msg[hidden], #is-root .isx-err[hidden], #is-root .isx-frame[hidden], #is-root .isx-sheet[hidden] { display: none; }
+    /* the Excel preview: the sheet the .xlsx will contain, with a spreadsheet's column letters / row numbers, centred in the stage */
+    #is-root .isx-sheet { padding: 14px; }
+    #is-root table.isx-xl { margin: 0 auto; border-collapse: collapse; background: #fff; font: 12px Calibri, Arial, sans-serif; box-shadow: 0 1px 6px rgba(15, 32, 69, .18); }
+    #is-root table.isx-xl th { padding: 2px 8px; border: 1px solid #d0d3d6; background: #f1f3f4; color: #5f6368; font-weight: 500; text-align: center; }
+    #is-root table.isx-xl td { height: 20px; padding: 2px 6px; border: 1px solid #e1e3e6; }
+    #is-root table.isx-xl td.rn { background: #f1f3f4; color: #5f6368; text-align: center; padding: 2px 4px; }
+    #is-root table.isx-xl td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
     @media print {
         #is-root .is-letterhead,
         #is-root .is-cert { display: block !important; }
@@ -52,7 +67,7 @@ $_is_api = preg_match('~/api$~', $_is_api) ? $_is_api : $_is_api . '/api';
 <div id="is-root" class="nha-root">
 
     <!-- ── HEADER ─────────────────────────────────────────── -->
-    <!-- same banner as User Access: app-page-header (styled by app/fims-css/fims.css, already loaded above) -->
+    <!-- same banner as User Access: app-page-header (styled by the global _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
             <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
@@ -69,14 +84,41 @@ $_is_api = preg_match('~/api$~', $_is_api) ? $_is_api : $_is_api . '/api';
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
             </button>
-            <button id="is-print" type="button" class="nha-btn-hdr" title="Print">
+            <button id="is-export" type="button" class="nha-btn-hdr" title="Print or export the Income Statement — PDF or Excel" aria-haspopup="true" aria-expanded="false">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/></svg>
-                Print
+                Print / Export &#9662;
             </button>
-            <button id="is-excel" type="button" class="nha-btn-hdr" title="Export to Excel">
-                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
-                Excel
-            </button>
+        </div>
+    </div>
+
+    <!-- Format menu of the Print / Export button (fixed, so the banner's rounded corners can't clip it) -->
+    <div id="is-export-menu" role="menu" class="no-print" style="display:none;position:fixed;z-index:1060;min-width:230px;background:var(--afims-surface,#fff);border:1px solid var(--afims-border,#E4ECF2);border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.18);padding:6px;">
+        <button type="button" role="menuitem" class="is-menu-item" data-format="pdf"><strong>PDF</strong><small>Preview, then print or download</small></button>
+        <button type="button" role="menuitem" class="is-menu-item" data-format="xlsx"><strong>Excel</strong><small>Preview, then download (.xlsx)</small></button>
+    </div>
+
+    <!-- ── PRINT / EXPORT PREVIEW ─────────────────────────── -->
+    <div id="is-overlay" class="nha-overlay no-print">
+        <div class="nha-modal nha-modal-xl" role="dialog" aria-modal="true" aria-labelledby="is-x-title">
+            <div class="nha-modal-hdr">
+                <h3 class="nha-modal-title" id="is-x-title">Income Statement</h3>
+                <button type="button" class="nha-modal-close" id="is-x-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="nha-modal-body">
+                <div class="isx-bar">
+                    <span class="isx-info" id="is-x-info"></span>
+                    <span class="isx-actions">
+                        <button type="button" class="nha-btn nha-btn-outline" id="is-x-print" disabled>Print</button>
+                        <button type="button" class="nha-btn nha-btn-primary" id="is-x-download" disabled>Download</button>
+                    </span>
+                </div>
+                <div class="isx-stage">
+                    <div class="isx-msg" id="is-x-msg">Loading preview&hellip;</div>
+                    <iframe class="isx-frame" id="is-x-frame" title="Income Statement PDF preview" hidden></iframe>
+                    <div class="isx-sheet" id="is-x-sheet" hidden></div>
+                </div>
+                <div class="isx-err" id="is-x-err" role="alert" hidden></div>
+            </div>
         </div>
     </div>
 
@@ -211,12 +253,31 @@ else is_boot();
 
 function is_bindEvents() {
     $is('is-refresh')?.addEventListener('click', is_load);
-    $is('is-print')?.addEventListener('click', () => window.print());
-    $is('is-excel')?.addEventListener('click', is_exportExcel);
     $is('is-filter-fy')?.addEventListener('change', is_load);
     $is('is-filter-book')?.addEventListener('change', is_load);
     $is('is-filter-view')?.addEventListener('change', () => { is_syncBookFilter(); is_load(); });
     is_syncBookFilter();
+
+    // Print / Export: the header button's menu (PDF | Excel) → the preview modal
+    $is('is-export')?.addEventListener('click', e => { e.stopPropagation(); is_toggleMenu($is('is-export-menu').style.display === 'none'); });
+    $is('is-export-menu')?.addEventListener('click', e => {
+        e.stopPropagation();
+        const item = e.target.closest('.is-menu-item');
+        if (!item) return;
+        is_toggleMenu(false);
+        is_openExport(item.dataset.format);
+    });
+    document.addEventListener('click', () => is_toggleMenu(false));
+    window.addEventListener('scroll', () => is_toggleMenu(false), true);
+    window.addEventListener('resize', () => is_toggleMenu(false));
+    $is('is-x-close')?.addEventListener('click', is_closeExport);
+    $is('is-overlay')?.addEventListener('click', e => { if (e.target === $is('is-overlay')) is_closeExport(); });
+    $is('is-x-print')?.addEventListener('click', is_printPdf);
+    $is('is-x-download')?.addEventListener('click', is_downloadFile);
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && $is('is-overlay').classList.contains('open')) { e.preventDefault(); is_closeExport(); }
+    });
+
     /* Sample preview has no button: type `income_statement = true` in the browser console to show
        made-up figures, `income_statement = false` to go back to live data. */
     Object.defineProperty(window, 'income_statement', {
@@ -589,15 +650,227 @@ function is_parseAmount(text) {
     return /^\(/.test(t) ? -n : n;
 }
 
-async function is_exportExcel() {
-    if (!window.ExcelJS) { is_showError('Excel library failed to load. Check your internet connection and reload.'); return; }
-    const trs = [...document.querySelectorAll('#is-tbody tr')];
-    if (!trs.length || document.querySelector('#is-tbody .nha-empty') || document.querySelector('#is-tbody .nha-loader')) {
-        is_showError('Nothing to export — no postings for this fiscal year.');
-        return;
+const IS_CERT = 'I HEREBY CERTIFY that the foregoing Statement of Financial Performance is a true and complete statement of the revenue earned and expenses incurred as shown in the books of accounts, prepared and presented in conformity with International Public Sector Accounting Standards (IPSAS).';
+
+/* The table on screen as data — the ONE source the PDF payload, the Excel preview and the Excel workbook are all made from, so
+   the three can't disagree. rows[]: { cls (the row's classes), major (a colspan section band), title, values (amounts, null = blank) }. */
+function is_sheetModel() {
+    const text = el => el.textContent.trim();
+    const head = [...document.querySelectorAll('#is-thead th')].map(text);
+    const titleLines = [
+        { text: 'NATIONAL HOUSING AUTHORITY', bold: true },
+        { text: text($is('is-title-line2')), bold: true },
+    ];
+    if ($is('is-title-line3').style.display !== 'none') titleLines.push({ text: text($is('is-title-line3')), bold: true });
+    titleLines.push({ text: text($is('is-report-date')), bold: false });
+    if ($is('is-title-peso').style.display !== 'none') titleLines.push({ text: text($is('is-title-peso')), bold: false });
+
+    const rows = [...document.querySelectorAll('#is-tbody tr')].map(tr => {
+        const cells = [...tr.cells];
+        return { cls: tr.className, major: cells.length === 1, title: text(cells[0]), values: cells.slice(1).map(c => is_parseAmount(c.textContent)) };
+    });
+    return { head, nCols: head.length, titleLines: titleLines.filter(l => l.text), rows };
+}
+
+/* The row's kind, as the server's print form names it (BalanceSheetPrintService). "group-row" is also inside "subgroup-row", so that is tested first.
+   The grand rows here are the running "Surplus (Deficit)" checkpoints. */
+function is_rowKind(r) {
+    if (r.major) return 'major';
+    if (/grand-row/.test(r.cls)) return 'grand';
+    if (/subtotal-row/.test(r.cls)) return 'subtotal';
+    if (/subgroup-row/.test(r.cls)) return 'subgroup';
+    if (/group-row/.test(r.cls)) return 'group';
+    return 'account';
+}
+
+/* ── Print / Export: menu → preview → Print / Download ─────────────────────────────────────────
+   PDF   — the server renders it (POST /print/is → PrintService 'IS', Dompdf, like the other printed forms) from the table on
+           screen; the preview IS that PDF, so Print and Download give exactly what is shown. Landscape when the View has more
+           than 4 columns (Consolidated), as the Excel sheet is.
+   Excel — built here with ExcelJS from the same model (is_buildWorkbook); the preview draws that sheet. */
+const IS_PRINT_API = IS_BASE + '/print/is';
+const is_x = { format: 'pdf', seq: 0, file: null, url: null };   // file = { blob, filename } shown in the preview
+
+function is_toggleMenu(open) {
+    const menu = $is('is-export-menu'), btn = $is('is-export');
+    if (!menu || !btn) return;
+    if (!open) { menu.style.display = 'none'; btn.setAttribute('aria-expanded', 'false'); return; }
+    menu.style.display = '';
+    const r = btn.getBoundingClientRect(), w = menu.offsetWidth || 230, h = menu.offsetHeight || 90;
+    menu.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) + 'px';
+    menu.style.top  = (r.bottom + 6 + h > window.innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+    btn.setAttribute('aria-expanded', 'true');
+}
+
+/* The file name stem both formats share: Income-Statement_<year>_<view> (the server builds the same one for the PDF). */
+function is_fileStem() { return `Income-Statement_${$is('is-filter-fy').value}_${$is('is-filter-view').value}`; }
+
+/* There is a loaded table to export (not loading, not the "nothing posted" message). */
+function is_hasData() {
+    return !!document.querySelector('#is-tbody tr') && !document.querySelector('#is-tbody .nha-empty') && !document.querySelector('#is-tbody .nha-loader');
+}
+
+/* What the server prints: the table on screen. */
+function is_printPayload() {
+    const m = is_sheetModel();
+    return {
+        fiscal_yr: $is('is-filter-fy').value,
+        view: $is('is-filter-view').value,
+        lines: m.titleLines,
+        columns: m.head,
+        rows: m.rows.map(r => ({ kind: is_rowKind(r), title: r.title, values: r.values })),
+    };
+}
+
+function is_xState(msg, err) {
+    $is('is-x-msg').hidden = !msg;
+    if (msg) $is('is-x-msg').textContent = msg;
+    $is('is-x-err').hidden = !err;
+    if (err) $is('is-x-err').textContent = err;
+}
+function is_xReady(on) {
+    $is('is-x-print').disabled = $is('is-x-download').disabled = !on;
+}
+function is_releaseFile() {
+    if (is_x.url) URL.revokeObjectURL(is_x.url);
+    is_x.url = null; is_x.file = null;
+}
+
+async function is_openExport(format) {
+    if (!is_hasData()) { is_showError('Nothing to export — no postings for this fiscal year.'); return; }
+    if (format === 'xlsx' && !window.ExcelJS) { is_showError('Excel library failed to load. Check your internet connection and reload.'); return; }
+    is_hideError();
+
+    const my = ++is_x.seq;
+    is_releaseFile();
+    is_x.format = format === 'xlsx' ? 'xlsx' : 'pdf';
+    const pdf = is_x.format === 'pdf';
+    const view = $is('is-filter-view').selectedOptions?.[0]?.textContent || '';
+    $is('is-x-title').textContent = 'Income Statement — ' + (pdf ? 'PDF' : 'Excel');
+    $is('is-x-info').textContent = [view, $is('is-report-date').textContent].filter(Boolean).join(' · ');
+    $is('is-x-print').hidden = !pdf;                       // an Excel file is downloaded, not printed
+    $is('is-x-download').textContent = pdf ? 'Download PDF' : 'Download Excel';
+    is_xReady(false);
+    $is('is-x-frame').hidden = true; $is('is-x-frame').removeAttribute('src');
+    $is('is-x-sheet').hidden = true;
+    is_xState('Loading preview…', '');
+    $is('is-overlay').classList.add('open');
+
+    try {
+        if (pdf) await is_loadPdf(my); else await is_loadExcel(my);
+    } catch (e) {
+        if (my !== is_x.seq) return;                       // closed or reopened while loading
+        is_xState('The preview could not be loaded.', e.message);
     }
-    const headCells = [...document.querySelectorAll('#is-thead th')].map(th => th.textContent.trim());
-    const nCols = headCells.length;
+}
+
+function is_closeExport() {
+    is_x.seq++;
+    $is('is-overlay').classList.remove('open');
+    $is('is-x-frame').hidden = true; $is('is-x-frame').removeAttribute('src');
+    $is('is-x-sheet').innerHTML = '';
+    is_releaseFile();
+}
+
+async function is_loadPdf(my) {
+    const res = await is_authFetch(IS_PRINT_API, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign(is_printPayload(), { format: 'pdf' })),
+    });
+    let json = null; try { json = await res.json(); } catch (e) { /* not JSON */ }
+    if (!res.ok || !json || json.success === false) throw new Error((json && json.message) || ('HTTP ' + res.status));
+    if (my !== is_x.seq) return;
+
+    const bin = atob(json.data), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    is_x.file = { blob: new Blob([bytes], { type: json.mime || 'application/pdf' }), filename: json.filename || (is_fileStem() + '.pdf') };
+    is_x.url  = URL.createObjectURL(is_x.file.blob);
+
+    $is('is-x-frame').src = is_x.url + '#toolbar=0&navpanes=0';   // the viewer's own toolbar is hidden: Print / Download are above
+    $is('is-x-frame').hidden = false;
+    is_xState('', '');
+    is_xReady(true);
+}
+
+async function is_loadExcel(my) {
+    const buf = await is_buildWorkbook().xlsx.writeBuffer();
+    if (my !== is_x.seq) return;
+    is_x.file = { blob: new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), filename: is_fileStem() + '.xlsx' };
+    $is('is-x-sheet').innerHTML = is_excelPreviewHtml();
+    $is('is-x-sheet').hidden = false;
+    is_xState('', '');
+    is_xReady(true);
+}
+
+/* Print the PDF shown in the preview; if the browser won't print from the frame, open it in a tab (its viewer prints). */
+function is_printPdf() {
+    const frame = $is('is-x-frame');
+    try {
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+    } catch (e) {
+        if (is_x.url) window.open(is_x.url, '_blank');
+    }
+}
+
+function is_downloadFile() {
+    if (!is_x.file) return;
+    const a = document.createElement('a');
+    const url = URL.createObjectURL(is_x.file.blob);
+    a.href = url;
+    a.download = is_x.file.filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* The Excel preview: the sheet is_buildWorkbook() writes (same model, same row order and styling rules), drawn as a spreadsheet —
+   keep the two in step. Amounts: zero "-", negative in brackets (the workbook's number format). */
+function is_excelPreviewHtml() {
+    const m = is_sheetModel(), n = m.nCols;
+    const num = v => {
+        if (v === null || v === undefined) return '';
+        if (Math.abs(v) < 0.005) return '-';
+        const s = Math.abs(v).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return v < 0 ? `(${s})` : s;
+    };
+    const out = [];
+    let rn = 0;
+    const row = (cells, trStyle = '') => { rn++; out.push(`<tr style="${trStyle}"><td class="rn">${rn}</td>${cells}</tr>`); };
+    const merged = (text, style = '') => row(`<td colspan="${n}" style="${style}">${is_esc(text)}</td>`);
+    const blank = () => row('<td></td>'.repeat(n));
+
+    m.titleLines.forEach(l => merged(l.text, 'text-align:center;' + (l.bold ? 'font-weight:700;' : '')));
+    blank();
+    const hd = 'background:#D9E1F2;font-weight:700;border:1px solid #000;';
+    row(m.head.map((h, i) => `<td style="${hd}text-align:${i > 0 ? 'right' : 'center'};">${is_esc(h)}</td>`).join(''));
+
+    m.rows.forEach(r => {
+        if (r.major) { merged(r.title, 'background:#EDEDED;font-weight:700;'); return; }
+        const kind = is_rowKind(r);
+        const total = kind === 'subtotal' || kind === 'grand';
+        const rule = total ? 'font-weight:700;border-top:1px solid #000;' + (kind === 'grand' ? 'border-bottom:3px double #000;' : '') : '';
+        // as the workbook: group title bold, subgroup indented one level, account lines two
+        const titleStyle = (kind === 'group' ? 'font-weight:700;' : '') + (kind === 'subgroup' ? 'padding-left:16px;' : '') + (kind === 'account' ? 'padding-left:30px;' : '') + rule;
+        row(`<td style="${titleStyle}">${is_esc(r.title)}</td>` + r.values.map(v => `<td class="n" style="${rule}">${num(v)}</td>`).join(''));
+    });
+
+    blank();
+    merged(IS_CERT, 'height:48px;vertical-align:top;white-space:normal;');
+    blank();
+    blank();
+    row('<td style="border-top:1px solid #000;text-align:center;">Signature Over Printed Name</td>' + '<td></td>'.repeat(n - 1));
+    row('<td style="text-align:center;">Head of Accounting Department</td>' + '<td></td>'.repeat(n - 1));
+
+    const cols = ['<col style="width:34px">', ...m.head.map((_, i) => `<col style="width:${i === 0 ? 380 : 140}px">`)].join('');
+    const letters = m.head.map((_, i) => `<th>${String.fromCharCode(65 + i)}</th>`).join('');
+    return `<table class="isx-xl"><colgroup>${cols}</colgroup><thead><tr><th></th>${letters}</tr></thead><tbody>${out.join('')}</tbody></table>`;
+}
+
+/* ── Excel workbook ────────────────────────────────────────── */
+function is_buildWorkbook() {
+    const { head: headCells, nCols, titleLines, rows } = is_sheetModel();
 
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Income Statement', {
@@ -615,11 +888,7 @@ async function is_exportExcel() {
         r.getCell(1).alignment = { horizontal: 'center' };
         r.getCell(1).font = { bold, size: 11 };
     };
-    title('NATIONAL HOUSING AUTHORITY');
-    title($is('is-title-line2').textContent);
-    if ($is('is-title-line3').style.display !== 'none') title($is('is-title-line3').textContent);
-    title($is('is-report-date').textContent, false);
-    if ($is('is-title-peso').style.display !== 'none') title($is('is-title-peso').textContent, false);
+    titleLines.forEach(l => title(l.text, l.bold));
     ws.addRow([]);
 
     const head = ws.addRow(headCells);
@@ -630,18 +899,15 @@ async function is_exportExcel() {
         c.alignment = { horizontal: i > 1 ? 'right' : 'center', wrapText: true };
     });
 
-    trs.forEach(tr => {
-        const cls = tr.className;
-        const cells = [...tr.cells];
-        if (cells.length === 1) { // major section header (colspan)
-            const m = ws.addRow([cells[0].textContent.trim()]);
+    rows.forEach(({ cls, major, title: rowTitle, values }) => {
+        if (major) { // major section header (colspan)
+            const m = ws.addRow([rowTitle]);
             ws.mergeCells(m.number, 1, m.number, nCols);
             m.getCell(1).font = { bold: true };
             m.getCell(1).fill = fill('FFEDEDED');
             return;
         }
-        const vals = cells.map((c, i) => i === 0 ? c.textContent.trim() : is_parseAmount(c.textContent));
-        const r = ws.addRow(vals);
+        const r = ws.addRow([rowTitle, ...values]);
         for (let i = 2; i <= nCols; i++) r.getCell(i).numFmt = NUM;
 
         const isGrand = /grand-row/.test(cls), isSub = /subtotal-row/.test(cls);
@@ -654,7 +920,7 @@ async function is_exportExcel() {
     });
 
     ws.addRow([]);
-    const cert = ws.addRow(['I HEREBY CERTIFY that the foregoing Statement of Financial Performance is a true and complete statement of the revenue earned and expenses incurred as shown in the books of accounts, prepared and presented in conformity with International Public Sector Accounting Standards (IPSAS).']);
+    const cert = ws.addRow([IS_CERT]);
     ws.mergeCells(cert.number, 1, cert.number, nCols);
     cert.getCell(1).alignment = { wrapText: true, vertical: 'top' };
     cert.height = 48;
@@ -667,15 +933,7 @@ async function is_exportExcel() {
 
     ws.views = [{ state: 'frozen', ySplit: head.number }];
 
-    const buf  = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `Income-Statement_${$is('is-filter-fy').value}_${$is('is-filter-view').value}.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    return wb;
 }
 
 /* ── Formatters ────────────────────────────────────────────── */

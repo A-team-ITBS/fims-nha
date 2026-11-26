@@ -190,7 +190,7 @@ $_sar_type_first = !empty($sarTypeFirst);
      form is included; padding/background are neutralised so it takes no space. -->
 <div class="nha-root" style="padding:0;background:none;">
 <div id="sar-overlay" class="nha-overlay no-print">
-    <form id="sar-form" class="nha-modal nha-modal-lg sar-modal" novalidate autocomplete="off">
+    <form id="sar-form" class="nha-modal sar-modal u-modal-lg" novalidate autocomplete="off">
         <div class="nha-modal-hdr">
             <h3 class="nha-modal-title" id="sar-title">Fund Tracking — New Entry</h3>
             <button type="button" class="nha-modal-close" id="sar-close" aria-label="Close">&times;</button>

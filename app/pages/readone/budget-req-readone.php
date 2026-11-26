@@ -57,11 +57,10 @@
     #bgrv-overlay { display:none;position:fixed;inset:0;z-index:9100;
         background:rgba(15,32,69,.6);align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px); }
     #bgrv-overlay.open { display:flex; }
-    #bgrv-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;width:100%;max-width:820px;
+    #bgrv-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;
         max-height:92vh;display:flex;flex-direction:column;overflow:hidden;
         box-shadow:0 32px 80px rgba(0,0,0,.28);font-family:'IBM Plex Sans',sans-serif;
         transition:max-width .2s ease; }
-    #bgrv-card.bgrv-wide { max-width:75vw; }
 
     /* Two rows: #bgrv-header-top (icon+title, left — export/print/close, right) always on its own
        line, so the title never has to fight the amount totals for room (see #bgrv-header-total below,
@@ -288,7 +287,7 @@
 </style>
 
 <div id="bgrv-overlay">
-    <div id="bgrv-card">
+    <div class="u-modal-lg" id="bgrv-card">
         <div id="bgrv-header">
             <div id="bgrv-header-top">
                 <div id="bgrv-header-info">
@@ -363,7 +362,7 @@
      top of the already-open #bgrv-overlay, same "stack a second overlay on top" shape as
      readone/cob-report-readone.php's #cobr-overlay over its own host page. -->
 <div id="bgrv-print-overlay" class="nha-overlay">
-    <div class="nha-modal nha-modal-md" role="dialog" aria-modal="true" aria-labelledby="bgrv-print-modal-title">
+    <div class="nha-modal u-modal-sm" role="dialog" aria-modal="true" aria-labelledby="bgrv-print-modal-title">
         <div class="nha-modal-hdr">
             <h3 id="bgrv-print-modal-title">Choose a Layout</h3>
             <button type="button" class="nha-modal-close" id="bgrv-print-modal-close" aria-label="Close">&times;</button>
@@ -643,7 +642,7 @@ function bgrv_setSummary(cards) {
 /* ── Mode 1: one Program's Sub-Programs -> Projects, with this request's
    own amounts annotated in ──────────────────────────────────────────── */
 async function bgrv_openModal(requestContext, program) {
-    $bgrv('bgrv-card').classList.remove('bgrv-wide'); // COB mode only — see bgrv_openCobModal
+    $bgrv('bgrv-card').classList.remove('bgrv-wide', 'u-modal-w-80'); $bgrv('bgrv-card').classList.add('u-modal-lg'); // COB mode only — see bgrv_openCobModal
     $bgrv('bgrv-hdr-tag').textContent = 'Program';
     $bgrv('bgrv-modal-title').textContent = `${program.program_code} — ${program.program_name}`;
     $bgrv('bgrv-sec-hd-label').textContent = 'Sub-Programs';
@@ -716,7 +715,7 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
     bgrv_cobExtraParams = extraParams || {};
     const byUnit = !!(options && options.byUnit);
     const showFund = !!(options && options.showFund);
-    $bgrv('bgrv-card').classList.add('bgrv-wide');
+    $bgrv('bgrv-card').classList.add('bgrv-wide', 'u-modal-w-80'); $bgrv('bgrv-card').classList.remove('u-modal-lg');
     $bgrv('bgrv-hdr-tag').textContent = 'Corporate Operating Budget (COB)';
     const what = byUnit ? 'All Originating Units' : 'All Programs';
     $bgrv('bgrv-modal-title').textContent = fiscalYr ? `${what} — FY ${bgr_esc(fiscalYr)}` : `${what} — All Years`;
@@ -738,6 +737,9 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
         const query = new URLSearchParams();
         if (fiscalYr) query.set('fiscal_yr', fiscalYr);
         Object.entries(extraParams || {}).forEach(([k, v]) => { if (v !== '' && v != null) query.set(k, v); });
+        // View Proposal is the PROPOSAL: the projects added by approved Supplemental revisions (they were never proposed) are not in it — COB / RFA-LAA Monitoring show them.
+        // /budget_req/all leaves them in by default because the Budget Amendment form's line picker reads the same list.
+        query.set('exclude_supplemental', '1');
         const params = query.toString() ? `?${query}` : '';
         const res  = await fetch(`${BGR_API}/all${params}`, { credentials: 'same-origin' });
         const json = await res.json();

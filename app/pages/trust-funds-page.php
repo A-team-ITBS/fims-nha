@@ -28,9 +28,6 @@ namespace PHPMaker2024\FIMS;
 $_tfl_api = Config('API.FIMS_URL');
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <style>
@@ -285,7 +282,7 @@ $_tfl_api = Config('API.FIMS_URL');
 
     <!-- ══════════════ VIEW MODAL ══════════════ -->
     <div id="tfl-view-ov" class="nha-overlay no-print">
-        <div class="nha-modal nha-modal-lg">
+        <div class="nha-modal u-modal-lg">
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title" id="tfl-view-title">Trust Fund Record</h3>
                 <button type="button" class="nha-modal-close" id="tfl-view-close" aria-label="Close">&times;</button>
@@ -300,7 +297,7 @@ $_tfl_api = Config('API.FIMS_URL');
 
     <!-- ══════════════ NEW ENTRY CHOOSER ══════════════ -->
     <div id="tfl-new-ov" class="nha-overlay no-print">
-        <div class="nha-modal nha-modal-sm">
+        <div class="nha-modal u-modal-sm">
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title">New Entry</h3>
                 <button type="button" class="nha-modal-close" id="tfl-new-close" aria-label="Close">&times;</button>
@@ -332,7 +329,7 @@ $_tfl_api = Config('API.FIMS_URL');
 
     <!-- ══════════════ EXPORT MODAL ══════════════ -->
     <div id="tfl-xm-ov" class="nha-overlay no-print">
-        <div class="nha-modal nha-modal-sm">
+        <div class="nha-modal u-modal-sm">
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title" id="tfl-xm-title">Export Trust Funds</h3>
                 <button type="button" class="nha-modal-close" id="tfl-xm-close" aria-label="Close">&times;</button>

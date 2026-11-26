@@ -8,27 +8,11 @@ $_ob_api = rtrim((string) Config('API.FIMS_URL'), '/');
 $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <style>
     /* All colours come from the shared theme tokens (_shared/css/custom.css), which switch by themselves in dark mode,
        so this page matches the other report pages in both themes. */
-    /* Page header: copied from User Access (.app-page-header in app/fims-css/fims.css — that file is not loaded here,
-       so the rules are repeated, scoped to this page). The banner stays navy in dark mode too, like User Access. */
-    #ob-root .app-page-header { position: relative; display: flex; align-items: center; gap: 1rem; overflow: hidden;
-        background: linear-gradient(135deg, #000E3E 0%, #001A5E 100%); border-radius: .75rem; padding: 1.5rem 1.75rem; margin-bottom: 1.5rem; }
-    #ob-root .app-page-header::before,
-    #ob-root .app-page-header::after { content: ""; position: absolute; border-radius: 50%; background: rgba(255, 255, 255, .05); pointer-events: none; }
-    #ob-root .app-page-header::before { width: 180px; height: 180px; top: -90px; right: 80px; }
-    #ob-root .app-page-header::after { width: 120px; height: 120px; bottom: -70px; right: -20px; background: rgba(255, 255, 255, .06); }
-    #ob-root .app-page-header-icon { position: relative; z-index: 1; flex: 0 0 auto; width: 3rem; height: 3rem; border-radius: .5rem;
-        display: flex; align-items: center; justify-content: center; font-size: 1.25rem;
-        background: rgba(255, 255, 255, .15); border: 1px solid rgba(255, 255, 255, .25); color: #FFFFFF; }
-    #ob-root .app-page-title { position: relative; z-index: 1; font-size: 1.6rem; font-weight: 800; letter-spacing: -.01em; color: #FFFFFF; margin: 0 0 .25rem; }
-    #ob-root .app-page-subtitle { position: relative; z-index: 1; font-size: .9rem; color: rgba(255, 255, 255, .75); margin: 0; max-width: 640px; }
 
     #ob-root .ob-header { text-align: center; margin: 0 0 15px; }
     #ob-root .ob-header .ob-title { font-weight: 700; font-size: 16px; color: var(--afims-heading, #000E3E); }
@@ -97,7 +81,7 @@ $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
 
 <div id="ob-root" class="nha-root">
 
-    <!-- HEADER (same banner as User Access: app-page-header in app/fims-css/fims.css) -->
+    <!-- HEADER (same banner as User Access: app-page-header in _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
             <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">

@@ -21,8 +21,7 @@ INSERT INTO fims.books (book_id, code, name) VALUES
     (1, 'MAIN-OFFICE', 'Main Office'),
     (2, 'CISFA', 'CISFA'),
     (3, 'NGC', 'NGC'),
-    (4, 'MPLC', 'MPLC / PPMO'),
-    (5, 'PPMO', 'PPMO')
+    (4, 'MPLC', 'MPLC / PPMO')
 ON CONFLICT (book_id) DO UPDATE SET code = EXCLUDED.code, name = EXCLUDED.name;
 
 SELECT setval('fims.books_book_id_seq', (SELECT MAX(book_id) FROM fims.books));

@@ -37,7 +37,8 @@ $app->get('/fmd/budget_req/list', function ($request, $response, $args) use ($Fm
             $text('fiscal_yr'),
             $text('program_code'),
             '',                                                   // every RC …
-            GlobalService::CENTRAL_REVIEW_RC_CODE_FROM            // … that is a Regional / District office
+            GlobalService::CENTRAL_REVIEW_RC_CODE_FROM,           // … that is a Regional / District office
+            true                                                  // the proposal list: the projects added by approved SUPPLEMENTAL revisions are not in it
         );
         if ($result['success']) {
             // where each row stands in the review chain (For Review -> Budget Officer -> Endorsed -> Budget Head -> Approved)

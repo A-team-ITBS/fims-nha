@@ -15,7 +15,7 @@ namespace PHPMaker2024\FIMS\Service;
  *   $x->merge(0, 0, 1, 0); $x->colWidth(0, 40); $x->rowHeight(0, 24);
  *   file_put_contents('r.xlsx', $x->render());
  *
- * Style definition keys (all optional): font {name, sz, bold, italic, color 'RRGGBB'}, fill 'RRGGBB', border 'RRGGBB' (thin, all sides),
+ * Style definition keys (all optional): font {name, sz, bold, italic, u (underline), color 'RRGGBB'}, fill 'RRGGBB', border 'RRGGBB' (thin, all sides),
  * align {h: left|center|right, v: top|center|bottom, wrap: bool, indent: int}, numFmt 'format code'. style() returns a style id for set() and
  * de-duplicates identical definitions.
  */
@@ -80,6 +80,28 @@ class XlsxWriter
     {
         $this->rowHeights[$row] = $points;
         $this->maxRow = max($this->maxRow, $row);
+    }
+
+    private int $freezeRow = 0;
+    private string $autoFilter = '';
+    private bool $gridLines = false;
+
+    /** Freeze the rows above $row (0-based) — e.g. freeze(4) keeps rows 1–4 in view (Excel's "freeze at A5"). */
+    public function freeze(int $row): void
+    {
+        $this->freezeRow = max(0, $row);
+    }
+
+    /** An auto-filter on a header row, columns $col1 … $col2 (0-based). */
+    public function autoFilter(int $row, int $col1, int $col2): void
+    {
+        $this->autoFilter = self::ref($row, $col1).':'.self::ref($row, $col2);
+    }
+
+    /** Show Excel's grid lines (hidden by default). */
+    public function gridLines(bool $show = true): void
+    {
+        $this->gridLines = $show;
     }
 
     /** "A", "B", … "Z", "AA" for a 0-based column index. */
@@ -171,7 +193,7 @@ class XlsxWriter
 
         foreach (array_slice($this->styleDefs, 1, null, true) as $def) {
             $f = $def['font'] ?? [];
-            $font = '<font>'.(!empty($f['bold']) ? '<b/>' : '').(!empty($f['italic']) ? '<i/>' : '')
+            $font = '<font>'.(!empty($f['bold']) ? '<b/>' : '').(!empty($f['italic']) ? '<i/>' : '').(!empty($f['u']) ? '<u/>' : '')
                 .'<sz val="'.(float) ($f['sz'] ?? 10).'"/><color rgb="'.self::rgb($f['color'] ?? '000000').'"/>'
                 .'<name val="'.self::xml((string) ($f['name'] ?? 'Arial')).'"/></font>';
             $fontIds[$font] ??= array_push($fonts, $font) - 1;
@@ -266,14 +288,20 @@ class XlsxWriter
             $merge .= '<mergeCell ref="'.self::ref($r1, $c1).':'.self::ref($r2, $c2).'"/>';
         }
 
+        $pane = $this->freezeRow > 0
+            ? '<pane ySplit="'.$this->freezeRow.'" topLeftCell="'.self::ref($this->freezeRow, 0).'" activePane="bottomLeft" state="frozen"/>'
+              .'<selection pane="bottomLeft" activeCell="'.self::ref($this->freezeRow, 0).'" sqref="'.self::ref($this->freezeRow, 0).'"/>'
+            : '';
+
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             .'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
             .'<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>'
             .'<dimension ref="A1:'.self::ref($this->maxRow, $this->maxCol).'"/>'
-            .'<sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews>'
+            .'<sheetViews><sheetView workbookViewId="0"'.($this->gridLines ? '' : ' showGridLines="0"').'>'.$pane.'</sheetView></sheetViews>'
             .'<sheetFormatPr defaultRowHeight="15"/>'
             .($cols !== '' ? '<cols>'.$cols.'</cols>' : '')
             .'<sheetData>'.$data.'</sheetData>'
+            .($this->autoFilter ? '<autoFilter ref="'.$this->autoFilter.'"/>' : '')
             .($merge !== '' ? '<mergeCells count="'.count($this->merges).'">'.$merge.'</mergeCells>' : '')
             .'<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/>'
             .'<pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>'

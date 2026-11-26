@@ -39,11 +39,8 @@ $showChangePassword = (($_SESSION['FIMS_Status'] ?? '') === 'passwordreset');
     <title>NHA FIMS — Sign In</title>
     <link rel="icon" type="image/png" href="/_shared/images/NHA.png">
     <link rel="apple-touch-icon" href="/_shared/images/NHA.png">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@100;300;400&family=Roboto:wght@400;500&family=Geist:wght@300;400&family=Syne:wght@400&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css') ?>" />
+    <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 </head>
 <body class="login-page">
 <div class="page-bg"></div>

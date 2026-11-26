@@ -120,7 +120,6 @@ if (!isset($_vf_api)) {
 #vf-root .vf-ap-table td { padding: 10px 16px; border-bottom: 1px solid #EEF2F8; }
 #vf-root .vf-ap-table td:nth-child(1) { font-family: "IBM Plex Mono", monospace; font-size: 13px; letter-spacing: .02em; }
 #vf-root .vf-ap-table td:nth-child(3), #vf-root .vf-ap-table td:nth-child(4) { text-align: right; }
-#vf-root .vf-ap-table td.vf-ap-cr { padding-left: 40px; }
 #vf-root .vf-ap-table tr.vf-ap-total td { font-weight: 700; border-bottom: 0; }
 #vf-root .vf-ap-table tr.vf-ap-empty td { text-align: center; color: var(--afims-text-muted, #62657E); padding: 18px; }
 #vf-root .vf-ap-table tr.vf-ap-bad td:nth-child(3), #vf-root .vf-ap-table tr.vf-ap-bad td:nth-child(4) { color: var(--afims-danger-text, #8F222D); }
@@ -341,7 +340,7 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
 
 <div id="vf-root" class="nha-root">
     <div id="vf-overlay" class="nha-overlay no-print">
-        <div class="nha-modal nha-modal-xl" role="dialog" aria-modal="true" aria-labelledby="vf-modal-title">
+        <div class="nha-modal u-modal-xl" role="dialog" aria-modal="true" aria-labelledby="vf-modal-title">
 
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title" id="vf-modal-title">New Disbursement Voucher</h3>
@@ -424,7 +423,7 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                                      multi-select above (fund_tracking.dv_id, see DisbursementVoucherService::linkSaro()).
                                      Optional. Its linked bank account auto-fills Check Preparation's Bank Account select once
                                      this DV reaches FOR_TREASURY — see CheckProcessingService::getSaroForDv(). -->
-                                <div class="nha-fg" style="margin-top:12px;">
+                                <div class="nha-fg" style="margin-top:12px;" hidden>
                                     <label>SARO <span class="vf-hint" style="display:inline;">(optional — the SARO this voucher's bank account comes from)</span></label>
                                     <select id="vf-saro"><option value="">— None —</option></select>
                                 </div>
@@ -563,9 +562,6 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                 <div class="vf-doc-section" id="vf-sec-d" style="display:none;margin-bottom:0;">
                     <p class="vf-doc-section-hdr">E. Pro Forma Journal Entry</p>
                     <div class="vf-card" style="margin-bottom:0;">
-                        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-                            <span class="vje-amt-badge">Required if filled in: DR = CR (balanced)</span>
-                        </div>
                         <div class="nha-fg" style="max-width:260px;margin-bottom:10px;">
                             <label>Book <span id="vf-book-req" class="nha-req" style="display:none;">*</span></label>
                             <select id="vf-book"><option value="">Select a book…</option></select>
@@ -2107,7 +2103,7 @@ function vf_recalcJev() {
         msg.textContent = '';
     } else {
         const balanced = lines.length >= 2 && totalDebit > 0 && Math.abs(totalDebit - totalCredit) < 0.005;
-        msg.textContent = balanced ? 'Balanced ✓' : 'Not balanced — debits must equal credits';
+        msg.textContent = balanced ? '' : 'Not balanced — debits must equal credits'; // nothing to say when it balances
         msg.style.color = balanced ? 'var(--afims-success, #16A34A)' : 'var(--afims-danger, #DC3545)';
     }
 }

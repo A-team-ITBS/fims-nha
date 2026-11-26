@@ -270,15 +270,44 @@ class PayrollManagementService
 
     // ═══ Tax annualization (year-end tax on compensation, BIR 2316) ═══════════════════════════
 
-    // Ceilings, as the old ACCOUNTING annualization (PayrollService::taxComponents()): rice subsidy ₱2,000 / month,
-    // uniform / clothing ₱6,000 / year, 13th month and other benefits ₱90,000 / year.
-    private const RICE_CAP    = 24000.00;
-    private const UNIFORM_CAP = 6000.00;
+    // 13th month and other benefits: exempt up to ₱90,000 / year. The de minimis limits are data, not constants —
+    // fims.payroll_de_minimis_benefits (01 - table/57), editable on Payroll Setup; see deMinimisLimits().
     private const BENEFIT_CAP = 90000.00;
     // TRAIN graduated income tax table (2023 onward): [over, base tax, rate on the excess over `over`]
     private const TAX_TABLE = [[8000000, 2202500, 0.35], [2000000, 402500, 0.30], [800000, 102500, 0.25],
                                [400000, 22500, 0.20], [250000, 0, 0.15]];
-    private const PAY_TREATMENTS = ['TAXABLE', 'NON_TAXABLE', 'DE_MINIMIS_RICE', 'DE_MINIMIS_UNIFORM', 'BENEFIT_90K'];
+    private const PAY_TREATMENTS = ['TAXABLE', 'NON_TAXABLE', 'DE_MINIMIS', 'BENEFIT_90K'];
+
+    /**
+     * The de minimis benefits and their yearly limits: [de_minimis_id => {code, name, limit_amount, limit_per, annual_limit}]
+     * (annual_limit = limit_amount × 12 for a MONTH limit). An INACTIVE benefit, or a de minimis item linked to none, has
+     * no exemption — all of it goes to the ₱90,000 benefits.
+     */
+    private function deMinimisLimits(): array
+    {
+        $out = [];
+        foreach (App\ExecuteRows("SELECT de_minimis_id, code, name, limit_amount, limit_per FROM fims.payroll_de_minimis_benefits
+                                   WHERE status = 'ACTIVE' ORDER BY sort_order, name", 'DB') ?: [] as $r) {
+            $amt = round((float) $r['limit_amount'], 2);
+            $out[(int) $r['de_minimis_id']] = ['code' => $r['code'], 'name' => $r['name'], 'limit_amount' => $amt, 'limit_per' => $r['limit_per'],
+                'annual_limit' => round($r['limit_per'] === 'MONTH' ? $amt * 12 : $amt, 2)];
+        }
+
+        return $out;
+    }
+
+    /** [total paid, total exempt] of an employee's de minimis amounts per benefit ([de_minimis_id|0 => amount]). */
+    private static function deMinimisExempt(array $byBenefit, array $limits): array
+    {
+        $paid = $exempt = 0.0;
+        foreach ($byBenefit as $id => $amt) {
+            $amt   = max(0.0, (float) $amt);
+            $paid += $amt;
+            $exempt += min($amt, $limits[$id]['annual_limit'] ?? 0.0);
+        }
+
+        return [round($paid, 2), round($exempt, 2)];
+    }
 
     /** Annual tax due on a taxable compensation income (TAX_TABLE). */
     public static function annualTax(float $taxable): float
@@ -305,13 +334,13 @@ class PayrollManagementService
         }
         try {
             $lines = App\ExecuteRows(
-                "SELECT r.employee_id, i.category, i.tax_treatment, SUM(li.amount) AS amount
+                "SELECT r.employee_id, i.category, i.tax_treatment, COALESCE(i.de_minimis_id, 0) AS de_minimis_id, SUM(li.amount) AS amount
                    FROM {$this->tLine} li
                    JOIN {$this->tRecord} r ON r.payroll_record_id = li.payroll_record_id
                    JOIN {$this->tPeriod} p ON p.payroll_period_id = r.payroll_period_id
                    JOIN {$this->tItem} i ON i.payroll_item_id = li.payroll_item_id
                   WHERE p.fiscal_yr = {$year}
-                  GROUP BY r.employee_id, i.category, i.tax_treatment",
+                  GROUP BY r.employee_id, i.category, i.tax_treatment, 4",
                 'DB'
             ) ?: [];
             if (!$lines) {
@@ -342,21 +371,25 @@ class PayrollManagementService
                     continue;
                 }
                 $id = (int) $l['employee_id'];
+                if ($t === 'DE_MINIMIS') {   // per benefit — each has its own limit
+                    $dm = (int) $l['de_minimis_id'];
+                    $emp[$id]['DE_MINIMIS'][$dm] = ($emp[$id]['DE_MINIMIS'][$dm] ?? 0.0) + $sign * $amt;
+                    continue;
+                }
                 $emp[$id][$t] = ($emp[$id][$t] ?? 0.0) + $sign * $amt;
             }
 
+            $limits = $this->deMinimisLimits();
             $rows = [];
             foreach ($emp as $id => $s) {
-                $get        = static fn (string $k) => round(max(0.0, $s[$k] ?? 0.0), 2);
+                $get        = static fn (string $k) => round(max(0.0, (float) ($s[$k] ?? 0.0)), 2);
                 $taxablePay = $get('TAXABLE');
                 $nonTaxPay  = $get('NON_TAXABLE');
-                $rice       = $get('DE_MINIMIS_RICE');
-                $uniform    = $get('DE_MINIMIS_UNIFORM');
-                $deMinExempt = round(min($rice, self::RICE_CAP) + min($uniform, self::UNIFORM_CAP), 2);
-                $benefits   = round($get('BENEFIT_90K') + ($rice + $uniform - $deMinExempt), 2);
+                [$deMinPaid, $deMinExempt] = self::deMinimisExempt($s['DE_MINIMIS'] ?? [], $limits);
+                $benefits   = round($get('BENEFIT_90K') + ($deMinPaid - $deMinExempt), 2);
                 $benExempt  = round(min($benefits, self::BENEFIT_CAP), 2);
                 $contrib    = $get('CONTRIBUTION');
-                $gross      = round($taxablePay + $nonTaxPay + $rice + $uniform + $get('BENEFIT_90K'), 2);
+                $gross      = round($taxablePay + $nonTaxPay + $deMinPaid + $get('BENEFIT_90K'), 2);
                 $nonTax     = round($nonTaxPay + $deMinExempt + $benExempt + $contrib, 2);
                 $taxable    = round(max(0.0, $gross - $nonTax), 2);
                 $taxDue     = self::annualTax($taxable);
@@ -364,7 +397,7 @@ class PayrollManagementService
                 $adj        = round($taxDue - $withheld, 2);
                 $rows[] = [
                     'employee_id' => $id, 'months_paid' => $months[$id] ?? 0,
-                    'taxable_pay' => $taxablePay, 'non_taxable_pay' => $nonTaxPay, 'de_minimis' => round($rice + $uniform, 2),
+                    'taxable_pay' => $taxablePay, 'non_taxable_pay' => $nonTaxPay, 'de_minimis' => $deMinPaid,
                     'de_minimis_exempt' => $deMinExempt, 'benefits' => $benefits, 'benefits_exempt' => $benExempt,
                     'contributions' => $contrib, 'gross_compensation' => $gross, 'total_non_taxable' => $nonTax,
                     'taxable_income' => $taxable, 'tax_due' => $taxDue, 'tax_withheld' => $withheld, 'tax_adjustment' => $adj,
@@ -448,6 +481,135 @@ class PayrollManagementService
 
             return ['success' => false, 'message' => 'Failed to load the annualization.'];
         }
+    }
+
+    /**
+     * One employee's ANNUALIZATION WORKSHEET for a year — the client's "Annualization of Income" template (EMP ANZN sheet),
+     * built from the year's payroll lines (same tax treatments, signs and ceilings as annualize()):
+     *   months     — per payroll month: basic (TAXABLE pay), tax withheld, GSIS, HDMF, PHIC, union dues (the CONTRIBUTION
+     *                lines, told apart by account: 2-02-01-020 GSIS, -030 Pag-IBIG, -040 PhilHealth, anything else union
+     *                dues) and the net (basic − tax − contributions);
+     *   benefits   — each 13th month / other-benefit item's year total (BENEFIT_90K) + the de minimis excess;
+     *   de_minimis — rice / uniform: actual, ceiling, excess;
+     *   computation— basic less contributions, benefits over ₱90,000, gross taxable income, tax due (TRAIN), tax withheld,
+     *                tax due / (refund).
+     * PERA (NON_TAXABLE) is left out of it, as in the client's sheet (exempt in full, it doesn't change the result).
+     * Returns ['success' => false, 'message'] when the employee has no payroll in that year.
+     */
+    public function annualizationWorksheet(int $year, int $employeeId): array
+    {
+        if ($year < 2000 || $year > 2100 || $employeeId <= 0) {
+            return ['success' => false, 'message' => 'Choose the fiscal year and the employee.'];
+        }
+        $emp = App\ExecuteRow("SELECT employee_id, employee_no, last_name, first_name, middle_name, department, position, tin FROM {$this->tEmp} WHERE employee_id = {$employeeId}", 'DB');
+        if (!$emp) {
+            return ['success' => false, 'message' => 'Employee not found.'];
+        }
+        $lines = App\ExecuteRows(
+            "SELECT p.payroll_month, i.item_code, i.item_name, i.category, i.tax_treatment,
+                    COALESCE(NULLIF(li.account_code, ''), i.account_code, '') AS account_code, SUM(li.amount) AS amount,
+                    COALESCE(i.de_minimis_id, 0) AS de_minimis_id
+               FROM {$this->tLine} li
+               JOIN {$this->tRecord} r ON r.payroll_record_id = li.payroll_record_id
+               JOIN {$this->tPeriod} p ON p.payroll_period_id = r.payroll_period_id
+               JOIN {$this->tItem} i ON i.payroll_item_id = li.payroll_item_id
+              WHERE p.fiscal_yr = {$year} AND r.employee_id = {$employeeId}
+              GROUP BY p.payroll_month, i.item_code, i.item_name, i.category, i.tax_treatment, 6, 8",
+            'DB'
+        ) ?: [];
+        if (!$lines) {
+            return ['success' => false, 'message' => "No payroll for this employee in {$year}."];
+        }
+
+        $blank  = ['basic' => 0.0, 'tax' => 0.0, 'gsis' => 0.0, 'hdmf' => 0.0, 'phic' => 0.0, 'union_dues' => 0.0];
+        $months = [];
+        $benefits = [];
+        // every active de minimis benefit is listed (as the client's sheet), paid or not; a de minimis item linked to no
+        // benefit shows as its own row with no limit (all of it is excess)
+        $limits = $this->deMinimisLimits();
+        $deMin  = [];
+        foreach ($limits as $id => $b) {
+            $deMin[$id] = ['name' => $b['name'], 'actual' => 0.0, 'limit' => $b['annual_limit'], 'limit_entered' => $b['limit_amount'],
+                'limit_note' => $b['limit_per'] === 'MONTH' ? number_format($b['limit_amount'], 2) . ' / month' : null];
+        }
+        foreach ($lines as $l) {
+            $t   = (string) $l['tax_treatment'];
+            $pay = in_array($t, self::PAY_TREATMENTS, true);
+            $sign = match ((string) $l['category']) {
+                'EARNING'   => $pay ? 1 : 0,
+                'DEDUCTION' => $pay ? -1 : (in_array($t, ['CONTRIBUTION', 'WITHHOLDING_TAX'], true) ? 1 : 0),
+                'REFUND'    => $pay ? 1 : (in_array($t, ['CONTRIBUTION', 'WITHHOLDING_TAX'], true) ? -1 : 0),
+                default     => 0,
+            };
+            if ($sign === 0 || $t === 'NONE' || $t === 'NON_TAXABLE') {
+                continue;
+            }
+            $m   = (int) $l['payroll_month'];
+            $amt = $sign * (float) $l['amount'];
+            $months[$m] ??= $blank;
+            if ($t === 'TAXABLE') {
+                $months[$m]['basic'] += $amt;
+            } elseif ($t === 'WITHHOLDING_TAX') {
+                $months[$m]['tax'] += $amt;
+            } elseif ($t === 'CONTRIBUTION') {
+                $acct = (string) $l['account_code'];
+                $col  = str_starts_with($acct, '2-02-01-020') ? 'gsis' : (str_starts_with($acct, '2-02-01-030') ? 'hdmf'
+                      : (str_starts_with($acct, '2-02-01-040') ? 'phic' : 'union_dues'));
+                $months[$m][$col] += $amt;
+            } elseif ($t === 'BENEFIT_90K') {
+                $code = (string) $l['item_code'];
+                $benefits[$code] ??= ['name' => (string) $l['item_name'], 'amount' => 0.0];
+                $benefits[$code]['amount'] += $amt;
+            } elseif ($t === 'DE_MINIMIS') {
+                $dm = (int) $l['de_minimis_id'];
+                if (!isset($deMin[$dm])) {   // not linked to an (active) benefit: no limit
+                    $deMin[$dm] = ['name' => (string) $l['item_name'], 'actual' => 0.0, 'limit' => 0.0, 'limit_entered' => 0.0, 'limit_note' => 'no limit set'];
+                }
+                $deMin[$dm]['actual'] += $amt;
+            }
+        }
+        ksort($months);
+        $rows = [];
+        $tot  = $blank + ['net' => 0.0];
+        foreach ($months as $m => $v) {
+            $v = array_map(static fn ($x) => round($x, 2), $v);
+            $v['net'] = round($v['basic'] - $v['tax'] - $v['gsis'] - $v['hdmf'] - $v['phic'] - $v['union_dues'], 2);
+            $rows[] = ['month' => $m, 'month_name' => strtoupper(self::MONTHS[$m])] + $v;
+            foreach ($tot as $k => $_) {
+                $tot[$k] += $v[$k];
+            }
+        }
+        $tot = array_map(static fn ($x) => round($x, 2), $tot);
+
+        $deMinRows = [];
+        $excess    = 0.0;
+        foreach ($deMin as $d) {
+            $actual = round(max(0.0, $d['actual']), 2);
+            $x = round(max(0.0, $actual - $d['limit']), 2);
+            $excess += $x;
+            $deMinRows[] = ['name' => $d['name'], 'actual' => $actual, 'limit' => $d['limit'], 'limit_entered' => $d['limit_entered'],
+                'limit_note' => $d['limit_note'], 'excess' => $x];
+        }
+        $benefitRows = [];
+        foreach ($benefits as $code => $b) {
+            $benefitRows[] = ['code' => $code, 'name' => $b['name'], 'amount' => round($b['amount'], 2)];
+        }
+        $benefitTotal = round(array_sum(array_column($benefitRows, 'amount')) + $excess, 2);
+        $contrib      = round($tot['gsis'] + $tot['hdmf'] + $tot['phic'] + $tot['union_dues'], 2);
+        $regular      = round($tot['basic'] - $contrib, 2);
+        $benTaxable   = round(max(0.0, $benefitTotal - self::BENEFIT_CAP), 2);
+        $grossTaxable = round(max(0.0, $regular + $benTaxable), 2);
+        $taxDue       = self::annualTax($grossTaxable);
+
+        return ['success' => true, 'data' => [
+            'year' => $year, 'employee' => $emp, 'months' => $rows, 'totals' => $tot,
+            'benefits' => $benefitRows, 'de_minimis_excess' => round($excess, 2), 'benefits_total' => $benefitTotal,
+            'benefit_cap' => self::BENEFIT_CAP, 'de_minimis' => $deMinRows,
+            'exempt' => ['gsis' => $tot['gsis'], 'hdmf' => $tot['hdmf'], 'phic' => $tot['phic'], 'union_dues' => $tot['union_dues'], 'total' => $contrib],
+            'computation' => ['regular_taxable' => $regular, 'benefits_taxable' => $benTaxable, 'gross_taxable' => $grossTaxable,
+                'tax_due' => $taxDue, 'tax_withheld' => $tot['tax'], 'balance' => round($taxDue - $tot['tax'], 2)],
+            'tax_table' => array_reverse(self::TAX_TABLE),
+        ]];
     }
 
     // ═══ File template ═══════════════════════════════════════════════════════════════════

@@ -1,4 +1,4 @@
-<ew-language date="2026/11/24" id="en-US" author="e.World Technology Limited">
+<ew-language date="2026/11/26" id="en-US" author="e.World Technology Limited">
   <project>
     <phrase id="bodytitle" value="NHA - FIMS" />
     <phrase id="footertext" value="&amp;copy;2026 ITBS Corporation. All rights reserved." />
@@ -112,6 +112,9 @@
     </menu>
     <menu id="561">
       <phrase id="menutext" value="Accountable Forms Registry" />
+    </menu>
+    <menu id="972">
+      <phrase id="menutext" value="Status of Fund" />
     </menu>
     <menu id="865">
       <phrase id="menutext" value="Payroll" />
@@ -1873,6 +1876,9 @@
     </table>
     <table id="bur_page">
       <phrase id="tblcaption" value="Budget Utilization Report" />
+    </table>
+    <table id="status_of_fund_page">
+      <phrase id="tblcaption" value="Status of Fund" />
     </table>
   </project>
 </ew-language>

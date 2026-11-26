@@ -813,7 +813,20 @@ class FtlaService
             if (!isset($byNo[$num])) {
                 return ['success' => false, 'message' => "DV No. \"{$num}\" was not found."];
             }
-            if ($byNo[$num]['status'] !== 'FOR_TREASURY') {
+        }
+        // Already posted for this FTLA by an earlier trigger (e.g. APPROVED, then COMPLETED):
+        // hand back that JEV instead of posting a second one.
+        $existing = App\ExecuteScalar(
+            "SELECT jev_id FROM {$this->tableJev} WHERE jev_type = 'PAYMENT' AND doc_ref_no = " . $this->str($cur['ftla_number']) . ' ORDER BY jev_id LIMIT 1',
+            'DB'
+        );
+        if ($existing) {
+            return ['success' => true, 'jev_id' => (int) $existing];
+        }
+        foreach ($dvNumbers as $num) {
+            // RELEASED is fine: a DV paid straight from Cash may already be released, and this
+            // FTLA still needs its own Dr Cash / Cr Bank JEV.
+            if (!in_array($byNo[$num]['status'], ['FOR_TREASURY', 'RELEASED'], true)) {
                 return ['success' => false, 'message' => "DV No. \"{$num}\" is {$byNo[$num]['status']}, not FOR_TREASURY — it isn't ready for release."];
             }
         }
@@ -849,6 +862,19 @@ class FtlaService
                  ORDER BY jl.line_number LIMIT 1',
                 'DB'
             );
+            if (!$apLine) {
+                // DV was already paid straight out of Cash at setup (no Accounts Payable to
+                // settle): this FTLA moves that cash into the bank, so Dr the Cash account the
+                // setup JEV credited, Cr the bank (below).
+                $apLine = App\ExecuteRow(
+                    "SELECT jl.account_code, jl.sl_code, jl.sl_detail_id, jl.rc_id
+                     FROM {$this->tableJevLines} jl
+                     WHERE jl.jev_id = " . (int) $setupJev['jev_id'] . "
+                       AND jl.credit > 0 AND jl.account_code LIKE '1-01-%'
+                     ORDER BY jl.line_number LIMIT 1",
+                    'DB'
+                );
+            }
             if ($apLine) {
                 $debitLines[] = ['dv_no' => $num, 'amount' => $amount] + $apLine;
             }
@@ -1039,6 +1065,9 @@ class FtlaService
     {
         $dvService = new DisbursementVoucherService();
         foreach ($dvNumbers as $num) {
+            if (($byNo[$num]['status'] ?? '') === 'RELEASED') {
+                continue;
+            }
             $released = $dvService->changeStatus((int) $byNo[$num]['dv_id'], 'RELEASED', $userId);
             if (!$released['success']) {
                 return ['success' => false, 'message' => "DV {$num}: {$released['message']}"];
@@ -1046,6 +1075,81 @@ class FtlaService
         }
 
         return ['success' => true];
+    }
+
+    /**
+     * One-time backfill: posts the FTLA JEV for every FTLA already sitting in a JEV-trigger
+     * status (see statusTriggersJev()) that has no jev_id — e.g. rows set to COMPLETED directly in
+     * the DB, or moved before the trigger existed. Same builders as update(), so the same rules
+     * apply; a failure on one FTLA is reported and doesn't stop the rest. $dryRun lists what
+     * would be posted without writing anything.
+     */
+    public function backfillJevs(int $userId, bool $dryRun = false): array
+    {
+        $rows = App\ExecuteRowsAssociative(
+            "SELECT fund_transfer_id, status, ftla_number, transfer_type, to_bank_account_id, dv_numbers,
+                    from_bank_account_id, from_accounts, transfer_amount, transfer_date, jev_id
+             FROM {$this->table}
+             WHERE jev_id IS NULL AND status <> 'CANCELLED' ORDER BY fund_transfer_id",
+            'DB'
+        ) ?: [];
+
+        $results = [];
+        foreach ($rows as $cur) {
+            if (!$this->statusTriggersJev((string) $cur['status'])) {
+                continue;
+            }
+            $item = ['ftla_number' => $cur['ftla_number'], 'status' => $cur['status']];
+            if ($dryRun) {
+                $results[] = $item + ['result' => 'would post'];
+                continue;
+            }
+            $r = ($cur['transfer_type'] ?? '') === 'SETTLEMENT_TO_MAIN'
+                ? $this->submitSettlementJev($cur, $userId)
+                : $this->submitPaymentJev($cur, $userId);
+            if (!$r['success']) {
+                $results[] = $item + ['result' => 'failed', 'message' => $r['message']];
+                continue;
+            }
+            if (!empty($r['jev_id'])) {
+                App\Execute("UPDATE {$this->table} SET jev_id = " . (int) $r['jev_id'] . ' WHERE fund_transfer_id = ' . (int) $cur['fund_transfer_id'], 'DB');
+                $results[] = $item + ['result' => 'posted', 'jev_id' => (int) $r['jev_id']];
+            } else {
+                $results[] = $item + ['result' => 'nothing to post'];
+            }
+        }
+
+        return ['success' => true, 'dry_run' => $dryRun, 'data' => $results];
+    }
+
+    /**
+     * Statuses that post the FTLA JEV on entry, flagged by fims.settings_status.triggers_jev
+     * (status_for = 'fund_transfers'; see "03 - alter/63 - settings_status_add_triggers_jev.sql").
+     * fund_transfers.status stays the plain key (e.g. COMPLETED); it is resolved to its
+     * settings_status.id here and that id is what's checked against the flagged rows.
+     * Falls back to APPROVED + COMPLETED when the column isn't migrated yet or nothing is flagged.
+     */
+    private function statusTriggersJev(string $statusKey): bool
+    {
+        $statusKey = strtoupper($statusKey);
+        $for       = $this->str(self::STATUS_LOG_FOR);
+        try {
+            $id = App\ExecuteScalar(
+                "SELECT id FROM {$this->tableDvStatus} WHERE status_for = {$for} AND status_code = " . $this->str($statusKey),
+                'DB'
+            );
+            $flagged = App\ExecuteRowsAssociative(
+                "SELECT id FROM {$this->tableDvStatus} WHERE status_for = {$for} AND triggers_jev = TRUE",
+                'DB'
+            ) ?: [];
+        } catch (\Throwable $e) {
+            return in_array($statusKey, ['APPROVED', 'COMPLETED'], true);
+        }
+        if (!$flagged) {
+            return in_array($statusKey, ['APPROVED', 'COMPLETED'], true);
+        }
+
+        return $id && in_array((int) $id, array_map(fn ($r) => (int) $r['id'], $flagged), true);
     }
 
     /** Duplicated per-service copy — same convention as GeneralLedgerService's own private getStatusIdByName(). */
@@ -1086,7 +1190,7 @@ class FtlaService
             $ftId = (int) $id;
             $cur  = App\ExecuteRow(
                 "SELECT fund_transfer_id, status, ftla_number, transfer_type, to_bank_account_id, dv_numbers,
-                        from_bank_account_id, from_accounts, transfer_amount, transfer_date
+                        from_bank_account_id, from_accounts, transfer_amount, transfer_date, jev_id
                  FROM {$this->table} WHERE fund_transfer_id = {$ftId}",
                 'DB'
             );
@@ -1247,7 +1351,12 @@ class FtlaService
                 // a FOR_TREASURY DV posts its own payment JEV and releases it (see
                 // CheckProcessingService::saveCheck()). Must succeed before status flips below: a
                 // failure here leaves the FTLA exactly where it was, nothing half-done.
-                if ($newStatus === 'SUBMITTED_TO_ACCOUNTING') {
+                // Triggered by whichever statuses settings_status flags triggers_jev (default
+                // APPROVED/COMPLETED); skipped when the FTLA already has its JEV so a second
+                // trigger never posts a duplicate.
+                $jevResult   = ['success' => true, 'jev_id' => null];
+                $postsJev    = $this->statusTriggersJev($newStatus) && empty($cur['jev_id']);
+                if ($postsJev) {
                     // A Settlement FTLA (Fund Sweeping — see BankManagementService::processFundSweep())
                     // moves money between two of THIS office's own bank accounts, not against any DV's
                     // Accounts Payable — it has no dv_numbers at all by design, so submitPaymentJev()'s
@@ -1310,7 +1419,7 @@ class FtlaService
             // saying nothing there reads as "JEV creation stopped working"
             // when the FTLA still advances to SUBMITTED_TO_ACCOUNTING.
             $message = $newStatus ? "FTLA is now {$newStatus}." : "FTLA {$cur['ftla_number']} updated successfully.";
-            if ($newStatus === 'SUBMITTED_TO_ACCOUNTING') {
+            if (!empty($postsJev)) {
                 if (!empty($jevResult['jev_id'])) {
                     $jevNo = App\ExecuteScalar("SELECT jev_no FROM {$this->tableJev} WHERE jev_id = " . (int) $jevResult['jev_id'], 'DB');
                     $message .= $jevNo ? " Payment JEV {$jevNo} posted." : ' Payment JEV posted.';

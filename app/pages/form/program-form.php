@@ -27,7 +27,7 @@ $_prgf_api = $_prg_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     #prg-overlay { display:none;position:fixed;inset:0;z-index:9100;
         background:rgba(15,32,69,.6);align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px); }
     #prg-overlay.open { display:flex; }
-    #prg-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;width:100%;max-width:520px;
+    #prg-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;
         max-height:92vh;display:flex;flex-direction:column;overflow:hidden;
         box-shadow:0 32px 80px rgba(0,0,0,.28);font-family:'IBM Plex Sans',sans-serif;
         animation:prgIn .2s ease; }
@@ -92,7 +92,7 @@ $_prgf_api = $_prg_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 </style>
 
 <div id="prg-overlay">
-    <div id="prg-card">
+    <div class="u-modal-sm" id="prg-card">
 
         <div id="prg-header">
             <div id="prg-header-info">

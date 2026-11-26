@@ -27,9 +27,7 @@ $_ftro_api = $apiBase ?? Config('API.FIMS_URL');
 
     #ftro-card {
         background: var(--afims-surface, #FFFFFF);
-        border-radius: 16px;
-        width: 94vw;
-        max-width: 960px;
+        border-radius: 16px;
         max-height: 92vh;
         display: flex;
         flex-direction: column;
@@ -329,7 +327,7 @@ $_ftro_api = $apiBase ?? Config('API.FIMS_URL');
 
 <!-- READONE OVERLAY -->
 <div id="ftro-overlay">
-    <div id="ftro-card">
+    <div class="u-modal-lg" id="ftro-card">
 
         <!-- Header -->
         <div id="ftro-hdr">

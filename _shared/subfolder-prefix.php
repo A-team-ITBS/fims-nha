@@ -4,7 +4,7 @@
  *
  * Loaded through PHP's auto_prepend_file from nginx, which also sets the
  * FIMS_SUBPATH fastcgi param (e.g. "/fims-nha"). The app hardcodes root-based
- * paths ("/login", "/api/...", "/app/fims-css/..."); this prefixes them in
+ * paths ("/login", "/api/...", "/_shared/css/..."); this prefixes them in
  * the HTML/JS/CSS output and in Location redirect headers so the app works
  * under a sub-folder without editing every page.
  *

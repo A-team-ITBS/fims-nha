@@ -33,8 +33,9 @@ ADD COLUMN IF NOT EXISTS remarks TEXT,
 -- How the item counts in the year-end TAX ANNUALIZATION (Payroll Management → Annualization; BIR 2316):
 --   TAXABLE            compensation that is taxed (basic pay, RA/TA, differentials …)
 --   NON_TAXABLE        exempt compensation (PERA)
---   DE_MINIMIS_RICE    rice subsidy — exempt up to the de minimis ceiling, the excess joins BENEFIT_90K
---   DE_MINIMIS_UNIFORM uniform / clothing allowance — same
+--   DE_MINIMIS         a de minimis benefit (rice subsidy, uniform / clothing …) — exempt up to the limit of the benefit it
+--                      belongs to (payroll_items.de_minimis_id → fims.payroll_de_minimis_benefits, 01 - table/57, editable);
+--                      the excess joins BENEFIT_90K
 --   BENEFIT_90K        13th month pay and other benefits (mid-year / year-end bonus, cash gift, PEI …) — exempt up to ₱90,000
 --   CONTRIBUTION       mandatory contributions / union dues withheld (GSIS, PhilHealth, Pag-IBIG) — non-taxable
 --   WITHHOLDING_TAX    tax withheld on compensation
@@ -43,7 +44,7 @@ ADD COLUMN IF NOT EXISTS remarks TEXT,
 -- a pay treatment (e.g. leave without pay, a recouped overpayment); a REFUND adds to pay but takes away from
 -- CONTRIBUTION / WITHHOLDING_TAX (a refund of what was withheld).
 ADD COLUMN IF NOT EXISTS tax_treatment VARCHAR(20) NOT NULL DEFAULT 'NONE'
-    CHECK (tax_treatment IN ('TAXABLE', 'NON_TAXABLE', 'DE_MINIMIS_RICE', 'DE_MINIMIS_UNIFORM', 'BENEFIT_90K', 'CONTRIBUTION', 'WITHHOLDING_TAX', 'NONE')),
+    CHECK (tax_treatment IN ('TAXABLE', 'NON_TAXABLE', 'DE_MINIMIS', 'BENEFIT_90K', 'CONTRIBUTION', 'WITHHOLDING_TAX', 'NONE')),
 ADD COLUMN IF NOT EXISTS created_by INTEGER,
 ADD COLUMN IF NOT EXISTS updated_by INTEGER,
 ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

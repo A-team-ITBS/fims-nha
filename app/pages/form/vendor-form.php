@@ -20,7 +20,7 @@
     #vnd-overlay { display:none;position:fixed;inset:0;z-index:9100;
         background:rgba(15,32,69,.6);align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px); }
     #vnd-overlay.open { display:flex; }
-    #vnd-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;width:100%;max-width:720px;
+    #vnd-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;
         max-height:92vh;display:flex;flex-direction:column;overflow:hidden;
         box-shadow:0 32px 80px rgba(0,0,0,.28);font-family:'IBM Plex Sans',sans-serif;
         animation:vndIn .2s ease; }
@@ -117,7 +117,7 @@
 </style>
 
 <div id="vnd-overlay">
-    <div id="vnd-card">
+    <div class="u-modal-md" id="vnd-card">
 
         <div id="vnd-header">
             <div id="vnd-header-info">

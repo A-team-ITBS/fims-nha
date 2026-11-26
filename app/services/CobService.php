@@ -641,6 +641,9 @@ class CobService
                 [$label, $code, $detail] = ['Revisions / realignments approved before the ledger', 'REV', ''];
             } elseif ($type === 'REVISION') {
                 [$label, $code, $detail] = ['Revision #'.$id, 'REV', $from];
+            } elseif ($type === 'SUPPLEMENTAL') {
+                // a budget line created by an approved supplemental request (a new project released by a SARO): its amount is the line's Revision Amount, and it has no From / To line
+                [$label, $code, $detail] = ['Supplemental #'.$id, 'SUP', ''];
             } elseif ($type === 'REALIGNMENT_OUT') {
                 [$label, $code, $detail] = ['Realignment #'.$id.' — out', 'REA OUT', trim($from.' → '.$to, ' →')];
             } else {

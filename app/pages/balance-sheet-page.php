@@ -12,15 +12,11 @@ $_bs_api = rtrim((string) Config('API.FIMS_URL'), '/');
 $_bs_api = preg_match('~/api$~', $_bs_api) ? $_bs_api : $_bs_api . '/api';
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
-<link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css') ?>" />
 
 <style>
-    /* Table styling (.fims-report-table*) lives in app/fims-css/fims.css. Only page-specific, non-table rules remain here. */
+    /* Table styling (.fims-report-table*) lives in _shared/css/nha-fims.css. Only page-specific, non-table rules remain here. */
     #bs-root .bs-report-title { text-align: center; margin: 0 0 18px; }
     #bs-root .bs-report-title div { font-weight: 700; font-size: 14px; line-height: 1.6; }
     #bs-root .bs-report-title .bs-report-date { font-weight: 400; }
@@ -38,12 +34,31 @@ $_bs_api = preg_match('~/api$~', $_bs_api) ? $_bs_api : $_bs_api . '/api';
     #bs-root .nha-error               { font-size: 0.875rem; }   /* 14px */
     #bs-root .nha-hint                { font-size: 0.875rem; padding: 0 16px; margin: 0 0 14px; color: var(--afims-text-muted, #62657E); }   /* 14px; 16px side padding lines it up with the filter card */
 
-    /* the page header's Refresh button sits on the right of the banner, above its decorative circles (fims.css has no rule for it) */
-    #bs-root .app-page-header { flex-wrap: wrap; }
-    #bs-root .app-page-header-actions { position: relative; z-index: 1; margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; }
 
     html.afims-dark[data-bs-theme="dark"] #bs-root .bs-sample { background: #3A2F10; color: #F5D98A; border-color: #6B5A22; }
     html.afims-dark[data-bs-theme="dark"] #bs-root .bs-diff { background: #3B1A17; color: #FFB4AB; border-color: #7A332C; }
+    /* Print / Export — one header button → PDF | Excel menu → preview modal (Print / Download on a bar above the preview) */
+    #bs-root .bs-menu-item { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; cursor: pointer; font-family: inherit; }
+    #bs-root .bs-menu-item:hover, #bs-root .bs-menu-item:focus-visible { background: var(--afims-surface-subtle, #F4F7FA); outline: none; }
+    #bs-root .bs-menu-item strong { display: block; font-size: 13px; color: var(--afims-text, #1e293b); }
+    #bs-root .bs-menu-item small  { display: block; font-size: 11.5px; color: var(--afims-text-muted, #62657E); }
+    #bs-root .bsx-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+    #bs-root .bsx-info { font-size: 12.5px; color: var(--afims-text-muted, #62657E); }
+    #bs-root .bsx-actions { display: flex; gap: 8px; }
+    #bs-root .bsx-actions [hidden] { display: none !important; }
+    #bs-root .bsx-stage { position: relative; height: 68vh; overflow: auto; background: #E8ECF2; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; }
+    #bs-root .bsx-frame { display: block; width: 100%; height: 100%; border: 0; background: #E8ECF2; }
+    #bs-root .bsx-msg { padding: 60px 20px; text-align: center; font-size: 13px; color: var(--afims-text-muted, #62657E); }
+    #bs-root .bsx-err { margin-top: 10px; padding: 8px 12px; border-radius: 7px; background: #FDECEC; color: #B42318; font-size: 13px; }
+    #bs-root .bsx-msg[hidden], #bs-root .bsx-err[hidden], #bs-root .bsx-frame[hidden], #bs-root .bsx-sheet[hidden] { display: none; }
+    /* the Excel preview: the sheet the .xlsx will contain, with a spreadsheet's column letters / row numbers, centred in the stage */
+    #bs-root .bsx-sheet { padding: 14px; }
+    #bs-root table.bsx-xl { margin: 0 auto; border-collapse: collapse; background: #fff; font: 12px Calibri, Arial, sans-serif; box-shadow: 0 1px 6px rgba(15, 32, 69, .18); }
+    #bs-root table.bsx-xl th { padding: 2px 8px; border: 1px solid #d0d3d6; background: #f1f3f4; color: #5f6368; font-weight: 500; text-align: center; }
+    #bs-root table.bsx-xl td { height: 20px; padding: 2px 6px; border: 1px solid #e1e3e6; }
+    #bs-root table.bsx-xl td.rn { background: #f1f3f4; color: #5f6368; text-align: center; padding: 2px 4px; }
+    #bs-root table.bsx-xl td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
     @media print {
         #bs-root .bs-letterhead,
         #bs-root .bs-cert { display: block !important; }
@@ -54,7 +69,7 @@ $_bs_api = preg_match('~/api$~', $_bs_api) ? $_bs_api : $_bs_api . '/api';
 <div id="bs-root" class="nha-root">
 
     <!-- ── HEADER ─────────────────────────────────────────── -->
-    <!-- same banner as User Access: app-page-header (styled by app/fims-css/fims.css, already loaded above) -->
+    <!-- same banner as User Access: app-page-header (styled by the global _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
             <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
@@ -71,14 +86,41 @@ $_bs_api = preg_match('~/api$~', $_bs_api) ? $_bs_api : $_bs_api . '/api';
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
             </button>
-            <button id="bs-print" type="button" class="nha-btn-hdr" title="Print">
+            <button id="bs-export" type="button" class="nha-btn-hdr" title="Print or export the Balance Sheet — PDF or Excel" aria-haspopup="true" aria-expanded="false">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/></svg>
-                Print
+                Print / Export &#9662;
             </button>
-            <button id="bs-excel" type="button" class="nha-btn-hdr" title="Export to Excel">
-                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
-                Excel
-            </button>
+        </div>
+    </div>
+
+    <!-- Format menu of the Print / Export button (fixed, so the banner's rounded corners can't clip it) -->
+    <div id="bs-export-menu" role="menu" class="no-print" style="display:none;position:fixed;z-index:1060;min-width:230px;background:var(--afims-surface,#fff);border:1px solid var(--afims-border,#E4ECF2);border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.18);padding:6px;">
+        <button type="button" role="menuitem" class="bs-menu-item" data-format="pdf"><strong>PDF</strong><small>Preview, then print or download</small></button>
+        <button type="button" role="menuitem" class="bs-menu-item" data-format="xlsx"><strong>Excel</strong><small>Preview, then download (.xlsx)</small></button>
+    </div>
+
+    <!-- ── PRINT / EXPORT PREVIEW ─────────────────────────── -->
+    <div id="bs-overlay" class="nha-overlay no-print">
+        <div class="nha-modal nha-modal-xl" role="dialog" aria-modal="true" aria-labelledby="bs-x-title">
+            <div class="nha-modal-hdr">
+                <h3 class="nha-modal-title" id="bs-x-title">Balance Sheet</h3>
+                <button type="button" class="nha-modal-close" id="bs-x-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="nha-modal-body">
+                <div class="bsx-bar">
+                    <span class="bsx-info" id="bs-x-info"></span>
+                    <span class="bsx-actions">
+                        <button type="button" class="nha-btn nha-btn-outline" id="bs-x-print" disabled>Print</button>
+                        <button type="button" class="nha-btn nha-btn-primary" id="bs-x-download" disabled>Download</button>
+                    </span>
+                </div>
+                <div class="bsx-stage">
+                    <div class="bsx-msg" id="bs-x-msg">Loading preview&hellip;</div>
+                    <iframe class="bsx-frame" id="bs-x-frame" title="Balance Sheet PDF preview" hidden></iframe>
+                    <div class="bsx-sheet" id="bs-x-sheet" hidden></div>
+                </div>
+                <div class="bsx-err" id="bs-x-err" role="alert" hidden></div>
+            </div>
         </div>
     </div>
 
@@ -209,12 +251,31 @@ else bs_boot();
 
 function bs_bindEvents() {
     $bs('bs-refresh')?.addEventListener('click', bs_load);
-    $bs('bs-print')?.addEventListener('click', () => window.print());
-    $bs('bs-excel')?.addEventListener('click', bs_exportExcel);
     $bs('bs-filter-fy')?.addEventListener('change', bs_load);
     $bs('bs-filter-book')?.addEventListener('change', bs_load);
     $bs('bs-filter-view')?.addEventListener('change', () => { bs_syncBookFilter(); bs_load(); });
     bs_syncBookFilter();
+
+    // Print / Export: the header button's menu (PDF | Excel) → the preview modal
+    $bs('bs-export')?.addEventListener('click', e => { e.stopPropagation(); bs_toggleMenu($bs('bs-export-menu').style.display === 'none'); });
+    $bs('bs-export-menu')?.addEventListener('click', e => {
+        e.stopPropagation();
+        const item = e.target.closest('.bs-menu-item');
+        if (!item) return;
+        bs_toggleMenu(false);
+        bs_openExport(item.dataset.format);
+    });
+    document.addEventListener('click', () => bs_toggleMenu(false));
+    window.addEventListener('scroll', () => bs_toggleMenu(false), true);
+    window.addEventListener('resize', () => bs_toggleMenu(false));
+    $bs('bs-x-close')?.addEventListener('click', bs_closeExport);
+    $bs('bs-overlay')?.addEventListener('click', e => { if (e.target === $bs('bs-overlay')) bs_closeExport(); });
+    $bs('bs-x-print')?.addEventListener('click', bs_printPdf);
+    $bs('bs-x-download')?.addEventListener('click', bs_downloadFile);
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && $bs('bs-overlay').classList.contains('open')) { e.preventDefault(); bs_closeExport(); }
+    });
+
     /* Sample preview has no button: type `balance_sheet = true` in the browser console to show
        made-up figures, `balance_sheet = false` to go back to live data. */
     Object.defineProperty(window, 'balance_sheet', {
@@ -660,15 +721,231 @@ function bs_parseAmount(text) {
     return /^\(/.test(t) ? -n : n;
 }
 
-async function bs_exportExcel() {
-    if (!window.ExcelJS) { bs_showError('Excel library failed to load. Check your internet connection and reload.'); return; }
-    const trs = [...document.querySelectorAll('#bs-tbody tr')];
-    if (!trs.length || document.querySelector('#bs-tbody .nha-empty') || document.querySelector('#bs-tbody .nha-loader')) {
-        bs_showError('Nothing to export — no postings for this fiscal year.');
-        return;
+const BS_CERT = 'I HEREBY CERTIFY that the foregoing Statement of Financial Position is a true and complete statement of the assets, liabilities and equity as shown in the books of accounts, prepared and presented in conformity with International Public Sector Accounting Standards (IPSAS).';
+
+/* The table on screen as data — the ONE source the PDF payload, the Excel preview and the Excel workbook are all made from, so
+   the three can't disagree. rows[]: { cls (the row's classes), major (a colspan section band), title, values (amounts, null = blank) }. */
+function bs_sheetModel() {
+    const text = el => el.textContent.trim();
+    const head = [...document.querySelectorAll('#bs-thead th')].map(text);
+    const titleLines = [
+        { text: 'NATIONAL HOUSING AUTHORITY', bold: true },
+        { text: text($bs('bs-title-line2')), bold: true },
+    ];
+    if ($bs('bs-title-line3').style.display !== 'none') titleLines.push({ text: text($bs('bs-title-line3')), bold: true });
+    titleLines.push({ text: text($bs('bs-report-date')), bold: false });
+    if ($bs('bs-title-peso').style.display !== 'none') titleLines.push({ text: text($bs('bs-title-peso')), bold: false });
+
+    const rows = [...document.querySelectorAll('#bs-tbody tr')].map(tr => {
+        const cells = [...tr.cells];
+        return { cls: tr.className, major: cells.length === 1, title: text(cells[0]), values: cells.slice(1).map(c => bs_parseAmount(c.textContent)) };
+    });
+    return { head, nCols: head.length, titleLines: titleLines.filter(l => l.text), rows };
+}
+
+/* The row's kind, as the server's BalanceSheetPrintService names it. "group-row" is also inside "subgroup-row", so that is tested first. */
+function bs_rowKind(r) {
+    if (r.major) return 'major';
+    if (/grand-row/.test(r.cls)) return 'grand';
+    if (/subtotal-row/.test(r.cls)) return 'subtotal';
+    if (/subgroup-row/.test(r.cls)) return 'subgroup';
+    if (/group-row/.test(r.cls)) return 'group';
+    if (/netvalue-row/.test(r.cls)) return 'netvalue';
+    if (/contra-row/.test(r.cls)) return 'contra';
+    return 'account';
+}
+
+/* ── Print / Export: menu → preview → Print / Download ─────────────────────────────────────────
+   PDF   — the server renders it (POST /print/bs → PrintService 'BS', Dompdf, like the other printed forms) from the table on
+           screen; the preview IS that PDF, so Print and Download give exactly what is shown. Landscape when the View has more
+           than 4 columns (Consolidated), as the Excel sheet is.
+   Excel — built here with ExcelJS from the same model (bs_buildWorkbook); the preview draws that sheet. */
+const BS_PRINT_API = BS_BASE + '/print/bs';
+const bs_x = { format: 'pdf', seq: 0, file: null, url: null };   // file = { blob, filename } shown in the preview
+
+function bs_toggleMenu(open) {
+    const menu = $bs('bs-export-menu'), btn = $bs('bs-export');
+    if (!menu || !btn) return;
+    if (!open) { menu.style.display = 'none'; btn.setAttribute('aria-expanded', 'false'); return; }
+    menu.style.display = '';
+    const r = btn.getBoundingClientRect(), w = menu.offsetWidth || 230, h = menu.offsetHeight || 90;
+    menu.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) + 'px';
+    menu.style.top  = (r.bottom + 6 + h > window.innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+    btn.setAttribute('aria-expanded', 'true');
+}
+
+/* The file name stem both formats share: Balance-Sheet_<year>_<view> (the server builds the same one for the PDF). */
+function bs_fileStem() { return `Balance-Sheet_${$bs('bs-filter-fy').value}_${$bs('bs-filter-view').value}`; }
+
+/* There is a loaded table to export (not loading, not the "nothing posted" message). */
+function bs_hasData() {
+    return !!document.querySelector('#bs-tbody tr') && !document.querySelector('#bs-tbody .nha-empty') && !document.querySelector('#bs-tbody .nha-loader');
+}
+
+/* What the server prints: the table on screen. */
+function bs_printPayload() {
+    const m = bs_sheetModel();
+    return {
+        fiscal_yr: $bs('bs-filter-fy').value,
+        view: $bs('bs-filter-view').value,
+        lines: m.titleLines,
+        columns: m.head,
+        rows: m.rows.map(r => ({ kind: bs_rowKind(r), title: r.title, values: r.values })),
+    };
+}
+
+function bs_xState(msg, err) {
+    $bs('bs-x-msg').hidden = !msg;
+    if (msg) $bs('bs-x-msg').textContent = msg;
+    $bs('bs-x-err').hidden = !err;
+    if (err) $bs('bs-x-err').textContent = err;
+}
+function bs_xReady(on) {
+    $bs('bs-x-print').disabled = $bs('bs-x-download').disabled = !on;
+}
+function bs_releaseFile() {
+    if (bs_x.url) URL.revokeObjectURL(bs_x.url);
+    bs_x.url = null; bs_x.file = null;
+}
+
+async function bs_openExport(format) {
+    if (!bs_hasData()) { bs_showError('Nothing to export — no postings for this fiscal year.'); return; }
+    if (format === 'xlsx' && !window.ExcelJS) { bs_showError('Excel library failed to load. Check your internet connection and reload.'); return; }
+    bs_hideError();
+
+    const my = ++bs_x.seq;
+    bs_releaseFile();
+    bs_x.format = format === 'xlsx' ? 'xlsx' : 'pdf';
+    const pdf = bs_x.format === 'pdf';
+    const view = $bs('bs-filter-view').selectedOptions?.[0]?.textContent || '';
+    $bs('bs-x-title').textContent = 'Balance Sheet — ' + (pdf ? 'PDF' : 'Excel');
+    $bs('bs-x-info').textContent = [view, $bs('bs-report-date').textContent].filter(Boolean).join(' · ');
+    $bs('bs-x-print').hidden = !pdf;                       // an Excel file is downloaded, not printed
+    $bs('bs-x-download').textContent = pdf ? 'Download PDF' : 'Download Excel';
+    bs_xReady(false);
+    $bs('bs-x-frame').hidden = true; $bs('bs-x-frame').removeAttribute('src');
+    $bs('bs-x-sheet').hidden = true;
+    bs_xState('Loading preview…', '');
+    $bs('bs-overlay').classList.add('open');
+
+    try {
+        if (pdf) await bs_loadPdf(my); else await bs_loadExcel(my);
+    } catch (e) {
+        if (my !== bs_x.seq) return;                       // closed or reopened while loading
+        bs_xState('The preview could not be loaded.', e.message);
     }
-    const headCells = [...document.querySelectorAll('#bs-thead th')].map(th => th.textContent.trim());
-    const nCols = headCells.length;
+}
+
+function bs_closeExport() {
+    bs_x.seq++;
+    $bs('bs-overlay').classList.remove('open');
+    $bs('bs-x-frame').hidden = true; $bs('bs-x-frame').removeAttribute('src');
+    $bs('bs-x-sheet').innerHTML = '';
+    bs_releaseFile();
+}
+
+async function bs_loadPdf(my) {
+    const res = await bs_authFetch(BS_PRINT_API, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign(bs_printPayload(), { format: 'pdf' })),
+    });
+    let json = null; try { json = await res.json(); } catch (e) { /* not JSON */ }
+    if (!res.ok || !json || json.success === false) throw new Error((json && json.message) || ('HTTP ' + res.status));
+    if (my !== bs_x.seq) return;
+
+    const bin = atob(json.data), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    bs_x.file = { blob: new Blob([bytes], { type: json.mime || 'application/pdf' }), filename: json.filename || (bs_fileStem() + '.pdf') };
+    bs_x.url  = URL.createObjectURL(bs_x.file.blob);
+
+    $bs('bs-x-frame').src = bs_x.url + '#toolbar=0&navpanes=0';   // the viewer's own toolbar is hidden: Print / Download are above
+    $bs('bs-x-frame').hidden = false;
+    bs_xState('', '');
+    bs_xReady(true);
+}
+
+async function bs_loadExcel(my) {
+    const buf = await bs_buildWorkbook().xlsx.writeBuffer();
+    if (my !== bs_x.seq) return;
+    bs_x.file = { blob: new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), filename: bs_fileStem() + '.xlsx' };
+    $bs('bs-x-sheet').innerHTML = bs_excelPreviewHtml();
+    $bs('bs-x-sheet').hidden = false;
+    bs_xState('', '');
+    bs_xReady(true);
+}
+
+/* Print the PDF shown in the preview; if the browser won't print from the frame, open it in a tab (its viewer prints). */
+function bs_printPdf() {
+    const frame = $bs('bs-x-frame');
+    try {
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+    } catch (e) {
+        if (bs_x.url) window.open(bs_x.url, '_blank');
+    }
+}
+
+function bs_downloadFile() {
+    if (!bs_x.file) return;
+    const a = document.createElement('a');
+    const url = URL.createObjectURL(bs_x.file.blob);
+    a.href = url;
+    a.download = bs_x.file.filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* The Excel preview: the sheet bs_buildWorkbook() writes (same model, same row order and styling rules), drawn as a spreadsheet —
+   keep the two in step. Amounts: zero "-", negative in brackets (the workbook's number format). */
+function bs_excelPreviewHtml() {
+    const m = bs_sheetModel(), n = m.nCols;
+    const num = v => {
+        if (v === null || v === undefined) return '';
+        if (Math.abs(v) < 0.005) return '-';
+        const s = Math.abs(v).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return v < 0 ? `(${s})` : s;
+    };
+    const out = [];
+    let rn = 0;
+    const row = (cells, trStyle = '') => { rn++; out.push(`<tr style="${trStyle}"><td class="rn">${rn}</td>${cells}</tr>`); };
+    const merged = (text, style = '') => row(`<td colspan="${n}" style="${style}">${bs_esc(text)}</td>`);
+    const blank = () => row('<td></td>'.repeat(n));
+
+    m.titleLines.forEach(l => merged(l.text, 'text-align:center;' + (l.bold ? 'font-weight:700;' : '')));
+    blank();
+    const hd = 'background:#D9E1F2;font-weight:700;border:1px solid #000;';
+    row(m.head.map((h, i) => `<td style="${hd}text-align:${i > 0 ? 'right' : 'center'};">${bs_esc(h)}</td>`).join(''));
+
+    m.rows.forEach(r => {
+        if (r.major) { merged(r.title, 'background:#EDEDED;font-weight:700;'); return; }
+        const kind = bs_rowKind(r);
+        const total = kind === 'subtotal' || kind === 'grand';
+        const titleStyle = (kind === 'group' ? 'font-weight:700;' : '')
+            + (kind === 'subgroup' || kind === 'account' || kind === 'contra' || kind === 'netvalue' ? 'padding-left:16px;' : '');
+        const rowStyle = (kind === 'netvalue' ? 'font-style:italic;' : '')
+            + (total ? 'font-weight:700;border-top:1px solid #000;' + (kind === 'grand' ? 'border-bottom:3px double #000;' : '') : '');
+        const cellStyle = total ? 'font-weight:700;border-top:1px solid #000;' + (kind === 'grand' ? 'border-bottom:3px double #000;' : '') : '';
+        row(`<td style="${titleStyle}${total ? cellStyle : ''}">${bs_esc(r.title)}</td>`
+            + r.values.map(v => `<td class="n" style="${cellStyle}">${num(v)}</td>`).join(''), rowStyle);
+    });
+
+    blank();
+    merged(BS_CERT, 'height:48px;vertical-align:top;white-space:normal;');
+    blank();
+    blank();
+    row('<td style="border-top:1px solid #000;text-align:center;">Signature Over Printed Name</td>' + '<td></td>'.repeat(n - 1));
+    row('<td style="text-align:center;">Head of Accounting Department</td>' + '<td></td>'.repeat(n - 1));
+
+    const cols = ['<col style="width:34px">', ...m.head.map((_, i) => `<col style="width:${i === 0 ? 380 : 140}px">`)].join('');
+    const letters = m.head.map((_, i) => `<th>${String.fromCharCode(65 + i)}</th>`).join('');
+    return `<table class="bsx-xl"><colgroup>${cols}</colgroup><thead><tr><th></th>${letters}</tr></thead><tbody>${out.join('')}</tbody></table>`;
+}
+
+/* ── Excel workbook ────────────────────────────────────────── */
+function bs_buildWorkbook() {
+    const { head: headCells, nCols, titleLines, rows } = bs_sheetModel();
 
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Balance Sheet', {
@@ -686,11 +963,7 @@ async function bs_exportExcel() {
         r.getCell(1).alignment = { horizontal: 'center' };
         r.getCell(1).font = { bold, size: 11 };
     };
-    title('NATIONAL HOUSING AUTHORITY');
-    title($bs('bs-title-line2').textContent);
-    if ($bs('bs-title-line3').style.display !== 'none') title($bs('bs-title-line3').textContent);
-    title($bs('bs-report-date').textContent, false);
-    if ($bs('bs-title-peso').style.display !== 'none') title($bs('bs-title-peso').textContent, false);
+    titleLines.forEach(l => title(l.text, l.bold));
     ws.addRow([]);
 
     const head = ws.addRow(headCells);
@@ -701,18 +974,15 @@ async function bs_exportExcel() {
         c.alignment = { horizontal: i > 1 ? 'right' : 'center', wrapText: true };
     });
 
-    trs.forEach(tr => {
-        const cls = tr.className;
-        const cells = [...tr.cells];
-        if (cells.length === 1) { // major section header (colspan)
-            const m = ws.addRow([cells[0].textContent.trim()]);
+    rows.forEach(({ cls, major, title: rowTitle, values }) => {
+        if (major) { // major section header (colspan)
+            const m = ws.addRow([rowTitle]);
             ws.mergeCells(m.number, 1, m.number, nCols);
             m.getCell(1).font = { bold: true };
             m.getCell(1).fill = fill('FFEDEDED');
             return;
         }
-        const vals = cells.map((c, i) => i === 0 ? c.textContent.trim() : bs_parseAmount(c.textContent));
-        const r = ws.addRow(vals);
+        const r = ws.addRow([rowTitle, ...values]);
         for (let i = 2; i <= nCols; i++) r.getCell(i).numFmt = NUM;
 
         const isGrand = /grand-row/.test(cls), isSub = /subtotal-row/.test(cls);
@@ -726,7 +996,7 @@ async function bs_exportExcel() {
     });
 
     ws.addRow([]);
-    const cert = ws.addRow(['I HEREBY CERTIFY that the foregoing Statement of Financial Position is a true and complete statement of the assets, liabilities and equity as shown in the books of accounts, prepared and presented in conformity with International Public Sector Accounting Standards (IPSAS).']);
+    const cert = ws.addRow([BS_CERT]);
     ws.mergeCells(cert.number, 1, cert.number, nCols);
     cert.getCell(1).alignment = { wrapText: true, vertical: 'top' };
     cert.height = 48;
@@ -739,15 +1009,7 @@ async function bs_exportExcel() {
 
     ws.views = [{ state: 'frozen', ySplit: head.number }];
 
-    const buf  = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `Balance-Sheet_${$bs('bs-filter-fy').value}_${$bs('bs-filter-view').value}.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    return wb;
 }
 
 /* ── Formatters ────────────────────────────────────────────── */
