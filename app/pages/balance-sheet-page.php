@@ -16,23 +16,15 @@ $_bs_api = preg_match('~/api$~', $_bs_api) ? $_bs_api : $_bs_api . '/api';
 
 
 <style>
+    #bs-root :is(.nha-mono, .nha-amt, .u-font-mono, .fims-mono, .amt-cell) { font-family: var(--font-body); font-variant-numeric: tabular-nums; } /* plain zero, no dotted-zero glyph */
     /* Table styling (.fims-report-table*) lives in _shared/css/nha-fims.css. Only page-specific, non-table rules remain here. */
     #bs-root .bs-report-title { text-align: center; margin: 0 0 18px; }
-    #bs-root .bs-report-title div { font-weight: 700; font-size: 14px; line-height: 1.6; }
+    #bs-root .bs-report-title div { font-weight: 700; font-size:var(--fs-md); line-height: 1.6; }
     #bs-root .bs-report-title .bs-report-date { font-weight: 400; }
-    #bs-root .bs-sample { display: none; margin: 0 0 14px; padding: 10px 14px; border-radius: 6px; font-size: 13px; background: #FFF4D6; color: #6B4A00; border: 1px solid #F0D58A; }
-    #bs-root .bs-diff { display: none; margin: 0 0 14px; padding: 10px 14px; border-radius: 6px; font-size: 13px; background: #FDECEA; color: #8A1C12; border: 1px solid #F3B8B2; }
+    #bs-root .bs-sample { display: none; margin: 0 0 14px; padding: 10px 14px; border-radius: 6px; font-size:var(--fs-base); background: var(--afims-warning-soft); color: var(--afims-warning-text); border: 1px solid var(--afims-warning); }
+    #bs-root .bs-diff { display: none; margin: 0 0 14px; padding: 10px 14px; border-radius: 6px; font-size:var(--fs-base); background: var(--afims-danger-soft); color: var(--afims-danger-text); border: 1px solid var(--afims-danger); }
 
-    /* Same page-level type scale as the Trial Balance page. _shared/js/custom.js forces `1em * scale !important`
-       on inputs/selects/buttons, so those get the same direct rem + !important. */
-    #bs-root .nha-hdr-tag             { font-size: 0.75rem; }    /* 12px */
-    #bs-root .nha-hdr-title           { font-size: 1.25rem; }    /* 20px */
-    #bs-root .nha-btn-hdr             { font-size: calc(0.875rem * var(--button-scale, 1)) !important; } /* 14px  Refresh */
-    #bs-root .nha-filter-label        { font-size: 0.75rem; }    /* 12px */
-    #bs-root .nha-filter-select       { font-size: calc(0.875rem * var(--input-scale, 1)) !important; }  /* 14px  dropdowns */
-    #bs-root .nha-bdg                 { font-size: 0.8125rem; }  /* 13px  status badge */
-    #bs-root .nha-error               { font-size: 0.875rem; }   /* 14px */
-    #bs-root .nha-hint                { font-size: 0.875rem; padding: 0 16px; margin: 0 0 14px; color: var(--afims-text-muted, #62657E); }   /* 14px; 16px side padding lines it up with the filter card */
+    #bs-root .nha-hint { padding: 0 16px; margin: 0 0 14px; color: var(--afims-text-muted); }
 
 
     html.afims-dark[data-bs-theme="dark"] #bs-root .bs-sample { background: #3A2F10; color: #F5D98A; border-color: #6B5A22; }
@@ -40,16 +32,16 @@ $_bs_api = preg_match('~/api$~', $_bs_api) ? $_bs_api : $_bs_api . '/api';
     /* Print / Export — one header button → PDF | Excel menu → preview modal (Print / Download on a bar above the preview) */
     #bs-root .bs-menu-item { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; cursor: pointer; font-family: inherit; }
     #bs-root .bs-menu-item:hover, #bs-root .bs-menu-item:focus-visible { background: var(--afims-surface-subtle, #F4F7FA); outline: none; }
-    #bs-root .bs-menu-item strong { display: block; font-size: 13px; color: var(--afims-text, #1e293b); }
-    #bs-root .bs-menu-item small  { display: block; font-size: 11.5px; color: var(--afims-text-muted, #62657E); }
+    #bs-root .bs-menu-item strong { display: block; font-size:var(--fs-base); color: var(--afims-text, #1e293b); }
+    #bs-root .bs-menu-item small  { display: block; font-size:var(--fs-xs); color: var(--afims-text-muted, #62657E); }
     #bs-root .bsx-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
-    #bs-root .bsx-info { font-size: 12.5px; color: var(--afims-text-muted, #62657E); }
+    #bs-root .bsx-info { font-size:var(--fs-sm); color: var(--afims-text-muted, #62657E); }
     #bs-root .bsx-actions { display: flex; gap: 8px; }
     #bs-root .bsx-actions [hidden] { display: none !important; }
-    #bs-root .bsx-stage { position: relative; height: 68vh; overflow: auto; background: #E8ECF2; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; }
-    #bs-root .bsx-frame { display: block; width: 100%; height: 100%; border: 0; background: #E8ECF2; }
-    #bs-root .bsx-msg { padding: 60px 20px; text-align: center; font-size: 13px; color: var(--afims-text-muted, #62657E); }
-    #bs-root .bsx-err { margin-top: 10px; padding: 8px 12px; border-radius: 7px; background: #FDECEC; color: #B42318; font-size: 13px; }
+    #bs-root .bsx-stage { position: relative; height: 68vh; overflow: auto; background: var(--afims-surface-subtle); border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; }
+    #bs-root .bsx-frame { display: block; width: 100%; height: 100%; border: 0; background: var(--afims-surface-subtle); }
+    #bs-root .bsx-msg { padding: 60px 20px; text-align: center; font-size:var(--fs-base); color: var(--afims-text-muted, #62657E); }
+    #bs-root .bsx-err { margin-top: 10px; padding: 8px 12px; border-radius: 7px; background: var(--afims-danger-soft); color: var(--afims-danger-text); font-size:var(--fs-base); }
     #bs-root .bsx-msg[hidden], #bs-root .bsx-err[hidden], #bs-root .bsx-frame[hidden], #bs-root .bsx-sheet[hidden] { display: none; }
     /* the Excel preview: the sheet the .xlsx will contain, with a spreadsheet's column letters / row numbers, centred in the stage */
     #bs-root .bsx-sheet { padding: 14px; }
@@ -72,7 +64,7 @@ $_bs_api = preg_match('~/api$~', $_bs_api) ? $_bs_api : $_bs_api . '/api';
     <!-- same banner as User Access: app-page-header (styled by the global _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
-            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18M5 7h14M5 7l-2.5 6a3 3 0 005 0L5 7zm14 0l-2.5 6a3 3 0 005 0L19 7z"/>
             </svg>
         </div>

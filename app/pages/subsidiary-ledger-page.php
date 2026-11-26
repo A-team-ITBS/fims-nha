@@ -18,33 +18,34 @@ $_sl_api = preg_match('~/api$~', $_sl_api) ? $_sl_api : $_sl_api . '/api';
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <style>
+    #sl-root :is(.nha-mono, .nha-amt, .u-font-mono, .fims-mono, .amt-cell) { font-family: var(--font-body); font-variant-numeric: tabular-nums; } /* plain zero, no dotted-zero glyph */
     #sl-root .sl-combo-wrap { position: relative; }
     #sl-root .sl-combo-results {
         position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20;
-        background: #fff; border: 1px solid var(--afims-border, #E2E4ED); border-radius: 8px;
+        background: var(--afims-surface, #fff); border: 1px solid var(--afims-border, #E2E4ED); border-radius: 8px;
         box-shadow: 0 8px 24px rgba(0,0,0,.08); max-height: 260px; overflow-y: auto; display: none;
     }
-    #sl-root .sl-combo-item { padding: 8px 12px; cursor: pointer; font-size: 13px; }
-    #sl-root .sl-combo-item:hover { background: var(--afims-bg-soft, #F5F6FA); }
-    #sl-root .sl-combo-empty { padding: 8px 12px; font-size: 13px; color: var(--afims-text-muted,#62657E); }
+    #sl-root .sl-combo-item { padding: 8px 12px; cursor: pointer; font-size:var(--fs-base); }
+    #sl-root .sl-combo-item:hover { background: var(--afims-surface-subtle); }
+    #sl-root .sl-combo-empty { padding: 8px 12px; font-size:var(--fs-base); color: var(--afims-text-muted,#62657E); }
     #sl-root .sl-summary-cards { display: flex; gap: 12px; flex-wrap: wrap; margin: 0 0 14px; }
     #sl-root .sl-summary-card {
         flex: 1 1 180px; border: 1px solid var(--afims-border, #E2E4ED); border-radius: 10px;
-        padding: 12px 14px; background: #fff;
+        padding: 12px 14px; background: var(--afims-surface, #fff);
     }
-    #sl-root .sl-summary-label { font-size: 11px; color: var(--afims-text-muted,#62657E); text-transform: uppercase; letter-spacing: .03em; }
-    #sl-root .sl-summary-value { font-size: 18px; font-weight: 600; margin-top: 4px; }
-    #sl-root .sl-group-row td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; }
-    #sl-root .sl-ending-balance { text-align: right; padding: 8px 4px; font-size: 13px; color: var(--afims-text-muted,#62657E); }
+    #sl-root .sl-summary-label { font-size:var(--fs-xs); color: var(--afims-text-muted,#62657E); text-transform: uppercase; letter-spacing: .03em; }
+    #sl-root .sl-summary-value { font-size:var(--fs-xl); font-weight: 600; margin-top: 4px; }
+    #sl-root .sl-group-row td { background: var(--afims-surface-subtle); font-weight: 600; }
+    #sl-root .sl-ending-balance { text-align: right; padding: 8px 4px; font-size:var(--fs-base); color: var(--afims-text-muted,#62657E); }
     #sl-root .sl-ending-balance strong { color: inherit; font-weight: 700; }
 
     /* Dark mode: --afims-bg-soft is not a theme token, so the SL group rows fell back to a near-white #F5F6FA (light text on
        it = unreadable); the SL account search results and the summary cards were hard-coded white */
     html.afims-dark[data-bs-theme="dark"] #sl-root .sl-group-row td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-top: 1px solid var(--afims-border-strong, #4A5270); }
     html.afims-dark[data-bs-theme="dark"] #sl-root .sl-group-row td span { color: var(--afims-text-muted, #AAAFBE) !important; }
-    html.afims-dark[data-bs-theme="dark"] #sl-root :is(.sl-combo-results, .sl-summary-card) { background: var(--afims-surface, #1A1F38); border-color: var(--afims-border-strong, #4A5270); color: var(--afims-text, #E4ECF2); }
+    html.afims-dark[data-bs-theme="dark"] #sl-root :is(.sl-combo-results) { background: var(--afims-surface, #1A1F38); border-color: var(--afims-border-strong, #4A5270); color: var(--afims-text, #E4ECF2); }
     html.afims-dark[data-bs-theme="dark"] #sl-root .sl-combo-item:hover { background: var(--afims-primary-soft, #0F2456); color: #FFFFFF; }
-    html.afims-dark[data-bs-theme="dark"] #sl-root :is(.sl-summary-label, .sl-combo-empty, .sl-ending-balance) { color: var(--afims-text-muted, #AAAFBE); }
+    html.afims-dark[data-bs-theme="dark"] #sl-root :is(.sl-combo-empty, .sl-ending-balance) { color: var(--afims-text-muted, #AAAFBE); }
 </style>
 
 <div id="sl-root" class="nha-root">
@@ -74,7 +75,7 @@ $_sl_api = preg_match('~/api$~', $_sl_api) ? $_sl_api : $_sl_api . '/api';
         </div>
     </div>
 
-    <p class="nha-hint no-print" style="margin:0 0 14px;color:var(--afims-text-muted,#62657E);font-size:13px;">
+    <p class="nha-hint no-print" style="margin:0 0 14px;color:var(--afims-text-muted,#62657E);font-size:var(--fs-base);">
         Showing every SL account with a posting. Pick an SL account above to see just its ledger,
         oldest first, with a running balance — e.g. one vendor's Accounts Payable sub-ledger.
     </p>
@@ -112,26 +113,26 @@ $_sl_api = preg_match('~/api$~', $_sl_api) ? $_sl_api : $_sl_api . '/api';
     </div>
 
     <!-- ── SUMMARY ────────────────────────────────────────── -->
-    <div id="sl-summary" class="sl-summary-cards no-print" style="display:none;">
-        <div class="sl-summary-card">
-            <div class="sl-summary-label">SL Master</div>
-            <div class="sl-summary-value" id="sl-summary-master" style="font-size:14px;">—</div>
+    <div id="sl-summary" class="nha-summary no-print" style="display:none;">
+        <div class="nha-sc nha-sc-navy">
+            <div class="nha-sc-label">SL Master</div>
+            <div class="nha-sc-val" id="sl-summary-master" style="font-size:var(--fs-md);">—</div>
         </div>
-        <div class="sl-summary-card">
-            <div class="sl-summary-label">Normal Balance</div>
-            <div class="sl-summary-value" id="sl-summary-normal" style="font-size:14px;">—</div>
+        <div class="nha-sc nha-sc-blue">
+            <div class="nha-sc-label">Normal Balance</div>
+            <div class="nha-sc-val" id="sl-summary-normal" style="font-size:var(--fs-md);">—</div>
         </div>
-        <div class="sl-summary-card">
-            <div class="sl-summary-label">Account Class</div>
-            <div class="sl-summary-value" id="sl-summary-class" style="font-size:14px;">—</div>
+        <div class="nha-sc nha-sc-teal">
+            <div class="nha-sc-label">Account Class</div>
+            <div class="nha-sc-val" id="sl-summary-class" style="font-size:var(--fs-md);">—</div>
         </div>
-        <div class="sl-summary-card">
-            <div class="sl-summary-label">Total Debit</div>
-            <div class="sl-summary-value nha-mono" id="sl-summary-debit">₱ 0.00</div>
+        <div class="nha-sc nha-sc-green">
+            <div class="nha-sc-label">Total Debit</div>
+            <div class="nha-sc-val u-tabular-nums" id="sl-summary-debit">₱ 0.00</div>
         </div>
-        <div class="sl-summary-card">
-            <div class="sl-summary-label">Total Credit</div>
-            <div class="sl-summary-value nha-mono" id="sl-summary-credit">₱ 0.00</div>
+        <div class="nha-sc nha-sc-red">
+            <div class="nha-sc-label">Total Credit</div>
+            <div class="nha-sc-val u-tabular-nums" id="sl-summary-credit">₱ 0.00</div>
         </div>
     </div>
 

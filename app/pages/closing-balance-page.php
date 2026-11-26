@@ -11,47 +11,56 @@ $_cb_api = preg_match('~/api$~', $_cb_api) ? $_cb_api : $_cb_api . '/api';
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <style>
+    #cb-root :is(.nha-mono, .nha-amt, .u-font-mono, .fims-mono, .amt-cell, .cb-amount, .cb-status-value) { font-family: var(--font-body); font-variant-numeric: tabular-nums; } /* plain zero, no dotted-zero glyph */
+    /* All colours come from the shared theme tokens (_shared/css/custom.css), which switch by themselves in dark mode. */
     #cb-root .cb-header { text-align: center; margin: 0 0 15px; }
-    #cb-root .cb-header .cb-title { font-weight: 700; font-size: 16px; color: var(--afims-text-primary, #1B2B6B); }
-    #cb-root .cb-header .cb-subtitle { font-size: 13px; color: var(--afims-text-muted, #62657E); margin-top: 4px; }
+    #cb-root .cb-header .cb-title { font-weight: 700; font-size: var(--fs-lg); color: var(--afims-heading); }
+    #cb-root .cb-header .cb-subtitle { font-size: var(--fs-base); color: var(--afims-text-muted); margin-top: 4px; }
 
     #cb-root .cb-status-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
-    #cb-root .cb-status-item { background: var(--afims-bg-soft, #F5F6FA); padding: 15px; border-radius: 6px; border-left: 4px solid #3498db; }
-    #cb-root .cb-status-label { font-size: 12px; color: var(--afims-text-muted, #62657E); font-weight: 600; margin-bottom: 5px; }
-    #cb-root .cb-status-value { font-size: 16px; color: var(--afims-text-primary, #1B2B6B); font-weight: 700; font-family: 'IBM Plex Mono', monospace; }
-    #cb-root .cb-status-value.income { color: #27ae60; }
-    #cb-root .cb-status-value.loss { color: #e74c3c; }
+    @media (max-width: 760px) { #cb-root .cb-status-bar { grid-template-columns: 1fr; } }
+    #cb-root .cb-status-item { background: var(--afims-surface); padding: 15px; border-radius: 10px; border: 1px solid var(--afims-border); border-left: 4px solid var(--afims-primary); }
+    #cb-root .cb-status-label { font-size: var(--fs-xs); color: var(--afims-text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 5px; }
+    #cb-root .cb-status-value { font-size: var(--fs-lg); color: var(--afims-heading); font-weight: 700; }
+    #cb-root .cb-status-value.income { color: var(--afims-success-hover); }
+    #cb-root .cb-status-value.loss { color: var(--afims-danger-text); }
 
-    #cb-root .cb-tbl-wrapper { overflow-x: auto; margin-bottom: 20px; border: 1px solid var(--afims-border, #DDE0EC); border-radius: 6px; }
+    #cb-root .cb-tbl-wrapper { overflow-x: auto; margin-bottom: 20px; background: var(--afims-surface); border: 1px solid var(--afims-border); border-radius: 10px; }
     #cb-root .cb-tbl-scroll { max-height: 70vh; overflow-y: auto; }
-    #cb-root .cb-tbl { width: 100%; border-collapse: collapse; }
-    #cb-root .cb-tbl thead th { background: var(--afims-bg-dark, #34495e); color: white; padding: 12px; text-align: left; font-weight: 600; font-size: 13px; position: sticky; top: 0; z-index: 2; }
-    #cb-root .cb-tbl tbody tr:hover { background: var(--afims-bg-hover, #f9f9f9); }
-    #cb-root .cb-tbl td { padding: 12px; border-bottom: 1px solid var(--afims-border, #DDE0EC); font-size: 13px; }
-    #cb-root .cb-tbl .cb-section-row { background: var(--afims-bg-soft, #E8F3FF); font-weight: 600; }
-    #cb-root .cb-tbl .cb-subtotal-row { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; border-top: 2px solid var(--afims-border, #DDE0EC); }
-    #cb-root .cb-tbl .cb-net-row { background: var(--afims-bg-dark, #34495e); color: white; font-weight: 700; border-top: 2px solid var(--afims-bg-dark, #34495e); border-bottom: 2px solid var(--afims-bg-dark, #34495e); position: sticky; bottom: 0; z-index: 1; }
+    #cb-root .cb-tbl { width: 100%; border-collapse: collapse; color: var(--afims-text); }
+    #cb-root .cb-tbl thead th { background: var(--afims-heading-fill); color: var(--afims-text-on-dark); padding: 11px 12px; text-align: left; font-weight: 700; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; position: sticky; top: 0; z-index: 2; }
+    #cb-root .cb-tbl tbody tr:hover td { background: var(--afims-primary-soft); }
+    #cb-root .cb-tbl td { padding: 10px 12px; border-bottom: 1px solid var(--afims-border); font-size: var(--fs-base); }
+    #cb-root .cb-tbl .cb-section-row td { background: var(--afims-surface-subtle); color: var(--afims-heading); font-weight: 600; }
+    #cb-root .cb-tbl .cb-subtotal-row td { background: var(--afims-surface-subtle); font-weight: 600; border-top: 2px solid var(--afims-border-strong); }
+    #cb-root .cb-tbl .cb-net-row td { background: var(--afims-heading-fill); color: var(--afims-text-on-dark); font-weight: 700; border-bottom: 0; }
+    #cb-root .cb-tbl .cb-net-row { position: sticky; bottom: 0; z-index: 1; }
 
     @media print { #cb-root .cb-tbl-scroll { max-height: none; overflow-y: visible; } }
 
-    #cb-root .cb-amount { text-align: right; font-family: 'IBM Plex Mono', monospace; }
+    #cb-root .cb-amount { text-align: right; }
+    #cb-root #cb-reload { align-self: flex-start; }
 
-    #cb-root .cb-error { background: #FEE5E5; border-left: 4px solid #e74c3c; color: #c0392b; padding: 12px; border-radius: 4px; margin-bottom: 15px; font-size: 13px; display: none; }
+    #cb-root .cb-error { background: var(--afims-danger-soft); border-left: 4px solid var(--afims-danger); color: var(--afims-danger-text); padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: var(--fs-base); display: none; }
     #cb-root .cb-error.show { display: block; }
+    #cb-root .cb-locked-banner { display: none; background: var(--afims-danger-soft); border-left: 4px solid var(--afims-danger); color: var(--afims-danger-text); padding: 12px; border-radius: 6px; margin-bottom: 15px; }
+    #cb-root .cb-reverse-btn { margin-left: 10px; padding: 4px 12px; border: 0; border-radius: 6px; background: var(--afims-danger); color: var(--afims-text-on-dark); cursor: pointer; font-size: var(--fs-sm); }
 
     #cb-root .cb-buttons { display: flex; gap: 10px; margin-top: 20px; }
-    #cb-root button { padding: 10px 20px; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 13px; }
-    #cb-root .cb-btn-primary { background: #e67e22; color: white; }
-    #cb-root .cb-btn-primary:hover { background: #ca6f1e; }
-    #cb-root .cb-btn-primary:disabled { background: #bdc3c7; cursor: not-allowed; }
-    #cb-root .cb-btn-secondary { background: #95a5a6; color: white; }
-    #cb-root .cb-btn-secondary:hover { background: #7f8c8d; }
+    #cb-root .cb-buttons button { height: 38px; padding: 0 20px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: var(--fs-base); }
+    #cb-root .cb-btn-primary { background: var(--afims-heading-fill); color: var(--afims-text-on-dark); border: 1px solid var(--afims-heading-fill); }
+    #cb-root .cb-btn-primary:hover:not(:disabled) { filter: brightness(1.15); }
+    #cb-root .cb-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+    #cb-root .cb-btn-secondary { background: var(--afims-surface); color: var(--afims-text); border: 1px solid var(--afims-border); }
+    #cb-root .cb-btn-secondary:hover { background: var(--afims-surface-subtle); }
+    html.afims-dark[data-bs-theme="dark"] #cb-root .cb-btn-primary { background: var(--afims-primary); border-color: var(--afims-primary); }
 
-    #cb-root .cb-info-box { background: #D4EDDA; border-left: 4px solid #28a745; color: #155724; padding: 12px; border-radius: 4px; margin-bottom: 15px; font-size: 13px; display: none; }
+    #cb-root .cb-info-box { background: var(--afims-primary-soft); border-left: 4px solid var(--afims-primary); color: var(--afims-text); padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: var(--fs-base); display: none; }
     #cb-root .cb-info-box.show { display: block; }
+    #cb-root .cb-info-box.cb-success { background: var(--afims-success-soft); border-left-color: var(--afims-success); color: var(--afims-success-hover); white-space: pre-line; }
 
-    #cb-root .cb-loading { text-align: center; padding: 60px 20px; }
-    #cb-root .cb-spinner { border: 4px solid var(--afims-bg-soft, #E8F3FF); border-top-color: #3498db; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+    #cb-root .cb-loading { text-align: center; padding: 60px 20px; color: var(--afims-text-muted); }
+    #cb-root .cb-spinner { border: 4px solid var(--afims-primary-soft); border-top-color: var(--afims-primary); border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
     @media print { #cb-root .no-print { display: none !important; } }
@@ -59,18 +68,16 @@ $_cb_api = preg_match('~/api$~', $_cb_api) ? $_cb_api : $_cb_api . '/api';
 
 <div id="cb-root" class="nha-root">
 
-    <!-- HEADER -->
-    <div class="nha-hdr no-print">
-        <div class="nha-hdr-l">
-            <div class="nha-hdr-ico">
-                <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-            </div>
-            <div>
-                <div class="nha-hdr-tag">National Housing Authority · FIMS</div>
-                <div class="nha-hdr-title">Closing Balance Entry</div>
-            </div>
+    <!-- HEADER (same banner as User Access: app-page-header in _shared/css/nha-fims.css) -->
+    <div class="app-page-header no-print">
+        <div class="app-page-header-icon">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+        </div>
+        <div>
+            <h1 class="app-page-title">Closing Balance Entry</h1>
+            <p class="app-page-subtitle">Zero out Revenue and Expense accounts at year end and sweep the net to Government Equity.</p>
         </div>
     </div>
 
@@ -91,14 +98,14 @@ $_cb_api = preg_match('~/api$~', $_cb_api) ? $_cb_api : $_cb_api . '/api';
     </div>
 
     <!-- SUCCESS BANNER — inline, not a JS alert() popup, which browsers can silently suppress -->
-    <div id="cb-success" class="cb-info-box no-print" style="background:#D4EDDA; border-left-color:#28a745; color:#155724; white-space:pre-line;">
+    <div id="cb-success" class="cb-info-box cb-success no-print">
         <strong>✓ Success:</strong> <span id="cb-success-msg"></span>
     </div>
 
     <!-- STATUS LOCKED BANNER -->
-    <div id="cb-locked-banner" style="display:none; background:#FEE5E5; border-left:4px solid #e74c3c; color:#c0392b; padding:12px; border-radius:4px; margin-bottom:15px; font-size:13px;">
+    <div id="cb-locked-banner" class="cb-locked-banner">
         <strong>Closed:</strong> This fiscal year has already been closed. <span id="cb-locked-jev"></span> To redo it, that entry must be reversed first.
-        <button type="button" id="cb-reverse-btn" style="margin-left:10px; padding:4px 12px; border:none; border-radius:4px; background:#c0392b; color:white; cursor:pointer; font-size:12px; font-weight:600;">Reverse →</button>
+        <button type="button" id="cb-reverse-btn" class="cb-reverse-btn">Reverse →</button>
     </div>
 
     <!-- FILTERS -->
@@ -139,7 +146,7 @@ $_cb_api = preg_match('~/api$~', $_cb_api) ? $_cb_api : $_cb_api . '/api';
     <!-- LOADING STATE -->
     <div id="cb-loading" class="cb-loading" style="display:none;">
         <div class="cb-spinner"></div>
-        <div style="color:var(--afims-text-muted, #62657E); font-size:14px;">Loading closing preview...</div>
+        <div style="color:var(--afims-text-muted); font-size:var(--fs-md);">Loading closing preview...</div>
     </div>
 
     <!-- FORM TABLE -->
