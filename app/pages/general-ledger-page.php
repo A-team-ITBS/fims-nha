@@ -728,8 +728,9 @@ function gl_slSections() {
     const { gl, json, sls } = gl_txnData;
     const dn = json.debit_normal;
     const byCode = {};
-    (json.data ?? []).forEach(r => { (byCode[r.sl_account_code || gl.account_code] ||= []).push(r); });
-    const order = [...sls.map(n => ({ code: n.account_code, title: n.account_title })), { code: gl.account_code, title: gl.account_title + ' (direct postings)' }];
+    (json.data ?? []).forEach(r => { if (r.sl_account_code) (byCode[r.sl_account_code] ||= []).push(r); });
+    // only the SL / sub-SL accounts — postings made straight to the GL account itself are not part of the Subsidiary Ledger
+    const order = sls.map(n => ({ code: n.account_code, title: n.account_title }));
     return order.filter(o => byCode[o.code]).map(o => {
         let run = 0;
         return { code: o.code, title: o.title, ...gl_ledgerSection(byCode[o.code], dn, r => (run += dn ? (Number(r.debit) - Number(r.credit)) : (Number(r.credit) - Number(r.debit)))) };
