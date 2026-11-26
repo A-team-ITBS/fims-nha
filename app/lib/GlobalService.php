@@ -121,14 +121,22 @@ class GlobalService
      * code with no trailing digits at all degrades to all zeros for that
      * segment. This builds a suggestion, not a validation gate.
      *
+     * @param ?string $rcId the RC segment to use directly (the Budget Request form's own manually-
+     *                      picked Region, now that Program-based origination belongs to FMD rather
+     *                      than the region itself — see ProjectService::create()); falls back to
+     *                      $userId's own RC (uac.users.rc_id, via getUserRcId()) only when omitted/
+     *                      empty, for callers with no region picker of their own.
      * @throws \InvalidArgumentException when no user is logged in, the user has no
      *                                    rc_id, or the 4-digit series is exhausted (9999).
      */
-    public static function generateProjectCode(string $programCode, string $subProgramCode, ?int $userId = null, ?int $year = null): string
+    public static function generateProjectCode(string $programCode, string $subProgramCode, ?int $userId = null, ?int $year = null, ?string $rcId = null): string
     {
-        $userId = $userId ?: (int) App\CurrentUserID();
-        $rcId   = self::getUserRcId($userId);
-        if ($rcId === null) {
+        $rcId = trim((string) $rcId);
+        if ($rcId === '') {
+            $userId = $userId ?: (int) App\CurrentUserID();
+            $rcId   = self::getUserRcId($userId);
+        }
+        if ($rcId === null || $rcId === '') {
             throw new \InvalidArgumentException('Your user account has no RC id (users.rc_id). Ask an administrator to set it.');
         }
 
@@ -597,7 +605,7 @@ class GlobalService
      * ($statusFor, $recordId) scoping as logStatusChange() — this is its read-side
      * counterpart), or null if that latest change didn't carry any — NOT the last
      * time any remarks were ever given. e.g. for a fims.budget_req row that was
-     * Returned (with remarks) and has since been Endorsed and Approved (neither of
+     * Returned (with remarks) and has since moved to For Endorsement and Approved (neither of
      * which carries remarks), this returns null: the Return reason no longer
      * describes the request's current status, so it should no longer be shown as
      * if it still does.

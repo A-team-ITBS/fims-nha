@@ -120,8 +120,31 @@ class ProjectService
                 }
             }
 
+            // rc_id = the Project's own Region/District — manually picked on the Budget Request form's
+            // Project field now that Program-based origination belongs to FMD, not the region itself
+            // (BudgetReqService::isOriginatingOfficeUser()). Falls back to the creating user's own RC
+            // (uac.users.rc_id) only when none was explicitly given — e.g. a direct caller with no
+            // region picker of its own. Resolved BEFORE code generation below: the code's own RC
+            // segment uses this same value, not a second, independent auto-detect.
+            $rcId = trim((string) ($body['rc_id'] ?? ''));
+            if ($rcId !== '') {
+                $rcExists = (int) App\ExecuteScalar(
+                    'SELECT COUNT(*) FROM fims.responsibility_code WHERE rc_id = '.App\QuotedValue($rcId, DataType::STRING, 'DB'),
+                    'DB'
+                );
+                if ($rcExists === 0) {
+                    return ['success' => false, 'message' => "Region '{$rcId}' does not exist."];
+                }
+            } else {
+                try {
+                    $rcId = (string) (GlobalService::getUserRcId() ?? '');
+                } catch (\InvalidArgumentException $e) {
+                    // No logged-in user resolvable (e.g. a non-interactive caller) — leave rc_id unset.
+                }
+            }
+
             if ($code === '') {
-                $code = GlobalService::generateProjectCode($program, $subProgram, null, $fiscalYr);
+                $code = GlobalService::generateProjectCode($program, $subProgram, null, $fiscalYr, $rcId);
             } else {
                 $exists = (int) App\ExecuteScalar(
                     "SELECT COUNT(*) FROM {$this->table} WHERE project_code = " . App\QuotedValue($code, DataType::STRING, 'DB'),
@@ -130,16 +153,6 @@ class ProjectService
                 if ($exists > 0) {
                     return ['success' => false, 'message' => "Project code '{$code}' already exists."];
                 }
-            }
-
-            // rc_id = the creating user's own Responsibility Center (uac.users.rc_id),
-            // same auto-detection GlobalService::generateProjectCode() already relies on
-            // for the code's own RC segment — never a manually-picked value.
-            $rcId = '';
-            try {
-                $rcId = (string) (GlobalService::getUserRcId() ?? '');
-            } catch (\InvalidArgumentException $e) {
-                // No logged-in user resolvable (e.g. a non-interactive caller) — leave rc_id unset.
             }
 
             $fields = array_intersect_key(array_merge($body, ['project_code' => $code, 'rc_id' => $rcId]), array_flip($this->allowedFields));
@@ -174,7 +187,7 @@ class ProjectService
      * project can be created inline as part of saving the whole request
      * instead of a separate manual "add project" step.
      */
-    public function findOrCreateByName(string $name, string $programCode, string $subProgramCode = '', ?int $fiscalYr = null): array
+    public function findOrCreateByName(string $name, string $programCode, string $subProgramCode = '', ?int $fiscalYr = null, string $rcId = ''): array
     {
         $name = trim($name);
         if ($name === '') {
@@ -196,6 +209,7 @@ class ProjectService
             'program_code'     => $programCode,
             'sub_program_code' => $subProgramCode,
             'fiscal_yr'        => $fiscalYr,
+            'rc_id'            => $rcId,
         ]);
         if (!$result['success']) {
             return $result;

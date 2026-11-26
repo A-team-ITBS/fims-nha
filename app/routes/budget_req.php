@@ -271,14 +271,14 @@ $app->put('/budget_req/submit-for-review/{id}', function ($request, $response, $
     }
 })->add($jwtMiddleware);
 
-// The review chain (BudgetReqService::REVIEW_STEPS): For Review -> [Budget Officer: endorse] -> Endorsed ->
+// The review chain (BudgetReqService::REVIEW_STEPS): For Review -> [Budget Officer: endorse] -> For Endorsement ->
 // [Budget Head: approve] -> Approved, and a Return goes ONE step back. The three calls below act as the logged-in
 // user (the verified JWT's user_id): only an FMD user holding the user level of the request's CURRENT step may act —
 // anyone else gets 403 (the service sets `forbidden` for that).
 
 // Budget Processing "Endorse" (Budget Officer) — saves each line item's type_of_fund_id (required)
 // and component_id (optional — hidden in budget-processing-form.php's own UI) and moves a
-// "For Review" / "Returned to Budget Officer" request to "Endorsed".
+// "For Review" / "Returned to Budget Officer" request to "For Endorsement".
 $app->put('/budget_req/endorse/{id}', function ($request, $response, $args) use ($BudgetReqService) {
     try {
         $body   = $request->getParsedBody();
@@ -291,7 +291,7 @@ $app->put('/budget_req/endorse/{id}', function ($request, $response, $args) use 
     }
 })->add($jwtMiddleware);
 
-// Budget Preview "Approve" (Budget Head) — moves an Endorsed request to "Approved".
+// Budget Preview "Approve" (Budget Head) — moves a "For Endorsement" request to "Approved".
 $app->put('/budget_req/approve/{id}', function ($request, $response, $args) use ($BudgetReqService) {
     try {
         $result = $BudgetReqService->approve($args['id'], (int) $request->getAttribute('user_id'));

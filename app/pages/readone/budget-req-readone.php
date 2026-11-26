@@ -265,15 +265,17 @@
     #bgrv-card.bgrv-wide .bgrv-cob-group-chevron { width:14px;height:14px; }
     .bgrv-cob-empty { font-style:italic; }
 
-    /* ── "Export to Excel" / "Preview and Print" (COB mode only — see bgrv_printCobOfficeType()) ── */
+    /* ── "Preview and Print" (COB mode only — see bgrv_printCobOfficeType()) — its own PDF preview
+       popup has its own "Export to Excel" button now too (bgrv_previewCobReport's #pf-excel), so this
+       header no longer needs a separate direct-to-Excel entry point. ── */
     #bgrv-print-wrap { display:none;position:relative;gap:8px; }
     #bgrv-card.bgrv-wide #bgrv-print-wrap { display:flex; }
-    #bgrv-export-excel-btn, #bgrv-print-btn { display:flex;align-items:center;gap:6px;border:none;cursor:pointer;
+    #bgrv-print-btn { display:flex;align-items:center;gap:6px;border:none;cursor:pointer;
         padding:0 12px;height:28px;border-radius:7px;font-size:12px;font-weight:700;white-space:nowrap;
         background:color-mix(in srgb, var(--afims-surface, #FFFFFF) 12%, transparent);
         color:var(--afims-pure-white, #FFFFFF);transition:background .15s; }
-    #bgrv-export-excel-btn:hover, #bgrv-print-btn:hover { background:color-mix(in srgb, var(--afims-surface, #FFFFFF) 22%, transparent); }
-    #bgrv-export-excel-btn svg, #bgrv-print-btn svg { width:13px;height:13px;flex-shrink:0; }
+    #bgrv-print-btn:hover { background:color-mix(in srgb, var(--afims-surface, #FFFFFF) 22%, transparent); }
+    #bgrv-print-btn svg { width:13px;height:13px;flex-shrink:0; }
 
     /* Print layout picker — a real modal (shares .nha-overlay/.nha-modal from nha-fims.css, same
        convention as readone/cob-report-readone.php's #cobr-overlay), not an anchored dropdown: #bgrv-overlay
@@ -312,19 +314,13 @@
                 </div>
                 <div id="bgrv-header-actions">
                     <!-- COB mode only (#bgrv-card.bgrv-wide — see the CSS above); hidden for the Program View
-                         modal. Both buttons share the same layout picker — step 1: Per Region / Per Program /
-                         Per Fund Source / Detailed; "Per Program" drills into step 2: Project / Program (see the
-                         markup below) — which format it ends up producing (xlsx vs. pdf) is set by
-                         bgrv_openPrintModal()'s argument, stored in bgrv_printFormat and read by bgrv_printCob().
-                         A Regional / District user's own office_type skips the picker entirely and goes straight
-                         to "Project" — see bgrv_openPrintModal(). -->
+                         modal. Shares the same layout picker as bgrv_openPrintModal()'s other callers — step 1:
+                         Per Region / Per Program / Per Fund Source / Detailed; "Per Program" drills into step 2:
+                         Project / Program (see the markup below). Excel export lives inside the resulting PDF
+                         preview popup now (bgrv_previewCobReport's own #pf-excel button), not as a separate
+                         entry point here. A Regional / District user's own office_type skips the picker entirely
+                         and goes straight to "Project" — see bgrv_openPrintModal(). -->
                     <div id="bgrv-print-wrap">
-                        <button type="button" id="bgrv-export-excel-btn" onclick="bgrv_openPrintModal('xlsx')" title="Export this COB to an Excel file">
-                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                            </svg>
-                            Export to Excel
-                        </button>
                         <button type="button" id="bgrv-print-btn" onclick="bgrv_openPrintModal('pdf')" title="Preview this COB, then print it as a PDF">
                             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.75A2.25 2.25 0 0015.75 1.5h-7.5A2.25 2.25 0 006 3.75v3.284" />
@@ -368,7 +364,7 @@
     </div>
 </div>
 
-<!-- Layout picker — two steps (#bgrv-print-step1 / #bgrv-print-step2 below), opened by #bgrv-export-excel-btn / #bgrv-print-btn above
+<!-- Layout picker — two steps (#bgrv-print-step1 / #bgrv-print-step2 below), opened by #bgrv-print-btn above
      (bgrv_openPrintModal()). A separate top-level modal (not nested in #bgrv-card) since it must sit on
      top of the already-open #bgrv-overlay, same "stack a second overlay on top" shape as
      readone/cob-report-readone.php's #cobr-overlay over its own host page. -->
@@ -568,10 +564,11 @@ async function bgrv_downloadCobReport(mode, label) {
 // format='pdf', via GlobalService::renderPdf()) instead of an xlsx. Same look as the REGIONAL app's budget
 // allocation "Preview & Print" (app/routes/fmd/budget_allocation.php's /pdf-view/{filename}): a sized popup
 // window (not a full blank tab) with an iframe filling it (toolbar hidden, #toolbar=0) showing the PDF in
-// the browser's own viewer — that IS the preview — which then auto-triggers the native print dialog once
-// loaded (with a timeout fallback for a slow viewer). Built entirely client-side (document.write into the
-// popup) since the PDF here is already in hand as a blob: URL, with no need for that route's server-side
-// temp-file + token round trip.
+// the browser's own viewer — that IS the preview. The print dialog only opens when the user clicks the
+// popup's own Print button (its own #pf-print bar, not auto-triggered on load) — same reason that bar
+// exists at all: #toolbar=0 also hides the PDF viewer's own print icon, so Print/Ctrl+P would otherwise
+// be the only way to it. Built entirely client-side (document.write into the popup) since the PDF here
+// is already in hand as a blob: URL, with no need for that route's server-side temp-file + token round trip.
 async function bgrv_previewCobReport(mode, label) {
     window.PagePreloader?.show();
     try {
@@ -595,21 +592,26 @@ async function bgrv_previewCobReport(mode, label) {
         // below is attached straight onto the popup's own DOM instead (frame.addEventListener(...)) —
         // nothing of that shape for the parser to misread.
         // #toolbar=0 hides the PDF viewer's own toolbar (so it reads as a clean preview, not a bare PDF
-        // tab) — which also hides ITS print icon, so the only way back to the print dialog after the
-        // auto-triggered one below is dismissed would otherwise be Ctrl+P. A small bar with its own Print
-        // button sits above the iframe for that.
+        // tab) — which also hides ITS print icon, so the only way to the print dialog would otherwise be
+        // Ctrl+P. A small bar with its own Print button sits above the iframe for that instead.
         win.document.open();
         win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${bgr_esc(json.filename || label)}</title>
 <style>*{margin:0;padding:0;box-sizing:border-box}html,body{height:100%;width:100%;overflow:hidden;background:#525659}
 body{display:flex;flex-direction:column;font-family:Arial,Helvetica,sans-serif}
-#pf-bar{flex:0 0 auto;display:flex;align-items:center;justify-content:flex-end;padding:8px 14px;background:#323639;}
-#pf-print{display:flex;align-items:center;gap:6px;border:none;cursor:pointer;padding:0 16px;height:32px;border-radius:6px;
-    font-size:13px;font-weight:600;font-family:inherit;background:#1a73e8;color:#fff;}
+#pf-bar{flex:0 0 auto;display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:8px 14px;background:#323639;}
+#pf-print,#pf-excel{display:flex;align-items:center;gap:6px;border:none;cursor:pointer;padding:0 16px;height:32px;border-radius:6px;
+    font-size:13px;font-weight:600;font-family:inherit;color:#fff;}
+#pf-print{background:#1a73e8;}
 #pf-print:hover{background:#1765cc}
-#pf-print svg{width:15px;height:15px;flex-shrink:0;}
+#pf-excel{background:#1e8e3e;}
+#pf-excel:hover{background:#188038;}
+#pf-print svg,#pf-excel svg{width:15px;height:15px;flex-shrink:0;}
 #pf{flex:1 1 auto;display:block;width:100%;border:none;}</style>
 </head><body>
-<div id="pf-bar"><button type="button" id="pf-print"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.75A2.25 2.25 0 0015.75 1.5h-7.5A2.25 2.25 0 006 3.75v3.284" /></svg>Print</button></div>
+<div id="pf-bar">
+<button type="button" id="pf-excel"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>Export to Excel</button>
+<button type="button" id="pf-print"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.75A2.25 2.25 0 0015.75 1.5h-7.5A2.25 2.25 0 006 3.75v3.284" /></svg>Print</button>
+</div>
 <iframe id="pf" src="${url}#toolbar=0"></iframe>
 </body></html>`);
         win.document.close();
@@ -618,15 +620,12 @@ body{display:flex;flex-direction:column;font-family:Arial,Helvetica,sans-serif}
         const doPrint = () => {
             try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (e) { /* popup may already be closing */ }
         };
-        let autoPrinted = false;
-        const autoPrint = () => {
-            if (autoPrinted) return;
-            autoPrinted = true;
-            doPrint();
-        };
-        frame.addEventListener('load', () => setTimeout(autoPrint, 500));
-        setTimeout(autoPrint, 3500);   // fallback in case the load event is slow/missed
         win.document.getElementById('pf-print')?.addEventListener('click', doPrint);
+        // Runs in THIS (parent) window's context, not the popup's — reuses bgrv_downloadCobReport()
+        // as-is (same mode/label already chosen for this PDF preview, same fiscal year/filters via
+        // bgrv_cobFiscalYr/bgrv_cobExtraParams) rather than duplicating the fetch-and-download logic
+        // inside the popup's own bare-bones document.
+        win.document.getElementById('pf-excel')?.addEventListener('click', () => bgrv_downloadCobReport(mode, label));
         setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (e) {
         bgr_toast(e.message, 'error');
@@ -846,11 +845,7 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
         const coeBodyHtml = coeTree ? bgrv_cobCoeTreeHtml(coeRows) : c.coeHtml;
         const coeTotalsForRow = coeTree ? (coeTree.totals ?? { proposed: 0, approved: 0, adjustment: 0, revised: 0 }) : c.coeTotal;
         const coeSectionHtml = c.coeLineItemCount
-            ? `<p class="bgrv-sec-hd" style="margin-top:22px;">
-                    <span></span>
-                    <span class="bgrv-sec-hd-total">${c.coeLineItemCount} line item(s)</span>
-               </p>
-               <div class="bgrv-cob-list">${bgrv_cobColumnHeaderHtml('CORPORATE OPERATING EXPENDITURE')}${coeBodyHtml}${bgrv_cobTotalRowHtml(coeTotalsForRow)}</div>`
+            ? `<div class="bgrv-cob-list" style="margin-top:22px;">${bgrv_cobColumnHeaderHtml('CORPORATE OPERATING EXPENDITURE')}${coeBodyHtml}${bgrv_cobTotalRowHtml(coeTotalsForRow)}</div>`
             : '';
         $bgrv('bgrv-panels').innerHTML = coTableHtml + coeSectionHtml;
         $bgrv('bgrv-empty').style.display = (coTableHtml || coeSectionHtml) ? 'none' : '';

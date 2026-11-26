@@ -3,14 +3,20 @@
  * budget-preview-readone.php.
  *
  * Read-only "Budget Preview" modal for a budget request — the read-only counterpart of the Budget Processing
- * modal (form/budget-processing-form.php): the same columns, but laid out per Project (the Processing modal is
- * grouped into Program cards with a meta line; this one is not). Header: "Submission Ref. No. <ref>" with the
- * request's status badge. Then, for every Project of the request, one block:
+ * modal (form/budget-processing-form.php), laid out per Project (the Processing modal is grouped into Program
+ * cards with a meta line; this one is not). Header: "Submission Ref. No. <ref>" with the request's status badge.
+ * Then, for every Project of the request, one block:
  *   - an info card: Originating Unit / Region (the requesting office), Program, Sub-Program, Project
  *     (each with its code as a chip), and
  *   - that Project's line items as a table, as plain text (nothing to fill in):
- *       Type of Fund · Account Code · Description (the account name,
- *       the line's particulars under it) · Amount (proposed) · Suggested Amount, with a Total row under both amount columns.
+ *       Type of Fund · Particulars · Amount (proposed) · Suggested Amount, with a Total row under both
+ *       amount columns. No Account Code/Description here (unlike Budget Processing) — before Budget
+ *       Processing re-codes it, a regular-flow line item is still posted to the same fixed "Work-in-Process
+ *       Inventory" placeholder account, which is meaningless to show in a read-only view (see bpv_tableHtml's
+ *       `showAccountCode` flag, false for a regular Project). A COE request's own flat line items
+ *       (bpv_coeBlockHtml, see further below) pass `showAccountCode: true` instead — a COE line item's account
+ *       IS the real PS/MOOE account the office picked, so Account Code · Description (the account name, the
+ *       line's particulars under it) replace the Particulars column there.
  *   - a Grand Total bar (Amount / Suggested Amount, every Project of every Program, under the last block)
  *   - under that table, the Project's Supporting Documents — the same read-only section as the Budget Processing modal:
  *     the documents the originating office attached to THAT Project (fims.budget_req_project_attachment: an uploaded file or a
@@ -35,14 +41,15 @@
  * Takes already-fetched request data; the only thing it looks up is each Project's Supporting Documents.
  *
  * Footer (Return / Approve and the REMARKS box are hidden unless requestContext.can_decide is true — the list
- * page sets it for the Budget Head on an Endorsed request, from the row's review.can_decide; without them the footer is
- * just Close). This is the LAST step of the review chain (BudgetReqService::REVIEW_STEPS): For Review -> Budget Officer ->
- * Endorsed -> Budget Head (this modal) -> Approved.
+ * page sets it for the Budget Head on a "For Endorsement" request, from the row's review.can_decide; without them the
+ * footer is just Close). This is the LAST step of the review chain (BudgetReqService::REVIEW_STEPS): For Review ->
+ * Budget Officer -> For Endorsement -> Budget Head (this modal) -> Approved. A CO (Program-based) request reaches
+ * "For Endorsement" directly via submitForReview() instead, skipping Budget Officer's own Budget Processing step.
  *   Return  — needs REMARKS (the box above the footer; required): PUT /budget_req/return/{id} { remarks }:
  *             ONE step back — status -> "Returned to Budget Officer" (the Officer sees it in Budget Processing again, with
  *             these remarks, and can endorse it again or return it to the originating office); remarks saved to
  *             fims.status_change_log (via GlobalService::logStatusChange()).
- *   Approve — PUT /budget_req/approve/{id}: status -> "Approved" (only an Endorsed request can be approved, and only by the
+ *   Approve — PUT /budget_req/approve/{id}: status -> "Approved" (only a "For Endorsement" request can be approved, and only by the
  *             Budget Head; the server enforces both). The remarks box is not used.
  * Status lives on the request header, so both apply to the whole request. After either one it calls
  * window.bgr_afterSave() so the list reloads.
@@ -293,29 +300,59 @@ function bpv_showErr(msg) {
     $bpv('bpv-err').hidden = false;
 }
 
-async function bpv_decide(action) {
+// Confirmation uses SweetAlert2 (Swal), same convention as the rest of the app's own confirms (see
+// budget-req-page.php's bgr_submitForReview()/bgr_delete(), budget-processing-form.php's bpr_endorse()/
+// bpr_return()) — not the native confirm().
+function bpv_decide(action) {
     $bpv('bpv-err').hidden = true;
-    const init = { method: 'PUT', credentials: 'same-origin' };
 
     if (action === 'approve') {
-        if (!confirm(`Approve budget request ${bpv_ctx.budget_reference_number}? Its status will change to Approved.`)) return;
-    } else {
-        // Returning needs a reason: the REMARKS box above the footer is required.
-        const box = $bpv('bpv-remarks');
-        const remarks = box.value.trim();
-        // One step back: the Budget Head's Return goes to the Budget Officer (review.return_actor), who can fix it and endorse it again.
-        const returnTo = bpv_ctx.review?.return_actor ? `the ${bpv_ctx.review.return_actor}` : 'the originating office';
-        if (remarks === '') {
-            box.classList.add('is-invalid');
-            box.focus();
-            bpv_showErr(`Remarks are required when returning a request — tell ${returnTo} what to fix.`);
-            return;
-        }
-        if (!confirm(`Return budget request ${bpv_ctx.budget_reference_number} to ${returnTo}? Your remarks will be sent with it.`)) return;
-        init.headers = { 'Content-Type': 'application/json' };
-        init.body    = JSON.stringify({ remarks });
+        Swal.fire({
+            title: 'Approve Budget Request',
+            text: `Approve budget request ${bpv_ctx.budget_reference_number}? Its status will change to Approved.`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, proceed',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#0f2045',
+        }).then(result => {
+            if (result.isConfirmed) bpv_sendDecision(action, { method: 'PUT', credentials: 'same-origin' });
+        });
+        return;
     }
 
+    // Returning needs a reason: the REMARKS box above the footer is required.
+    const box = $bpv('bpv-remarks');
+    const remarks = box.value.trim();
+    // One step back: the Budget Head's Return goes to the Budget Officer (review.return_actor), who can fix it and endorse it again.
+    const returnTo = bpv_ctx.review?.return_actor ? `the ${bpv_ctx.review.return_actor}` : 'the originating office';
+    if (remarks === '') {
+        box.classList.add('is-invalid');
+        box.focus();
+        bpv_showErr(`Remarks are required when returning a request — tell ${returnTo} what to fix.`);
+        return;
+    }
+
+    Swal.fire({
+        title: 'Return Budget Request',
+        text: `Return budget request ${bpv_ctx.budget_reference_number} to ${returnTo}? Your remarks will be sent with it.`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, proceed',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#0f2045',
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        bpv_sendDecision(action, {
+            method: 'PUT',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ remarks }),
+        });
+    });
+}
+
+async function bpv_sendDecision(action, init) {
     bpv_setBusy(true);
     window.PagePreloader?.show();
     try {
@@ -345,40 +382,53 @@ function bpv_value(text) {
     return text ? bgr_esc(text) : '<span class="nha-td-sub">—</span>';
 }
 
-// Column order matches Budget Processing:
-// Type of Fund · Account Code · Description · Amount · Suggested Amount
-// (Component is hidden — not deleted, see bpr_rowHtml in budget-processing-form.php for the same choice.)
-const BPV_THEAD = `<thead><tr>
-    <th>Type of Fund</th>
-    <!-- <th>Component</th> -->
-    <th>Account Code</th>
-    <th>Description</th>
-    <th class="text-right">Amount</th>
-    <th class="text-right">Suggested Amount</th>
-</tr></thead>`;
+// Column order matches Budget Processing (Component is hidden too — not deleted, see bpr_rowHtml in
+// budget-processing-form.php for the same choice). Suggested Amount is ALSO hidden here (commented
+// out, not deleted, for the same reason — easy to bring back) — the figure itself is still computed
+// and stored correctly (submitForReview() now backfills it for a CO request, see its own doc comment),
+// this is purely hiding the column in THIS view. Account Code/Description show only when
+// `showAccountCode` is true — bpv_coeBlockHtml passes true for a COE line item, since its account is
+// the real PS/MOOE account the office picked. A regular-flow Project's line items (bpv_blockHtml)
+// leave it false instead: before Budget Processing re-codes it, every one of them is still coded to
+// the same fixed "Work-in-Process Inventory" placeholder account, which is meaningless to show in
+// this read-only view.
+function bpv_theadHtml(showAccountCode) {
+    return `<thead><tr>
+        <th>Type of Fund</th>
+        <!-- <th>Component</th> -->
+        ${showAccountCode ? '<th>Account Code</th><th>Description</th>' : '<th>Particulars</th>'}
+        <th class="text-right">Amount</th>
+        <!-- <th class="text-right">Suggested Amount</th> -->
+    </tr></thead>`;
+}
 
-function bpv_rowHtml(li) {
+function bpv_rowHtml(li, showAccountCode) {
+    const descHtml = showAccountCode
+        ? `<td class="bpv-nowrap bpv-mono">${bgr_esc(li.account_code)}</td>
+           <td><div>${bgr_esc(li.account_title)}</div>${li.particulars ? `<div class="bpv-desc-sub">${bgr_esc(li.particulars)}</div>` : ''}</td>`
+        : `<td>${bpv_value(li.particulars)}</td>`;
     return `<tr>
         <td>${bpv_value(li.type_of_fund_name)}</td>
         <!-- <td>${bpv_value(li.component_name)}</td> -->
-        <td class="bpv-nowrap bpv-mono">${bgr_esc(li.account_code)}</td>
-        <td><div>${bgr_esc(li.account_title)}</div>${li.particulars ? `<div class="bpv-desc-sub">${bgr_esc(li.particulars)}</div>` : ''}</td>
+        ${descHtml}
         <td class="text-right bpv-amt">${bgr_fmtMoney(li.proposed_amount)}</td>
-        <td class="text-right bpv-amt">${bgr_fmtMoney(li.suggested_amount)}</td>
+        <!-- <td class="text-right bpv-amt">${bgr_fmtMoney(li.suggested_amount)}</td> -->
     </tr>`;
 }
 
-function bpv_tableHtml(project) {
+function bpv_tableHtml(project, showAccountCode = false) {
     const lineItems = project.line_items ?? [];
     const sum = key => lineItems.reduce((s, li) => s + (Number(li[key]) || 0), 0);
+    const colCount = showAccountCode ? 4 : 3;
+    const totalColspan = showAccountCode ? 3 : 2;
     const rowsHtml = lineItems.length
-        ? lineItems.map(bpv_rowHtml).join('')
-        : '<tr><td colspan="5"><div class="bpv-empty">No line items have been added under this project.</div></td></tr>';
+        ? lineItems.map(li => bpv_rowHtml(li, showAccountCode)).join('')
+        : `<tr><td colspan="${colCount}"><div class="bpv-empty">No line items have been added under this project.</div></td></tr>`;
 
     return `<div class="bpv-tbl-wrap">
         <div class="nha-tbl-scroll">
-            <table class="nha-tbl bpv-tbl">${BPV_THEAD}<tbody>${rowsHtml}</tbody>
-                <tfoot><tr><td colspan="3" class="text-right">Total</td><td class="text-right bpv-total-p">${bgr_fmtMoney(sum('proposed_amount'))}</td><td class="text-right bpv-total-s">${bgr_fmtMoney(sum('suggested_amount'))}</td></tr></tfoot>
+            <table class="nha-tbl bpv-tbl">${bpv_theadHtml(showAccountCode)}<tbody>${rowsHtml}</tbody>
+                <tfoot><tr><td colspan="${totalColspan}" class="text-right">Total</td><td class="text-right bpv-total-p">${bgr_fmtMoney(sum('proposed_amount'))}</td><!-- <td class="text-right bpv-total-s">${bgr_fmtMoney(sum('suggested_amount'))}</td> --></tr></tfoot>
             </table>
         </div>
     </div>`;
@@ -400,8 +450,17 @@ function bpv_unitHtml(ctx) {
 
 function bpv_cardHtml(ctx, program, project) {
     const row = (label, valueHtml) => `<div class="bpv-info-row"><span class="bpv-info-k">${label}</span><span class="bpv-info-v">${valueHtml}</span></div>`;
+    // A Project carries its own rc_id/rc_code/rc_name — the region it was actually filed under (see
+    // BudgetReqService::attachProgramsToHeaders' projectRows query, which joins fims.project.rc_id to
+    // fims.responsibility_code). A CO request's own Program can span several regions at once (FMD
+    // files a Project on each one's behalf under the same Program), so this shows THAT project's own
+    // region per block rather than the request header's own rc (ctx) — for a CO request ctx is just
+    // FMD itself, which would otherwise show "Financial Management Department" under every project
+    // regardless of which region it actually belongs to. Falls back to ctx only when there is no
+    // project yet (the "No projects yet." case, see bpv_blockHtml).
+    const unit = project && (project.rc_id || project.rc_code || project.rc_name) ? project : ctx;
     return `<div class="bpv-info">
-        ${row('Originating Unit / Region', bpv_unitHtml(ctx))}
+        ${row('Originating Unit / Region', bpv_unitHtml(unit))}
         ${row('Program', bpv_codeNameHtml(program.program_code, program.program_name))}
         ${row('Sub-Program', bpv_codeNameHtml(program.sub_program_code, program.sub_program_name))}
         ${row('Project', project ? bpv_codeNameHtml(project.project_code, project.project_name) : '<span class="bpv-muted">—</span>')}
@@ -609,7 +668,7 @@ function bpv_coeBlockHtml(ctx, lineItems) {
     const row = (label, valueHtml) => `<div class="bpv-info-row"><span class="bpv-info-k">${label}</span><span class="bpv-info-v">${valueHtml}</span></div>`;
     const body = ctx.status_name === 'Approved'
         ? `<div class="bpv-coe-tree" data-brn="${bgr_escHtmlAttr(ctx.budget_reference_number)}"><div class="bpv-empty">Loading approved budget breakdown…</div></div>`
-        : bpv_tableHtml({ line_items: lineItems });
+        : bpv_tableHtml({ line_items: lineItems }, true);
     return `<section class="bpv-block">
         <div class="bpv-info">${row('Originating Unit / Region', bpv_unitHtml(ctx))}</div>
         ${body}

@@ -9,7 +9,7 @@ $_bgr_api = Config('API.FIMS_URL');
 // level, and the per-row "Budget Processing" action is shown only to this level.
 // User level 8 = Budget Head: "Add Budget Request" is hidden, and only this
 // level sees the "Budget Preview" action (whose modal has Return / Approve
-// buttons on an Endorsed request).
+// buttons on a "For Endorsement" request).
 // User level -1 = System Administrator (superadmin): no restriction on the review chain — Budget Processing (the Budget Officer's
 // step) and Budget Review with Return / Approve (the Budget Head's step) at EVERY step, whatever their office. Same people the API
 // lets through (BudgetReqService::isSuperAdmin): the built-in administrator (user_id -1) or a level list that includes -1 ("-1,3").
@@ -623,7 +623,8 @@ function bgr_actionButtons(flatRow, idx) {
         : '';
     // Step 1 of the review chain (BudgetReqService::REVIEW_STEPS): only when the request is waiting for the Budget Officer
     // ("For Review", or "Returned to Budget Officer" after the Budget Head sent it back) AND this user is that Budget Officer (or a
-    // superadmin) — the row's review says so (review.can_decide, decided on the server). Once it is Endorsed it is the Budget Head's turn.
+    // superadmin) — the row's review says so (review.can_decide, decided on the server). Once it is "For Endorsement" it is the
+    // Budget Head's turn. (A CO row never shows this at all — submitForReview() sends it straight to "For Endorsement".)
     const budgetProcessingItem = (header.review?.can_decide && header.review.actor === 'Budget Officer')
         ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_budgetProcessing(${idx});bgr_closeMenus();">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
@@ -693,6 +694,24 @@ function bgr_fmdActionButtons(flatRow, idx) {
             View
         </a>`;
 
+    // Moves Draft/Returned -> For Endorsement (BudgetReqService::submitForReview()), which is what
+    // actually unlocks Budget Processing below for a COE row (review.can_decide only turns true once
+    // the status is one of REVIEW_STEPS — Draft isn't). CO ONLY: a COE row belongs to the originating
+    // region, which submits it themselves from their OWN (non-FMD) page via bgr_updateSubmitButton's
+    // toolbar button — FMD submitting on a region's behalf here would bypass that region entirely. A CO
+    // row has no such owner but the Budget Officer who created it, so this is the only place it can be
+    // submitted from; isCo below is the same Programs-vs-coe_line_items test submitForReview() itself
+    // uses server-side. Gated the same way "+ Add Budget Request" is ($_bgr_canAddProgram = isFmd ||
+    // isAdmin, same FMD-or-superadmin population already used at bgr_programTotals'/bgr_coeTotals' own
+    // call sites below) — NOT BGR_CAN_MODIFY, which is specifically false for the Budget Officer (see
+    // its own comment) and would hide this from exactly the user who created the Draft in the first place.
+    const isCo = !!(header.programs ?? []).length;
+    const submitForReviewItem = ((BGR_FMD || BGR_IS_ADMIN) && isCo && (isDraft || header.status_name === 'Returned'))
+        ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_submitForReview('${header.budget_reference_number}');bgr_closeMenus();">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+            Submit for Review
+        </a>`
+        : '';
     // Step 1 of the review chain: only when the request is waiting for the Budget Officer AND this
     // user is that Budget Officer (review.can_decide, decided on the server).
     const budgetProcessingItem = (header.review?.can_decide && header.review.actor === 'Budget Officer')
@@ -716,7 +735,7 @@ function bgr_fmdActionButtons(flatRow, idx) {
         </a>`
         : '';
 
-    const items = [viewItem, budgetProcessingItem, budgetPreviewItem].filter(Boolean).join('');
+    const items = [viewItem, submitForReviewItem, budgetProcessingItem, budgetPreviewItem].filter(Boolean).join('');
     const deleteSection = deleteItem ? `<div class="nha-menu-divider"></div>${deleteItem}` : '';
 
     if (!items && !deleteSection) return '';
@@ -859,7 +878,7 @@ function bgr_budgetPreview(idx) {
         rc_code: header.rc_code,
         rc_name: header.rc_name,
         // Return / Approve (+ the remarks box): the last step of the review chain — only the Budget Head, and only while the
-        // request is Endorsed. The row's review says so (review.can_decide, decided on the server).
+        // request is "For Endorsement". The row's review says so (review.can_decide, decided on the server).
         can_decide: !!header.review?.can_decide && header.review.actor === 'Budget Head',
         review: header.review,
     }, programs, coeLineItems);
@@ -987,7 +1006,7 @@ function bgr_updateAddCoeButton(headers) {
 
 /* ── Toolbar "View Remarks" — a pure view action, unlike Submit for Review's
    workflow gate, so it's HIDDEN rather than disabled when there's nothing to
-   view: most requests (Draft / For Review / Endorsed / Approved) never carry
+   view: most requests (Draft / For Review / For Endorsement / Approved) never carry
    remarks, so a permanently greyed-out button would be clutter for the
    common case, and a disabled button's reason is invisible until hovered —
    no better than not being there. It's only shown DISABLED when there IS

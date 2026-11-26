@@ -56,10 +56,12 @@
  *             EVERY Project (Suggested Amount, and Component — hidden in this form, see BPR_THEAD/
  *             bpr_rowHtml below — are optional); saves them, and the
  *             Account Code, to fims.budget_line_items and
- *             sets the request's status to "Endorsed" — now with the Budget Head (one transaction). If something required is missing the
+ *             sets the request's status to "For Endorsement" — now with the Budget Head (one transaction). If something required is missing the
  *             first such field is focused and its Project section is outlined in red. The remarks box is not used.
- * The review is a step-by-step chain (BudgetReqService::REVIEW_STEPS): For Review -> Budget Officer (this modal) -> Endorsed
- * -> Budget Head (budget-preview-readone.php) -> Approved. A request the Budget Head sent back ("Returned to Budget Officer")
+ * The review is a step-by-step chain (BudgetReqService::REVIEW_STEPS): For Review -> Budget Officer (this modal) -> For Endorsement
+ * -> Budget Head (budget-preview-readone.php) -> Approved. A CO (Program-based) request skips straight to "For
+ * Endorsement" instead (submitForReview()) — the Budget Officer created it themselves, so this modal never sees it.
+ * A request the Budget Head sent back ("Returned to Budget Officer")
  * comes to this modal again, with the Head's remarks shown above the details; the Officer can endorse it again or return it.
  * The list rows say whether this user may act (row.review.can_decide); the API enforces it again.
  * Status lives on the request header, so Return/Endorse apply to the whole request, and the modal shows every
@@ -1028,16 +1030,27 @@ function bpr_collectItems() {
 }
 
 /* ── Actions ─────────────────────────────────────────────────── */
-async function bpr_endorse() {
+// Confirmation dialogs use SweetAlert2 (Swal), same convention as the rest of the app's own confirms
+// (see budget-req-page.php's bgr_submitForReview()/bgr_delete()) — not the native confirm().
+function bpr_endorse() {
     bpr_hideErr();
     if (!bpr_validate()) return;
-    if (!confirm(`Endorse budget request ${bpr_ctx.budget_reference_number} to the Budget Head? The Type of Fund, Account Code and Suggested Amount will be saved to its line items and its status will change to Endorsed.`)) return;
 
-    await bpr_send('endorse', { items: bpr_collectItems() }, 'Failed to endorse the budget request.');
+    Swal.fire({
+        title: 'Endorse Budget Request',
+        text: `Endorse budget request ${bpr_ctx.budget_reference_number} to the Budget Head? The Type of Fund, Account Code and Suggested Amount will be saved to its line items and its status will change to For Endorsement.`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, proceed',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#0f2045',
+    }).then(result => {
+        if (result.isConfirmed) bpr_send('endorse', { items: bpr_collectItems() }, 'Failed to endorse the budget request.');
+    });
 }
 
 // Returning needs a reason: the REMARKS box above the footer is required.
-async function bpr_return() {
+function bpr_return() {
     bpr_hideErr();
     const box = $bpr('bpr-remarks');
     const remarks = box.value.trim();
@@ -1049,9 +1062,18 @@ async function bpr_return() {
     }
     // The Budget Officer's Return always reaches the originating office (review.return_actor is null for this step).
     const returnTo = bpr_ctx.review?.return_actor ? `the ${bpr_ctx.review.return_actor}` : 'the originating office';
-    if (!confirm(`Return budget request ${bpr_ctx.budget_reference_number} to ${returnTo}? Your remarks will be sent with it.`)) return;
 
-    await bpr_send('return', { remarks }, 'Failed to return the budget request.');
+    Swal.fire({
+        title: 'Return Budget Request',
+        text: `Return budget request ${bpr_ctx.budget_reference_number} to ${returnTo}? Your remarks will be sent with it.`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, proceed',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#0f2045',
+    }).then(result => {
+        if (result.isConfirmed) bpr_send('return', { remarks }, 'Failed to return the budget request.');
+    });
 }
 
 async function bpr_send(action, body, failMessage) {
