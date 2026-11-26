@@ -244,7 +244,7 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 
 <div id="vr-root" class="nha-root">
     <div id="vr-overlay" class="nha-overlay no-print">
-        <div class="nha-modal nha-modal-xl" role="dialog" aria-modal="true" aria-labelledby="vr-modal-title">
+        <div class="nha-modal u-modal-xl" role="dialog" aria-modal="true" aria-labelledby="vr-modal-title">
 
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title" id="vr-modal-title">Disbursement Voucher</h3>

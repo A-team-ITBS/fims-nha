@@ -663,7 +663,7 @@
       const link = document.createElement("link");
       link.id = "phpmaker-ibmfont";
       link.rel = "stylesheet";
-      link.href = "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap";
+      link.href = "https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500&family=IBM+Plex+Sans:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap";
       document.head.appendChild(link);
     }
 
@@ -948,7 +948,7 @@
   // AFIMS palette + UI (custom.css) is rolled out one module at a time.
   // UAC and DOCUMENT load custom.css through STYLESHEET_FILES; the modules listed
   // here get it from this script instead, so PHPMaker-generated config files and
-  // the shared fmd.css stay untouched. Add a module only when it is converted.
+  // the shared nha-fims.css stay untouched. Add a module only when it is converted.
   // See _guidelines/ui-modernization-guide.md
   const AFIMS_UI_MODULES = ["ACCOUNTING", "ACCOUNTING-BAPD", "GSD", "ACCOUNTING-DCD", "ACCOUNTING-GAD", "FMD", "TREASURY", "REGIONAL"];
 
@@ -987,7 +987,7 @@
       link.href = afimsAsset("_shared/css/custom.css");
       // After Bootstrap/AdminLTE (so the palette overrides win), before the module's
       // own stylesheet (so module styles can still override).
-      const moduleCss = document.querySelector('link[href*="/_shared/css/fmd.css"], link[href*="/fims-treasury.css"]');
+      const moduleCss = document.querySelector('link[href*="/_shared/css/nha-fims.css"], link[href*="/fims-treasury.css"]');
       if (moduleCss) moduleCss.before(link);
       else document.head.appendChild(link);
     }

@@ -92,7 +92,7 @@ namespace PHPMaker2024\FIMS;
 
 <!-- ── DETAILS / REVIEW MODAL ───────────────────────────── -->
 <div id="brv-view-overlay" class="nha-overlay">
-    <div class="nha-modal nha-modal-md" role="dialog" aria-modal="true" aria-labelledby="brv-view-title">
+    <div class="nha-modal u-modal-sm" role="dialog" aria-modal="true" aria-labelledby="brv-view-title">
         <div class="nha-modal-hdr">
             <h3 class="nha-modal-title" id="brv-view-title">Budget Amendment Request</h3>
             <button type="button" class="nha-modal-close" id="brv-view-close" aria-label="Close">&times;</button>

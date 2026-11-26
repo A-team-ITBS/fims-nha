@@ -10,19 +10,18 @@
  *
  * Follows the same lightweight fetch + manual render convention as
  * app/pages/bank-management-page.php (no DataTables dependency). Markup/CSS
- * classes match app/fims-css/fims.css.
+ * classes match _shared/css/nha-fims.css.
  */
 
 namespace PHPMaker2024\FIMS;
 
-$brCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
+$brCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css');
 ?>
-<link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= $brCssVer ?>" />
-<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
+<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= $brCssVer ?>" />
 
 <div class="fims-wrap" id="brModule">
 
-    <!-- same banner as User Access: app-page-header (styled by app/fims-css/fims.css, already loaded above) -->
+    <!-- same banner as User Access: app-page-header (styled by the global _shared/css/nha-fims.css) -->
     <div class="app-page-header">
         <div class="app-page-header-icon"><i class="fas fa-money-check-dollar"></i></div>
         <div>
@@ -78,7 +77,7 @@ $brCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
          MODAL: Bank Reconciliation worksheet
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-br-recon" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:2000px;width:96vw;">
+        <div class="fims-modal-dialog u-modal-full">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title">Bank Reconciliation</div></div>

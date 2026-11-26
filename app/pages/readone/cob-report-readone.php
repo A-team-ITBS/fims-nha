@@ -40,7 +40,7 @@
 </style>
 
 <div id="cobr-overlay" class="nha-overlay no-print">
-    <div class="nha-modal nha-modal-xl" role="dialog" aria-modal="true" aria-labelledby="cobr-title">
+    <div class="nha-modal u-modal-xl" role="dialog" aria-modal="true" aria-labelledby="cobr-title">
         <div class="nha-modal-hdr">
             <h3 id="cobr-title">Generate Report</h3>
             <button type="button" class="nha-modal-close" id="cobr-x" aria-label="Close">&times;</button>

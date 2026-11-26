@@ -4,9 +4,6 @@ namespace PHPMaker2024\FIMS;
 $_prp_api = Config('API.FIMS_URL');
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 <script src="/_shared/js/searchable-select.js?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/js/searchable-select.js') ?>"></script>
 
@@ -53,7 +50,7 @@ $_prp_api = Config('API.FIMS_URL');
     /* ── Details modal (same design as the Memo Request details) ── */
     .prp-md-ov { display:none;position:fixed;inset:0;z-index:9060;padding:16px;box-sizing:border-box;align-items:center;justify-content:center;background:rgba(15,32,69,.55);font-family:'IBM Plex Sans',sans-serif; }
     .prp-md-ov.open { display:flex; }
-    .prp-md { display:flex;flex-direction:column;width:100%;max-width:1400px;max-height:100%;overflow:hidden;border-radius:14px;background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-text, #1A1B21);box-shadow:0 24px 64px rgba(0,0,0,.35); }
+    .prp-md { display:flex;flex-direction:column;max-height:100%;overflow:hidden;border-radius:14px;background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-text, #1A1B21);box-shadow:0 24px 64px rgba(0,0,0,.35); }
     .prp-md-hdr { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;background:var(--afims-heading-fill, #000E3E);color:#fff; }
     .prp-md-title { margin:0;font-size:15px;font-weight:600;color:inherit; }
     .prp-md-ref { margin-left:8px;font-family:'IBM Plex Mono',monospace;font-weight:600;letter-spacing:.02em;color:#C7D4F5; }
@@ -168,27 +165,12 @@ $_prp_api = Config('API.FIMS_URL');
     .prp-mh::before { content:'';width:4px;height:14px;border-radius:2px;background:var(--afims-primary, #0035A9); }
     @media (max-width:760px) { .prp-grid { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } }
 
-    /* ── Page header: copied from User Access (.app-page-header in app/fims-css/fims.css — that file is not loaded here,
-          so the rules are repeated, scoped to this page). Stays navy in dark mode too, like User Access. ── */
-    #prp-root .app-page-header { position:relative;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;overflow:hidden;
-        background:linear-gradient(135deg, #000E3E 0%, #001A5E 100%);border-radius:.75rem;padding:1.5rem 1.75rem;margin-bottom:1.5rem; }
-    #prp-root .app-page-header::before,
-    #prp-root .app-page-header::after { content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.05);pointer-events:none; }
-    #prp-root .app-page-header::before { width:180px;height:180px;top:-90px;right:80px; }
-    #prp-root .app-page-header::after { width:120px;height:120px;bottom:-70px;right:-20px;background:rgba(255,255,255,.06); }
-    #prp-root .app-page-header-icon { position:relative;z-index:1;flex:0 0 auto;width:3rem;height:3rem;border-radius:.5rem;
-        display:flex;align-items:center;justify-content:center;font-size:1.25rem;
-        background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#FFFFFF; }
-    #prp-root .app-page-title { position:relative;z-index:1;font-size:1.6rem;font-weight:800;letter-spacing:-.01em;color:#FFFFFF;margin:0 0 .25rem; }
-    #prp-root .app-page-subtitle { position:relative;z-index:1;font-size:.9rem;color:rgba(255,255,255,.75);margin:0;max-width:640px; }
-    /* the Refresh / Pro-forma JEV / Add from PIS buttons stay on the right of the banner, above its decorative circles */
-    #prp-root .app-page-header-actions { position:relative;z-index:1;margin-left:auto;display:flex;flex-wrap:wrap;gap:8px; }
 </style>
 
 <div id="prp-root" class="nha-root">
 
     <!-- ── HEADER ─────────────────────────────────────────── -->
-    <!-- same banner as User Access (app-page-header in app/fims-css/fims.css) -->
+    <!-- same banner as User Access (app-page-header in _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
             <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
@@ -347,7 +329,7 @@ $_prp_api = Config('API.FIMS_URL');
 
     <!-- ═════════ PRO-FORMA JEV: the depreciation of a quarter, by category (Book, Quarter, Particulars, account rows) ═════════ -->
     <div id="prp-pf-overlay" class="nha-overlay">
-        <div class="nha-modal" style="max-width:1500px;width:96vw;">
+        <div class="nha-modal u-modal-2xl">
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title">Pro-forma JEV — Depreciation of PPE</h3>
                 <button type="button" class="nha-modal-close" id="prp-pf-close" aria-label="Close">&times;</button>
@@ -388,7 +370,7 @@ $_prp_api = Config('API.FIMS_URL');
 
     <!-- ── print preview of the pro-forma JEV (the JEV form from POST /print/jev) ── -->
     <div id="prp-pv-overlay" class="nha-overlay" style="z-index:100001;">
-        <div class="nha-modal" style="max-width:1300px;width:96vw;height:92vh;display:flex;flex-direction:column;">
+        <div class="nha-modal u-modal-2xl" style="height:92vh;display:flex;flex-direction:column;">
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title">Journal Entry Voucher — Print Preview</h3>
                 <button type="button" class="nha-modal-close" id="prp-pv-close" aria-label="Close">&times;</button>
@@ -406,7 +388,7 @@ $_prp_api = Config('API.FIMS_URL');
 
     <!-- ═════════ ADD FROM PIS (window): PIS is only a source to search; the selected items are INSERTED into fims.property_records ═════════ -->
     <div id="prp-add-overlay" class="nha-overlay">
-        <div class="nha-modal nha-modal-xl">
+        <div class="nha-modal u-modal-xl">
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title">Add Property Records from the Property Inventory System</h3>
                 <button type="button" class="nha-modal-close" id="prp-add-close" aria-label="Close">&times;</button>
@@ -489,7 +471,7 @@ $_prp_api = Config('API.FIMS_URL');
 
     <!-- ── DETAILS (read-only; same design as the Memo Request details) ── -->
     <div id="prp-overlay" class="prp-md-ov">
-        <div class="prp-md" role="dialog" aria-modal="true" aria-labelledby="prp-md-title">
+        <div class="prp-md u-modal-2xl" role="dialog" aria-modal="true" aria-labelledby="prp-md-title">
             <div class="prp-md-hdr">
                 <h3 class="prp-md-title" id="prp-md-title"><span>Property Record Details</span><span class="prp-md-ref" id="prp-md-ref"></span><span class="prp-md-status" id="prp-md-status"></span></h3>
                 <button type="button" class="prp-md-close" id="prp-modal-close" aria-label="Close">&times;</button>

@@ -22,20 +22,20 @@
  * disbursements, so those are plain editable fields; no WEEKLY
  * aggregation).
  *
- * Markup/CSS classes match app/fims-css/fims.css, same dark-blue scoped
+ * Markup/CSS classes match _shared/css/nha-fims.css, same dark-blue scoped
  * theme convention as check-disbursement-voucher-page.php (#cpModule) and
  * bank-management-page.php (#bamModule).
  */
 
 namespace PHPMaker2024\FIMS;
 
-$cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
+$cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css');
 ?>
-<link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= $cpsCssVer ?>" />
+<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= $cpsCssVer ?>" />
 
 <div class="fims-wrap" id="cashPositionModule">
 
-    <!-- same banner as User Access: app-page-header (styled by app/fims-css/fims.css, already loaded above) -->
+    <!-- same banner as User Access: app-page-header (styled by the global _shared/css/nha-fims.css) -->
     <div class="app-page-header">
         <div class="app-page-header-icon"><i class="fas fa-wallet"></i></div>
         <div>
@@ -131,7 +131,7 @@ $cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
              existing row and only Restricted Funds is actually editable.
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-manual-entry" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:480px;width:95vw;">
+        <div class="fims-modal-dialog u-modal-sm">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title" id="meModalTitle">Cash Position Entry</div></div>
@@ -181,7 +181,7 @@ $cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
          #modal-bulk-upload flow.
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-upload-soa" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:800px;width:95vw;">
+        <div class="fims-modal-dialog u-modal-lg">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title">Upload SOA (Bank Statement)</div></div>
@@ -227,7 +227,7 @@ $cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
          layer over the per-account flow).
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-batch-upload-soa" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:920px;width:95vw;">
+        <div class="fims-modal-dialog u-modal-lg">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title">Batch Upload SOA</div></div>
@@ -267,7 +267,7 @@ $cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
          Position Updates list — see cpsOpenTransactions())
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-disbursement-transactions" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:900px;width:95vw;">
+        <div class="fims-modal-dialog u-modal-lg">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title">Disbursement Transactions</div><div id="dtxSubtitle" style="font-size:12px;color:var(--fims-text-subtle);"></div></div>
@@ -314,7 +314,7 @@ $cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 #cashPositionModule .fims-btn-outline:hover { background:#000E3E; color:#fff; }
 
 /* .fims-modal-content has no flex layout globally (just border-radius/border —
-   see app/fims-css/fims.css) — the display:flex/flex-direction:column below
+   see _shared/css/nha-fims.css) — the display:flex/flex-direction:column below
    only controls how ITS OWN children (header/body/footer) lay out; it does
    NOT, by itself, make .fims-modal-content stretch to fill its PARENT
    (.fims-modal-dialog)'s available height — only a direct <form> child gets

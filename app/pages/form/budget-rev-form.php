@@ -32,7 +32,6 @@ try {
    styled here, so the form looks the same wherever it is included. */
 
 /* a wide modal for the two budget-line cards and the arrow between them */
-.nha-root #brv-overlay .nha-modal.brv-modal-wide { max-width: 1120px; }
 
 /* The modal is a flex column (header · scrolling body · footer) capped at 90vh, but this form's body and footer sit INSIDE a <form>.
    The form has to be the flex item that passes the height on; left as a plain block it just grows past the modal, which clips it —
@@ -263,7 +262,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
 
 <!-- ── ADD / EDIT MODAL ─────────────────────────────────── -->
 <div id="brv-overlay" class="nha-overlay">
-    <div class="nha-modal nha-modal-md brv-modal-wide">
+    <div class="nha-modal brv-modal-wide u-modal-xl">
         <div class="nha-modal-hdr">
             <h3 class="nha-modal-title" id="brv-modal-title">Add Budget Amendment Request</h3>
             <button type="button" class="nha-modal-close" id="brv-modal-close" aria-label="Close">&times;</button>
