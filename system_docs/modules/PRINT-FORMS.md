@@ -1153,6 +1153,56 @@ certificate with notes and an audit trail — not built). NHA's payor details an
 Not built (the old ACCOUNTING module had them): a stored certificate (number, DRAFT → ISSUED), editable rows, and the
 quarterly per-payee certificate that sums all of a vendor's DVs in a quarter by month.
 
+## ANNUALWS — Annualization of Income (worksheet, client template)
+
+`AnnualizationPrintService` (print type `ANNUALWS`, PDF only through Dompdf — `GlobalService::renderPdf()`, letter
+portrait) in the layout of the client's **ANNUALIZATION TEMPLATE.xlsx** (sheet EMP ANZN), for one employee and fiscal
+year: Payroll Management → Annualization → **Worksheet** on the row; payload `{ fiscal_yr, employee_id }`. The preview
+modal has **Export to Excel** (`PRP_TYPES.ANNUALWS.excel` → `POST /print/annualws/excel`, `xlsx()` through `XlsxWriter`,
+one sheet "EMP ANZN", same blocks, real numbers).
+Data: `PayrollManagementService::annualizationWorksheet()` — the year's payroll lines by tax treatment (same signs and
+ceilings as `annualize()`): per month BASIC (taxable pay — basic, RA / TA, differentials; LWOP / recoupments take away),
+TAX, GSIS / HDMF / PHIC / UNION DUES (contribution lines by account 2-02-01-020 / -030 / -040 / other) and the net; OTHER
+ALLOWANCES / BONUSES (each 13th month / other-benefit item + excess de minimis, total, less ₱90,000, taxable); DE MINIMIS
+(every active benefit of `fims.payroll_de_minimis_benefits` — rice, uniform, cash gift, loyalty linked to the monthly-import items; SRI / PEI listed but fed only once their
+special-payroll template exists — actual,
+limit, excess; a MONTH limit is ×12 and shows e.g. "2,000.00 / month"; a DE_MINIMIS item not linked to a benefit gets
+its own row with no limit, all excess); TAX EXEMPT; INCOME (basic less tax exempt) + income over the
+90,000 threshold = TAXABLE INCOME, TRAIN tax due, less tax withheld = TAX DUE / (REFUND); the tax table. PERA is left
+out, as in the client's sheet. The "BIR FORM 2316" (previous employer) row prints blank; the client's "SCA – DV#…" /
+"SRI TAX" rows are parked. Not copied: the client sheet's UCA excess formula (6,000 vs a 7,000 limit) and its de minimis
+excess total that skipped Loyalty.
+The de minimis limits are editable on **Payroll Setup → De Minimis Limits** (`GET /payroll-setup/de-minimis`,
+`POST …/de-minimis/add`, `PUT …/de-minimis/update/{id}`); a payroll item counts as one through Tax Treatment
+**De minimis** + its benefit (`payroll_items.de_minimis_id`). A changed limit applies on the next **Annualize**.
+
+## GCG — GCG Quarterly Report
+
+`GcgReportPrintService` (print type `GCG`) — a copy of the client's template **GCG_Quarterly_Template_Preview.xlsx**
+(GENERAL LEDGER folder; the DBM forms are not built). Payroll Management → Year-to-Date Report → **GCG Quarter** (Q1–Q4)
++ **GCG Report**, for the tab's fiscal year; payload `{ fiscal_yr, period }`.
+- **Excel** (`POST /print/gcg/excel`, the preview's Export to Excel) — the template filled: sheet "GCG Report"; A1
+  "GCG Report (Q1 2026)" (merged A–AR, Arial 12 bold, centred); A2 "National Housing Authority (NHA)" (merged, bold 9);
+  row 4 the template's 44 headers (bold 9, wrapped, bordered, 48 pt; "name⏎account"): EMP. NO., LAST NAME, FIRST NAME,
+  MIDDLE NAME, POSITION, JOB GRADE, STEP, BASIC SALARY, PERA … Terminal Leave, NET PAY; the template's column widths;
+  frozen at A5, auto-filter on row 4 (`XlsxWriter::freeze()` / `autoFilter()` / `gridLines()`, added for it).
+- Rows: one per employee paid in the quarter, grouped by position (then name); a yellow bold subtotal per position
+  (position in A, count in F, every column summed); a bold GRAND TOTAL (count in F, every column summed).
+- **PDF** — the same sheet with every column A–AR on one line: the page is as wide as the sheet (≈ 3,270 × 1,370 pt,
+  about 70 rows a page, header repeated), and the print preview opens full screen for it (`PRP_TYPES.GCG.full` →
+  `.prp-full`, 98vw).
+- Data: the quarter's imported monthly payroll (`fims.payroll_record_items`). A line goes to a column by its item where
+  the template's code isn't an account in our chart (`ITEM_COLUMN`: 2016_CNA_IN_REF → C.N.A, LOYALTY, MEAL_SUBSIDY,
+  CHILDREN'S_ALLOWANCE / _ADJ, RICE_SUBSIDY — the template's 5-01-02-170…270 / 5-01-04-040…060 aren't in the COA),
+  otherwise by its 4-part account (`ACCOUNT_COLUMN`; BASIC SALARY = 5-01-01-010, Life & Retirement … PFAI = the employer
+  shares 5-01-03-010…050). Earnings, refunds and employer shares add; deductions on a PS account (LWOP, undertime) take
+  away. NET PAY = the payroll records' `net_amount`. PS items with no column (today MEDICAL, 3K, 50K, MYFA_2017) are
+  listed below the report; loans, withholdings and recoupments aren't PS expense.
+- Blank for now: JOB GRADE / POSITION (the import doesn't fill them — everyone in one blank-position group), STEP (not
+  kept); columns no monthly-import item feeds (Quarters, Honoraria, Hazard, OT, PBB, SCA, PRAISE, SRI, Cashier's, GAD,
+  Monetization of LC, SOA, GPAI, Laundry, Terminal Leave).
+Not built (the old module had them): the report history table and DBM Forms 703-A1 / 703-A2.
+
 ## BIR2316 — Certificate of Compensation Payment / Tax Withheld (BIR Form 2316)
 
 `Bir2316PrintService` (print type `BIR2316`, PDF only): `_shared/template/bir_2316.pdf` (September 2021 ENCS, the old ACCOUNTING template with its named fields) filled through `PrintService::fillPdfForm()`. One per **employee and fiscal year**, from the stored tax annualization (`fims.payroll_annualization` — Payroll Management → Annualization → **2316** on the row); payload `{ fiscal_yr, employee_id }`. Opens on an **Edit Form** (`prp_ffForm2316`, prefilled by `GET /print/prefill/bir2316?year=&employee_id=`) like the old income-tax-withheld 2316 window:

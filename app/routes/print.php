@@ -107,6 +107,41 @@ $app->get('/print/prefill/bir2307/{id:[0-9]+}', function ($request, $response, $
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
+// The annualization worksheet as Excel (the print preview's "Export to Excel"): { fiscal_yr, employee_id } →
+// { success, filename, mime, data (base64 .xlsx) } — 400 when the employee has no payroll that year.
+$app->post('/print/annualws/excel', function ($request, $response, $args) {
+    try {
+        $svc = new Service\AnnualizationPrintService();
+        $d   = $svc->model($request->getParsedBody() ?: []);
+
+        return $response->withJson(['success' => true, 'filename' => $d['file_base'] . '.xlsx',
+            'mime' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'data' => base64_encode($svc->xlsx($d))]);
+    } catch (\InvalidArgumentException $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    } catch (\Throwable $e) {
+        LogError('POST /print/annualws/excel ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+// The GCG report as Excel (the print preview's Export to Excel): { fiscal_yr, period } → { success, filename, mime, data (base64) }
+$app->post('/print/gcg/excel', function ($request, $response, $args) {
+    try {
+        $svc = new Service\GcgReportPrintService();
+        $d   = $svc->model($request->getParsedBody() ?: []);
+
+        return $response->withJson(['success' => true, 'filename' => $d['file_base'] . '.xlsx',
+            'mime' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'data' => base64_encode($svc->xlsx($d))]);
+    } catch (\InvalidArgumentException $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    } catch (\Throwable $e) {
+        LogError('POST /print/gcg/excel ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
 // The BIR 2316 of an employee for a year, prefilled for the print preview's Edit Form (Bir2316PrintService::prefill()):
 // ?year=&employee_id= → { success, data: { editable, locked } } — 400 when the employee isn't annualized for that year.
 $app->get('/print/prefill/bir2316', function ($request, $response, $args) {

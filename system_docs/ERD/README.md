@@ -1581,21 +1581,23 @@ erDiagram
 
 ### Payroll Setup
 
-- **Status:** Built — the catalogue of payroll items: list with KPIs and filters, add, edit (item code is fixed once saved). No delete: an item used by a payroll can only be set INACTIVE.
-- **Code:** `app/pages/payroll-setup-page.php` + `app/pages/form/payroll-form.php`; `app/routes/payroll_setup.php` (`GET /payroll-setup/list|accounts|read/{id}`, `POST /payroll-setup/add`, `PUT /payroll-setup/update/{id}`); `app/services/PayrollSetupService.php`.
-- **Tables written:** fims.payroll_items; fims.chart_of_accounts (only when an item is saved with a 5th / 6th-part sub-ledger account that does not exist yet — created with the item, removed again if the item fails). **Tables read:** fims.chart_of_accounts.
+- **Status:** Built — the catalogue of payroll items: list with KPIs and filters, add, edit (item code is fixed once saved). No delete: an item used by a payroll can only be set INACTIVE. Below it, **De Minimis Limits**: the de minimis benefits and their editable tax-exempt limits (add / edit inline).
+- **Code:** `app/pages/payroll-setup-page.php` + `app/pages/form/payroll-form.php`; `app/routes/payroll_setup.php` (`GET /payroll-setup/list|accounts|read/{id}`, `POST /payroll-setup/add`, `PUT /payroll-setup/update/{id}`, `GET /payroll-setup/de-minimis`, `POST /payroll-setup/de-minimis/add`, `PUT /payroll-setup/de-minimis/update/{id}`); `app/services/PayrollSetupService.php`.
+- **Tables written:** fims.payroll_items; fims.payroll_de_minimis_benefits; fims.chart_of_accounts (only when an item is saved with a 5th / 6th-part sub-ledger account that does not exist yet — created with the item, removed again if the item fails). **Tables read:** fims.chart_of_accounts.
 - **Status workflow:** `status` ACTIVE | INACTIVE. An item's **category** (EARNING / DEDUCTION / REFUND / EMPLOYER_SHARE) decides how its amounts count and the side it posts to (DEDUCTION = credit, the others = debit).
 - **Used by:** Payroll Management — `item_code` is the column name in the payroll import form.
 
 ```mermaid
 erDiagram
     chart_of_accounts ||--o{ payroll_items : "account_code"
+    payroll_de_minimis_benefits ||--o{ payroll_items : "de_minimis_id"
     payroll_items {
         serial payroll_item_id PK
         varchar60 item_code UK "= import column name"
         varchar150 item_name
         varchar20 category "EARNING | DEDUCTION | REFUND | EMPLOYER_SHARE"
-        varchar20 tax_treatment "annualization: TAXABLE | NON_TAXABLE | DE_MINIMIS_* | BENEFIT_90K | CONTRIBUTION | WITHHOLDING_TAX | NONE"
+        varchar20 tax_treatment "annualization: TAXABLE | NON_TAXABLE | DE_MINIMIS | BENEFIT_90K | CONTRIBUTION | WITHHOLDING_TAX | NONE"
+        int de_minimis_id FK "when DE_MINIMIS"
         varchar30 account_code FK "nullable until set"
         int sort_order
         varchar20 status "ACTIVE | INACTIVE"
@@ -1605,16 +1607,25 @@ erDiagram
         varchar account_title
         bool posting_allowed
     }
+    payroll_de_minimis_benefits {
+        serial de_minimis_id PK
+        varchar30 code UK
+        varchar150 name
+        numeric limit_amount "exempt amount"
+        varchar5 limit_per "MONTH (x12) | YEAR"
+        varchar20 status "ACTIVE | INACTIVE"
+    }
 ```
 - **Table notes:**
+  - fims.payroll_de_minimis_benefits (`01 - table/57`, also adds `payroll_items.de_minimis_id`): seeded rice 2,000 / month, uniform 7,000, cash gift / SRI / PEI 5,000, loyalty 10,000 a year (client worksheet values, to be confirmed); re-running keeps edited limits.
   - fims.payroll_items (`01 - table/48`): FKs from `03 - alter_table/37` — `account_code` → chart_of_accounts.account_code, `created_by` / `updated_by` → uac.users. `tax_treatment` (default NONE) says how the item counts in the year-end tax annualization (Payroll Setup's **Tax Treatment** dropdown; seeded for the 108 import columns at the end of `04 - seed_data/19`).
 
 ### Payroll Management
 
-- **Status:** Built (import only) — imports the monthly employee payroll (the payroll office's form `_shared/template/MONTHLY-PAYROLL-TEMPLATE.xlsx`) and keeps one summary row per month. Tabs: **Payroll Imports** (preview → import / replace, list with Month, Year, Import Date, Status, Total Payroll Amount = gross and one action — **Create DV** / **View DV**; the month name is plain text — the records window and Delete Import were removed from the page, though the `records`, `record-items` and `delete` routes remain), **Year-to-Date Report** (Fiscal Year + Month / Whole Year, loads on filter change; one row per month — employees, gross, deductions, refunds, net, employer share; **Export CSV** calls `ytd?detail=employees` for one row per employee with a TOTAL row), **File Template** (steps card, readiness banner, employee-details and searchable amount-columns tables vs Payroll Setup, download the blank form). No DV is created here.
+- **Status:** Built (import only) — imports the monthly employee payroll (the payroll office's form `_shared/template/MONTHLY-PAYROLL-TEMPLATE.xlsx`) and keeps one summary row per month. Tabs: **Payroll Imports** (preview → import / replace, list with Month, Year, Import Date, Status, Total Payroll Amount = gross and one action — **Create DV** / **View DV**; the month name is plain text — the records window and Delete Import were removed from the page, though the `records`, `record-items` and `delete` routes remain), **Year-to-Date Report** (Fiscal Year + Month / Whole Year, loads on filter change; one row per month — employees, gross, deductions, refunds, net, employer share; **Export CSV** calls `ytd?detail=employees` for one row per employee with a TOTAL row; **GCG Quarter** + **GCG Report** opens the GCG Quarterly Report (client template) for the fiscal year — `GcgReportPrintService`, print type GCG, PDF + Excel, see PRINT-FORMS.md), **File Template** (steps card, readiness banner, employee-details and searchable amount-columns tables vs Payroll Setup, download the blank form). No DV is created here.
 - **Code:** `app/pages/payroll-page.php` (PayrollPage); `app/routes/payroll_management.php` (`GET /payroll-management/list|records/{periodId}|record-items/{id}|ytd|annualization|template-columns|template|available|dv-data/{periodId}`, `POST /payroll-management/preview|import|annualize`, `DELETE /payroll-management/delete/{periodId}`); `app/services/PayrollManagementService.php`.
 - **Tables written:** fims.payroll_periods (one per month, created when missing; `prepared_at` / `prepared_by` = import date / user), fims.payroll_employees (employees not in the directory yet; existing ones unchanged), fims.payroll_records (one per employee per month, category totals), fims.payroll_record_items (one per employee per item with an amount). **Tables read:** fims.payroll_items, fims.chart_of_accounts, fims.disbursement_vouchers + fims.settings_status (DV link), uac.users.
-- **Annualization tab (year-end tax on compensation):** **Annualize** (`annualize()`) rebuilds `fims.payroll_annualization` (`01 - table/56`, one row per employee per fiscal year, UNIQUE (fiscal_yr, employee_id)) from every payroll line of the year by its item's `tax_treatment` (signed by category): gross, non-taxable (PERA, de minimis up to rice ₱24,000 / uniform ₱6,000, 13th month & other benefits up to ₱90,000, contributions), taxable income, tax due (TRAIN 2023 table, `annualTax()`), tax withheld, adjustment and status UNDERPAID / OVERPAID / CORRECT (the December adjustment is shown, not applied). Each row prints the employee's **BIR 2316** (`Bir2316PrintService`, see PRINT-FORMS.md).
+- **Annualization tab (year-end tax on compensation):** **Annualize** (`annualize()`) rebuilds `fims.payroll_annualization` (`01 - table/56`, one row per employee per fiscal year, UNIQUE (fiscal_yr, employee_id)) from every payroll line of the year by its item's `tax_treatment` (signed by category): gross, non-taxable (PERA, de minimis up to each benefit's limit in fims.payroll_de_minimis_benefits, 13th month & other benefits up to ₱90,000, contributions), taxable income, tax due (TRAIN 2023 table, `annualTax()`), tax withheld, adjustment and status UNDERPAID / OVERPAID / CORRECT (the December adjustment is shown, not applied). Each row prints the employee's **BIR 2316** (`Bir2316PrintService`, see PRINT-FORMS.md).
 - **Import rules:** each amount column must match an ACTIVE Payroll Setup item code (quotes from the HRIS export ignored); a column with amounts and no item, a repeated employee no. or a non-numeric value stops the import. Inactive items are skipped. A month already imported is replaced only on request, and never while a live DV uses it or the period is LOCKED / CLOSED.
 - **Status workflow (summary):** Imported → DV Created (every record linked to a non-cancelled DV) / Partly in a DV. Derived from `payroll_records.disbursement_voucher_id`, not stored.
 - **DV link:** the list's **Create DV** opens Disbursement Voucher (`Voucher?payroll={payroll_period_id}`) with a new DV for the month; **View DV** opens its DV (`Voucher?dv={dv_id}`). On the DV form the month sits in the Vendor dropdown's "Payroll (imported months)" group (months no live DV uses); picking it fills claimant, particulars, account, gross, deductions and the accounting entry (Dr expense accounts, Cr deduction accounts, Cr Accounts Payable 2-01-01-010 for the net pay; employer share not included). Saving sets `payroll_records.disbursement_voucher_id`; cancelling or deleting the DV clears it. Choosing None or a vendor instead clears everything the month filled.

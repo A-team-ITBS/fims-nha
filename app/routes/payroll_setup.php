@@ -73,6 +73,46 @@ $app->post('/payroll-setup/add', function ($request, $response, $args) use ($Pay
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
+// De minimis benefits and their tax-exempt limits (fims.payroll_de_minimis_benefits) — the page's De Minimis Limits section:
+//   GET /payroll-setup/de-minimis            every benefit + limit (+ annual_limit, linked items)
+//   POST /payroll-setup/de-minimis/add       { name, code?, limit_amount, limit_per (MONTH|YEAR), status?, remarks? }
+//   PUT  /payroll-setup/de-minimis/update/{id} same fields (code can't change)
+$app->get('/payroll-setup/de-minimis', function ($request, $response, $args) use ($PayrollSetupService) {
+    try {
+        $result = $PayrollSetupService->fetchDeMinimis();
+
+        return $response->withJson($result, $result['success'] ? 200 : 500);
+    } catch (\Exception $e) {
+        LogError('GET /payroll-setup/de-minimis ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+$app->post('/payroll-setup/de-minimis/add', function ($request, $response, $args) use ($PayrollSetupService) {
+    try {
+        $result = $PayrollSetupService->saveDeMinimis(null, $request->getParsedBody() ?: [], (int) $request->getAttribute('user_id'));
+
+        return $response->withJson($result, $result['success'] ? 201 : 400);
+    } catch (\Exception $e) {
+        LogError('POST /payroll-setup/de-minimis/add ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+$app->put('/payroll-setup/de-minimis/update/{id:[0-9]+}', function ($request, $response, $args) use ($PayrollSetupService) {
+    try {
+        $result = $PayrollSetupService->saveDeMinimis((int) $args['id'], $request->getParsedBody() ?: [], (int) $request->getAttribute('user_id'));
+
+        return $response->withJson($result, $result['success'] ? 200 : 400);
+    } catch (\Exception $e) {
+        LogError('PUT /payroll-setup/de-minimis/update ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
 // Update (item_code is immutable). Same optional `new_accounts` as add.
 $app->put('/payroll-setup/update/{id}', function ($request, $response, $args) use ($PayrollSetupService) {
     try {
