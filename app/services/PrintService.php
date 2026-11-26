@@ -70,6 +70,8 @@ class PrintService
         'DV'  => ['service' => DvPrintService::class, 'pdf_only' => true],
         'BIR2307' => ['service' => Bir2307PrintService::class, 'pdf_only' => true],   // a DV's Certificate of Creditable Tax Withheld at Source — payload { dv_id }
         'BIR2316' => ['service' => Bir2316PrintService::class, 'pdf_only' => true],   // an employee's Certificate of Compensation Payment / Tax Withheld — payload { fiscal_yr, employee_id }
+        'ANNUALWS' => ['service' => AnnualizationPrintService::class, 'pdf_only' => true],   // an employee's annualization worksheet (client template) — payload { fiscal_yr, employee_id }; Excel: POST /print/annualws/excel
+        'GCG' => ['service' => GcgReportPrintService::class, 'pdf_only' => true],   // GCG Quarterly Report (client template GCG_Quarterly_Template_Preview.xlsx) — payload { fiscal_yr, period Q1–Q4 }; Excel: POST /print/gcg/excel
     ];
 
     public static function isDocument(string $doc): bool

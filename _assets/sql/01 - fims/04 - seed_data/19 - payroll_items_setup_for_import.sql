@@ -156,11 +156,11 @@ SET tax_treatment = m.tax_treatment
 FROM (VALUES
     -- EARNING
     ('BASIC_SALARY', 'TAXABLE'), ('PERA', 'NON_TAXABLE'), ('REPRESENTATION_ALLOWANCE', 'TAXABLE'), ('TRANSPORTATION_ALLOWANCE', 'TAXABLE'),
-    ('MEAL_SUBSIDY', 'TAXABLE'), ('RICE_SUBSIDY', 'DE_MINIMIS_RICE'), ('CHILDREN''S_ALLOWANCE', 'TAXABLE'), ('INCENTIVE_DESIGNATION', 'TAXABLE'),
+    ('MEAL_SUBSIDY', 'TAXABLE'), ('RICE_SUBSIDY', 'DE_MINIMIS'), ('CHILDREN''S_ALLOWANCE', 'TAXABLE'), ('INCENTIVE_DESIGNATION', 'TAXABLE'),
     ('STEP_INCREMENT', 'TAXABLE'), ('CHILDREN''S_ALLOW_ADJ', 'TAXABLE'), ('MYFA_2017', 'BENEFIT_90K'), ('OTHERS_PERA', 'NON_TAXABLE'),
-    ('SALARY_DIFFERENTIAL', 'TAXABLE'), ('UNIFORM', 'DE_MINIMIS_UNIFORM'), ('MEDICAL', 'TAXABLE'), ('MIDYEAR', 'BENEFIT_90K'),
-    ('YEAR_END', 'BENEFIT_90K'), ('CASH_GIFT', 'BENEFIT_90K'), ('3K', 'BENEFIT_90K'), ('50K', 'BENEFIT_90K'),
-    ('SUPP_CLOTHING ALLOW', 'DE_MINIMIS_UNIFORM'), ('LOYALTY', 'BENEFIT_90K'),
+    ('SALARY_DIFFERENTIAL', 'TAXABLE'), ('UNIFORM', 'DE_MINIMIS'), ('MEDICAL', 'TAXABLE'), ('MIDYEAR', 'BENEFIT_90K'),
+    ('YEAR_END', 'BENEFIT_90K'), ('CASH_GIFT', 'DE_MINIMIS'), ('3K', 'BENEFIT_90K'), ('50K', 'BENEFIT_90K'),
+    ('SUPP_CLOTHING ALLOW', 'DE_MINIMIS'), ('LOYALTY', 'DE_MINIMIS'),
     -- REFUND (pay given back → adds; a refunded contribution / tax → takes away)
     ('OTHERS_LWOP_REFUND', 'TAXABLE'), ('REFUND_PHILHEALTH', 'CONTRIBUTION'), ('REFUND_GSIS_SIC', 'CONTRIBUTION'),
     ('REFUND_REPRESENTATION', 'TAXABLE'), ('REFUND_TRANSPORTATION', 'TAXABLE'), ('TAX_REFUND', 'WITHHOLDING_TAX'),
@@ -174,6 +174,16 @@ FROM (VALUES
     ('O/P_TRANS_ALLOWANCE', 'TAXABLE'), ('O/P_REP_ALLOW', 'TAXABLE'), ('O/P_CHILD_ALLOW', 'TAXABLE'), ('O/P_ADDL_COMPENSATION', 'TAXABLE'),
     ('O/P_MYFA2018', 'BENEFIT_90K')
 ) AS m(item_code, tax_treatment)
+WHERE pi.item_code = m.item_code;
+
+-- The de minimis items → their benefit and limit (fims.payroll_de_minimis_benefits, 01 - table/57): rice subsidy → RICE,
+-- uniform / supplementary clothing → UNIFORM, cash gift → CASH_GIFT, loyalty → LOYALTY. SRI / PEI come from separate
+-- (special) payrolls, not this monthly import — they get linked once that template is given.
+UPDATE fims.payroll_items pi
+SET de_minimis_id = d.de_minimis_id
+FROM (VALUES ('RICE_SUBSIDY', 'RICE'), ('UNIFORM', 'UNIFORM'), ('SUPP_CLOTHING ALLOW', 'UNIFORM'),
+             ('CASH_GIFT', 'CASH_GIFT'), ('LOYALTY', 'LOYALTY')) AS m(item_code, de_minimis_code)
+JOIN fims.payroll_de_minimis_benefits d ON d.code = m.de_minimis_code
 WHERE pi.item_code = m.item_code;
 
 -- Sanity check: should return 108 rows affected across all categories.
