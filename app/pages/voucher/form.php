@@ -423,7 +423,7 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                                      multi-select above (fund_tracking.dv_id, see DisbursementVoucherService::linkSaro()).
                                      Optional. Its linked bank account auto-fills Check Preparation's Bank Account select once
                                      this DV reaches FOR_TREASURY — see CheckProcessingService::getSaroForDv(). -->
-                                <div class="nha-fg" style="margin-top:12px;">
+                                <div class="nha-fg" style="margin-top:12px;" hidden>
                                     <label>SARO <span class="vf-hint" style="display:inline;">(optional — the SARO this voucher's bank account comes from)</span></label>
                                     <select id="vf-saro"><option value="">— None —</option></select>
                                 </div>
