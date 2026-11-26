@@ -86,7 +86,7 @@ class Bir2316PrintService
         $mwe = in_array($v['is_mwe'], [true, 1, '1', 'true', 'on', 'yes'], true);
 
         $fields = [
-            'FTY_1' => (string) $year, 'FP_MM_DD' => $mmdd('period_from') ?: '0101', 'TO_MM_DD' => $mmdd('period_to') ?: '1231',
+            'FTY_1' => (string) $year, 'FP_MM_DD' => $mmdd('period_from') ?: $def['period_from'], 'TO_MM_DD' => $mmdd('period_to') ?: $def['period_to'],
             // Part I — employee (3–11)
             'TIN_1' => $e1, 'TIN_2' => $e2, 'TIN_3' => $e3, 'TIN_4' => $e4,
             'RDO_CODE' => $s('rdo_code'), 'EMP_Name' => self::employeeName($a),
@@ -145,6 +145,17 @@ class Bir2316PrintService
         if (!$a) {
             throw new \InvalidArgumentException("This employee isn't annualized for {$year} yet — run Annualize first (Payroll Management → Annualization).");
         }
+        // item 2 (the period): the first and last payroll month the employee was paid in the year — a mid-year hire or a
+        // separated employee doesn't get January–December
+        $span = App\ExecuteRow(
+            "SELECT MIN(p.payroll_month) AS first_month, MAX(p.payroll_month) AS last_month
+               FROM fims.payroll_records r JOIN fims.payroll_periods p ON p.payroll_period_id = r.payroll_period_id
+              WHERE p.fiscal_yr = {$year} AND r.employee_id = {$employeeId}",
+            'DB'
+        ) ?: [];
+        $a['first_month'] = (int) ($span['first_month'] ?? 1) ?: 1;
+        $a['last_month']  = (int) ($span['last_month'] ?? 12) ?: 12;
+        $a['fiscal_yr']   = $year;
 
         return [$a, Bir2307PrintService::agencySettings()];
     }
@@ -158,7 +169,8 @@ class Bir2316PrintService
     private static function editableDefaults(array $a, array $set): array
     {
         return [
-            'period_from' => '0101', 'period_to' => '1231',
+            'period_from' => sprintf('%02d01', $a['first_month'] ?? 1),
+            'period_to'   => date('md', mktime(0, 0, 0, (int) ($a['last_month'] ?? 12) + 1, 0, (int) ($a['fiscal_yr'] ?? 2000))),   // last day of the last month paid
             'employee_tin' => PrintService::text($a['tin']), 'rdo_code' => '', 'employee_address' => '', 'employee_zip' => '',
             'employee_home_address' => '', 'employee_home_zip' => '', 'employee_foreign_address' => '', 'date_of_birth' => '',
             'contact_number' => '', 'is_mwe' => false, 'mwe_rate_day' => '', 'mwe_rate_month' => '',
