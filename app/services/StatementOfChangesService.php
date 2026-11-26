@@ -149,4 +149,176 @@ class StatementOfChangesService
             return ['success' => false, 'message' => 'Failed to fetch the Consolidated Statement of Changes.'];
         }
     }
+
+    /** Equity columns of the SCNAE view, in display order. 'other' is only returned when something is posted to it. */
+    private const EQUITY_COLUMNS = [
+        'surplus'             => 'Accumulated Surplus',
+        'gov_equity'          => 'Government Equity',
+        'contributed_capital' => 'Contributed Capital',
+        'revaluation_surplus' => 'Revaluation Surplus',
+        'other'               => 'Other Equity',
+    ];
+
+    /**
+     * GET /statement_of_changes/equity?fiscal_yr=2026&book_id=1
+     * SCNAE layout (the audited NHA format): one column per equity component, the prior year's roll-forward
+     * (opening -> changes -> closing) above the current year's, one block per entity (Consolidated, then each
+     * book; or just the picked book).
+     *
+     * Same cumulative convention as the class doc comment above, applied per component:
+     *   opening(c, Y) = cumulative 3-xx postings of component c through Y-1; closing = through Y; movement = closing - opening.
+     *   Accumulated Surplus additionally carries the unclosed revenue - expense (4-xx / 5-xx).
+     * Component is decided by the account code, never by the title:
+     *   3-01-01-010 and 3-07 -> surplus | 3-01-01-020 -> gov_equity | 3-01-01-030 -> contributed_capital |
+     *   3-02 -> revaluation_surplus | any other 3-xx -> other.
+     * Not available from the GL today (no tag distinguishes them): Subsidy from National Government as an equity
+     * movement (it is revenue, so it sits inside Surplus/(Deficit)) and Prior Period Adjustments.
+     */
+    public function fetchEquityStatement(?int $fiscalYr = null, ?int $bookId = null): array
+    {
+        try {
+            $fy  = $fiscalYr ?: (int) date('Y');
+            $yr  = 'COALESCE(g.fiscal_yr, EXTRACT(YEAR FROM g.posting_date)::int)';
+            $acc = "LTRIM(c.account_code, '0')";
+            $comp = "CASE WHEN LEFT({$acc}, 1) IN ('4', '5') THEN 'unclosed'
+                          WHEN {$acc} LIKE '3-01-01-010%' OR {$acc} LIKE '3-07%' THEN 'surplus'
+                          WHEN {$acc} LIKE '3-01-01-020%' THEN 'gov_equity'
+                          WHEN {$acc} LIKE '3-01-01-030%' THEN 'contributed_capital'
+                          WHEN {$acc} LIKE '3-02%' THEN 'revaluation_surplus'
+                          ELSE 'other' END";
+            $bookWhere = $bookId ? "AND g.book_id = {$bookId}" : '';
+
+            $books = App\ExecuteRows(
+                'SELECT book_id, name FROM fims.books ' . ($bookId ? "WHERE book_id = {$bookId} " : '') . 'ORDER BY book_id',
+                'DB'
+            ) ?: [];
+
+            $rows = App\ExecuteRows(
+                "SELECT g.book_id, {$comp} AS comp, {$yr} AS yr, SUM(g.credit - g.debit) AS net
+                 FROM {$this->tableGl} g
+                 JOIN {$this->tableCoa} c ON c.account_code = g.account_code
+                 WHERE LEFT({$acc}, 1) IN ('3', '4', '5') AND {$yr} <= {$fy} {$bookWhere}
+                 GROUP BY g.book_id, 2, 3",
+                'DB'
+            ) ?: [];
+
+            // $net[book_id][component][year] = credit - debit (revenue/expense too: credit - debit is their surplus effect)
+            $net = [];
+            foreach ($rows as $r) {
+                $net[(int) $r['book_id']][$r['comp']][(int) $r['yr']] = (float) $r['net'];
+            }
+
+            $bookIds  = array_map(fn ($b) => (int) $b['book_id'], $books);
+            $showOther = false;
+            foreach ($bookIds as $id) {
+                if (abs($this->cumulative($net, [$id], 'other', $fy)) > 0.004) {
+                    $showOther = true;
+                }
+            }
+            $columns = [];
+            foreach (self::EQUITY_COLUMNS as $key => $label) {
+                if ($key !== 'other' || $showOther) {
+                    $columns[] = ['key' => $key, 'label' => $label];
+                }
+            }
+            $keys = array_column($columns, 'key');
+
+            $entity = function (string $name, ?int $id, array $ids) use ($net, $fy, $keys): array {
+                $periods = [$this->equityPeriod($net, $ids, $fy - 1, $keys), $this->equityPeriod($net, $ids, $fy, $keys)];
+                $active = false;
+                foreach ($periods as $p) {
+                    $active = $active || abs($p['opening']['total']) > 0.004 || abs($p['closing']['total']) > 0.004;
+                }
+
+                return ['book_id' => $id, 'name' => $name, 'has_activity' => $active, 'periods' => $periods];
+            };
+
+            $entities = [];
+            if (!$bookId) {
+                $entities[] = $entity('Consolidated', null, $bookIds);
+            }
+            foreach ($books as $b) {
+                $entities[] = $entity($b['name'], (int) $b['book_id'], [(int) $b['book_id']]);
+            }
+
+            return ['success' => true, 'data' => [
+                'fiscal_yr' => $fy,
+                'columns'   => $columns,
+                'entities'  => $entities,
+            ]];
+        } catch (\Exception $e) {
+            App\LogError('StatementOfChangesService::fetchEquityStatement ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to fetch the Statement of Changes by equity component.'];
+        }
+    }
+
+    /** Sum of one component's postings through $upToYear, over the given books. */
+    private function cumulative(array $net, array $bookIds, string $comp, int $upToYear): float
+    {
+        $sum = 0.0;
+        foreach ($bookIds as $id) {
+            foreach ($net[$id][$comp] ?? [] as $year => $amount) {
+                if ($year <= $upToYear) {
+                    $sum += $amount;
+                }
+            }
+        }
+
+        return $sum;
+    }
+
+    /** One fiscal year's roll-forward (opening -> changes -> closing) across the given books. */
+    private function equityPeriod(array $net, array $bookIds, int $year, array $keys): array
+    {
+        $cum  = fn (string $c, int $y) => $this->cumulative($net, $bookIds, $c, $y);
+        $blank = array_fill_keys($keys, 0.0);
+        $withTotal = function (array $v) use ($keys): array {
+            $v = array_map(fn ($x) => round($x, 2), $v);
+            $v['total'] = round(array_sum(array_intersect_key($v, array_flip($keys))), 2);
+
+            return $v;
+        };
+        $move = fn (string $c) => $cum($c, $year) - $cum($c, $year - 1);
+
+        $opening = $blank;
+        $closing = $blank;
+        foreach ($keys as $k) {
+            $opening[$k] = $cum($k, $year - 1);
+            $closing[$k] = $cum($k, $year);
+        }
+        // the unclosed revenue - expense belongs to Accumulated Surplus
+        $opening['surplus'] += $cum('unclosed', $year - 1);
+        $closing['surplus'] += $cum('unclosed', $year);
+
+        $surplusRow = $blank;
+        $surplusRow['surplus'] = $move('unclosed');
+        $capitalRow = $blank;
+        $capitalRow['contributed_capital'] = $move('contributed_capital');
+        $revalRow = $blank;
+        $revalRow['revaluation_surplus'] = $move('revaluation_surplus');
+        $otherRow = $blank;                                  // anything else posted straight to 3-xx during the year
+        $otherRow['surplus'] = $move('surplus');
+        $otherRow['gov_equity'] = $move('gov_equity');
+        if (isset($otherRow['other'])) {
+            $otherRow['other'] = $move('other');
+        }
+
+        return [
+            'year'          => $year,
+            'opening_label' => 'BALANCE AT JANUARY 1, ' . $year,
+            'changes_label' => 'CHANGES IN NET ASSETS/EQUITY FOR CY ' . $year,
+            'closing_label' => 'BALANCE AT DECEMBER 31, ' . $year,
+            'opening'       => $withTotal($opening),
+            'closing'       => $withTotal($closing),
+            'rows'          => [
+                ['type' => 'label', 'label' => 'Add/(Deduct):'],
+                ['type' => 'item', 'label' => 'Surplus/(Deficit) for the period'] + $withTotal($surplusRow),
+                ['type' => 'label', 'label' => 'Adjustments:'],
+                ['type' => 'item', 'label' => 'Contributed Capital'] + $withTotal($capitalRow),
+                ['type' => 'item', 'label' => 'Revaluation Increment/(Decrement)'] + $withTotal($revalRow),
+                ['type' => 'item', 'label' => 'Other equity adjustments'] + $withTotal($otherRow),
+            ],
+        ];
+    }
 }

@@ -47,7 +47,8 @@ class PrintService
     ];
 
     // Printed forms: the service that builds each one (model() + html()), its DOCX
-    // generator (scripts/), paper (+ 'orientation', default portrait) and PDF font.
+    // generator (scripts/), paper (+ 'orientation', default portrait — a form whose layout depends on its data, like the
+    // Balance Sheet, sets `orientation` in its model instead, which wins) and PDF font.
     // Add a new form here.
     public const DOCS = [
         'CBA' => ['service' => CbaPrintService::class, 'script' => 'gen_cba_docx.js', 'paper' => 'A4',    'font' => 'Times-Roman'],
@@ -62,6 +63,11 @@ class PrintService
         'JEV' => ['service' => JevPrintService::class, 'script' => 'gen_jev_docx.js', 'paper' => 'A4', 'orientation' => 'landscape', 'font' => 'Helvetica'],
         'GL'  => ['service' => GeneralLedgerPrintService::class, 'script' => 'gen_gl_docx.js', 'paper' => 'letter', 'font' => 'Helvetica'],   // NHA Form No. 11: one GL account, one book, one year — monthly summary per journal
         'SL'  => ['service' => SubsidiaryLedgerPrintService::class, 'script' => 'gen_sl_docx.js', 'paper' => 'letter', 'font' => 'Times-Roman'],   // Subsidiary Ledger: a sheet per SL (every posting)
+        'BS'  => ['service' => BalanceSheetPrintService::class, 'paper' => 'A4', 'font' => 'Helvetica'],   // Balance Sheet — html / pdf only; the view's columns decide portrait / landscape; payload { lines, columns, rows, fiscal_yr, view }
+        'IS'  => ['service' => IncomeStatementPrintService::class, 'paper' => 'A4', 'font' => 'Helvetica'],   // Income Statement — the Balance Sheet's layout (html / pdf only; orientation from the model); payload { lines, columns, rows, fiscal_yr, view }
+        'SC'  => ['service' => StatementOfChangesPrintService::class, 'paper' => 'A4', 'font' => 'Helvetica'],   // Statement of Changes in Net Assets/Equity — the Balance Sheet's layout (html / pdf only); payload { lines, columns, rows, fiscal_yr }
+        'CF'  => ['service' => CashFlowPrintService::class, 'paper' => 'A4', 'font' => 'Helvetica'],   // Statement of Cash Flows — the Balance Sheet's layout with a blank Note column (html / pdf only); payload { lines, columns, rows, fiscal_yr }
+        'TB'  => ['service' => TrialBalancePrintService::class, 'paper' => 'A4', 'font' => 'Helvetica'],   // Trial Balance report — html / pdf only (no 'script' = no DOCX), payload { rows, as_of, book_name, fiscal_yr }
         'FTLA' => ['service' => FtlaPrintService::class, 'script' => 'gen_ftla_docx.js', 'paper' => 'A4', 'font' => 'Helvetica'],
         'FTLAREQ' => ['service' => FtlaRequestPrintService::class, 'script' => 'gen_laareq_docx.js', 'paper' => 'letter', 'font' => 'Helvetica'],   // the LAA release request's memo layout
         'CFA' => ['service' => CfaPrintService::class, 'script' => 'gen_laareq_docx.js', 'paper' => 'A4', 'font' => 'Helvetica'],   // funding-request memo, the shared memo layout
@@ -111,6 +117,9 @@ class PrintService
         if (!empty($cfg['pdf_only']) && $format !== 'pdf') {
             return ['success' => false, 'message' => 'The ' . $doc . ' prints as PDF only.', 'httpCode' => 400];
         }
+        if ($format === 'docx' && empty($cfg['script'])) {   // a form registered without a DOCX generator
+            return ['success' => false, 'message' => 'The ' . $doc . ' has no DOCX version (HTML or PDF only).', 'httpCode' => 400];
+        }
         try {
             $model = $this->model($doc, $payload);
         } catch (\InvalidArgumentException $e) {
@@ -130,7 +139,7 @@ class PrintService
         }
 
         $bytes = $format === 'pdf'
-            ? GlobalService::renderPdf($this->html($doc, $model, 'print'), $cfg['paper'], $cfg['font'], $cfg['orientation'] ?? 'portrait',
+            ? GlobalService::renderPdf($this->html($doc, $model, 'print'), $cfg['paper'], $cfg['font'], $model['orientation'] ?? $cfg['orientation'] ?? 'portrait',
                 $model['pdf_running_header'] ?? null)
             : self::renderDocx($cfg['script'], $model);
         if ($bytes === null) {
@@ -428,7 +437,8 @@ class PrintService
         }
     }
 
-    private static function imageDataUri(string $file): ?string
+    /** An image under _shared/images/ as a data URI (the PDF has no remote images); null when the file is missing. */
+    public static function imageDataUri(string $file): ?string
     {
         $path = self::repoRoot() . '/_shared/images/' . $file;
 

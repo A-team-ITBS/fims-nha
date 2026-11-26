@@ -33,6 +33,28 @@ $_cf_api = preg_match('~/api$~', $_cf_api) ? $_cf_api : $_cf_api . '/api';
 
 
     html.afims-dark[data-bs-theme="dark"] #cf-root .cf-sample { background: #3A2F10; color: #F5D98A; border-color: #6B5A22; }
+    /* Print / Export — one header button → PDF | Excel menu → preview modal (Print / Download on a bar above the preview) */
+    #cf-root .cf-menu-item { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; cursor: pointer; font-family: inherit; }
+    #cf-root .cf-menu-item:hover, #cf-root .cf-menu-item:focus-visible { background: var(--afims-surface-subtle, #F4F7FA); outline: none; }
+    #cf-root .cf-menu-item strong { display: block; font-size: 13px; color: var(--afims-text, #1e293b); }
+    #cf-root .cf-menu-item small  { display: block; font-size: 11.5px; color: var(--afims-text-muted, #62657E); }
+    #cf-root .cfx-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+    #cf-root .cfx-info { font-size: 12.5px; color: var(--afims-text-muted, #62657E); }
+    #cf-root .cfx-actions { display: flex; gap: 8px; }
+    #cf-root .cfx-actions [hidden] { display: none !important; }
+    #cf-root .cfx-stage { position: relative; height: 68vh; overflow: auto; background: #E8ECF2; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; }
+    #cf-root .cfx-frame { display: block; width: 100%; height: 100%; border: 0; background: #E8ECF2; }
+    #cf-root .cfx-msg { padding: 60px 20px; text-align: center; font-size: 13px; color: var(--afims-text-muted, #62657E); }
+    #cf-root .cfx-err { margin-top: 10px; padding: 8px 12px; border-radius: 7px; background: #FDECEC; color: #B42318; font-size: 13px; }
+    #cf-root .cfx-msg[hidden], #cf-root .cfx-err[hidden], #cf-root .cfx-frame[hidden], #cf-root .cfx-sheet[hidden] { display: none; }
+    /* the Excel preview: the sheet the .xlsx will contain, with a spreadsheet's column letters / row numbers, centred in the stage */
+    #cf-root .cfx-sheet { padding: 14px; }
+    #cf-root table.cfx-xl { margin: 0 auto; border-collapse: collapse; background: #fff; font: 12px Calibri, Arial, sans-serif; box-shadow: 0 1px 6px rgba(15, 32, 69, .18); }
+    #cf-root table.cfx-xl th { padding: 2px 8px; border: 1px solid #d0d3d6; background: #f1f3f4; color: #5f6368; font-weight: 500; text-align: center; }
+    #cf-root table.cfx-xl td { height: 20px; padding: 2px 6px; border: 1px solid #e1e3e6; }
+    #cf-root table.cfx-xl td.rn { background: #f1f3f4; color: #5f6368; text-align: center; padding: 2px 4px; }
+    #cf-root table.cfx-xl td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
     @media print {
         #cf-root .cf-letterhead,
         #cf-root .cf-cert { display: block !important; }
@@ -61,14 +83,41 @@ $_cf_api = preg_match('~/api$~', $_cf_api) ? $_cf_api : $_cf_api . '/api';
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
             </button>
-            <button id="cf-print" type="button" class="nha-btn-hdr" title="Print">
+            <button id="cf-export" type="button" class="nha-btn-hdr" title="Print or export the Statement of Cash Flows — PDF or Excel" aria-haspopup="true" aria-expanded="false">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/></svg>
-                Print
+                Print / Export &#9662;
             </button>
-            <button id="cf-excel" type="button" class="nha-btn-hdr" title="Export to Excel">
-                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
-                Excel
-            </button>
+        </div>
+    </div>
+
+    <!-- Format menu of the Print / Export button (fixed, so the banner's rounded corners can't clip it) -->
+    <div id="cf-export-menu" role="menu" class="no-print" style="display:none;position:fixed;z-index:1060;min-width:230px;background:var(--afims-surface,#fff);border:1px solid var(--afims-border,#E4ECF2);border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.18);padding:6px;">
+        <button type="button" role="menuitem" class="cf-menu-item" data-format="pdf"><strong>PDF</strong><small>Preview, then print or download</small></button>
+        <button type="button" role="menuitem" class="cf-menu-item" data-format="xlsx"><strong>Excel</strong><small>Preview, then download (.xlsx)</small></button>
+    </div>
+
+    <!-- ── PRINT / EXPORT PREVIEW ─────────────────────────── -->
+    <div id="cf-overlay" class="nha-overlay no-print">
+        <div class="nha-modal nha-modal-xl" role="dialog" aria-modal="true" aria-labelledby="cf-x-title">
+            <div class="nha-modal-hdr">
+                <h3 class="nha-modal-title" id="cf-x-title">Statement of Cash Flows</h3>
+                <button type="button" class="nha-modal-close" id="cf-x-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="nha-modal-body">
+                <div class="cfx-bar">
+                    <span class="cfx-info" id="cf-x-info"></span>
+                    <span class="cfx-actions">
+                        <button type="button" class="nha-btn nha-btn-outline" id="cf-x-print" disabled>Print</button>
+                        <button type="button" class="nha-btn nha-btn-primary" id="cf-x-download" disabled>Download</button>
+                    </span>
+                </div>
+                <div class="cfx-stage">
+                    <div class="cfx-msg" id="cf-x-msg">Loading preview&hellip;</div>
+                    <iframe class="cfx-frame" id="cf-x-frame" title="Statement of Cash Flows PDF preview" hidden></iframe>
+                    <div class="cfx-sheet" id="cf-x-sheet" hidden></div>
+                </div>
+                <div class="cfx-err" id="cf-x-err" role="alert" hidden></div>
+            </div>
         </div>
     </div>
 
@@ -183,10 +232,28 @@ else cf_boot();
 
 function cf_bindEvents() {
     $cf('cf-refresh')?.addEventListener('click', cf_load);
-    $cf('cf-print')?.addEventListener('click', () => window.print());
-    $cf('cf-excel')?.addEventListener('click', cf_exportExcel);
     $cf('cf-filter-fy').addEventListener('change', cf_load);
     $cf('cf-filter-book').addEventListener('change', cf_load);
+
+    // Print / Export: the header button's menu (PDF | Excel) → the preview modal
+    $cf('cf-export')?.addEventListener('click', e => { e.stopPropagation(); cf_toggleMenu($cf('cf-export-menu').style.display === 'none'); });
+    $cf('cf-export-menu')?.addEventListener('click', e => {
+        e.stopPropagation();
+        const item = e.target.closest('.cf-menu-item');
+        if (!item) return;
+        cf_toggleMenu(false);
+        cf_openExport(item.dataset.format);
+    });
+    document.addEventListener('click', () => cf_toggleMenu(false));
+    window.addEventListener('scroll', () => cf_toggleMenu(false), true);
+    window.addEventListener('resize', () => cf_toggleMenu(false));
+    $cf('cf-x-close')?.addEventListener('click', cf_closeExport);
+    $cf('cf-overlay')?.addEventListener('click', e => { if (e.target === $cf('cf-overlay')) cf_closeExport(); });
+    $cf('cf-x-print')?.addEventListener('click', cf_printPdf);
+    $cf('cf-x-download')?.addEventListener('click', cf_downloadFile);
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && $cf('cf-overlay').classList.contains('open')) { e.preventDefault(); cf_closeExport(); }
+    });
     /* Sample preview has no button: type `cash_flow = true` in the browser console to show
        made-up figures, `cash_flow = false` to go back to live data. */
     Object.defineProperty(window, 'cash_flow', {
@@ -367,10 +434,10 @@ function cf_sampleData(fy) {
     };
 }
 
-/* ── Excel export ──────────────────────────────────────────── */
-/* Built from the table currently on screen. Rows come in three shapes: a full-width header (1 cell), a subtotal /
-   grand-total / "Add:" row whose label spans the Note column too (3 cells), and a normal line (4 cells).
-   Amounts are parsed back from the displayed text ("1,234.00", "(1,234.00)", "-" for zero) into real numbers. */
+/* ── Excel / PDF ───────────────────────────────────────────── */
+/* Both are built from the table currently on screen. Rows come in three shapes: a full-width row (1 cell: a section header or
+   "Disbursements made for:"), a subtotal / grand-total / "Add:" row whose label spans the Note column too (3 cells), and a normal
+   line (4 cells). Amounts are parsed back from the displayed text ("1,234.00", "(1,234.00)", "-" for zero) into real numbers. */
 function cf_parseAmount(text) {
     const t = String(text || '').trim();
     if (t === '-' || t === '') return 0;
@@ -379,15 +446,236 @@ function cf_parseAmount(text) {
     return /^\(/.test(t) ? -n : n;
 }
 
-async function cf_exportExcel() {
-    if (!window.ExcelJS) { cf_showError('Excel library failed to load. Check your internet connection and reload.'); return; }
-    const trs = [...document.querySelectorAll('#cf-tbody tr')];
-    if (!trs.length || document.querySelector('#cf-tbody .nha-empty') || document.querySelector('#cf-tbody .nha-loader')) {
-        cf_showError('Nothing to export — no data for this fiscal year.');
-        return;
+const CF_CERT = 'I HEREBY CERTIFY that the foregoing Statement of Cash Flows is a true and complete statement of the cash receipts and disbursements as shown in the books of accounts, prepared and presented in conformity with International Public Sector Accounting Standards (IPSAS).';
+
+/* The table on screen as data — the ONE source the PDF payload, the Excel preview and the Excel workbook are all made from, so
+   the three can't disagree. rows[]: { cls (the row's classes), major (a full-width row), title, note, values ([current, previous]; null = blank) }. */
+function cf_sheetModel() {
+    const text = el => el.textContent.trim();
+    const head = ['Particulars', 'Note', text($cf('cf-th-cur')), text($cf('cf-th-prev'))];
+    const titleLines = [
+        { text: 'NATIONAL HOUSING AUTHORITY', bold: true },
+        { text: 'STATEMENTS OF CASH FLOW', bold: true },
+        { text: text($cf('cf-title-book')), bold: true },
+        { text: text($cf('cf-report-date')), bold: false },
+    ];
+    const rows = [...document.querySelectorAll('#cf-tbody tr')].map(tr => {
+        const cells = [...tr.cells], n = cells.length;
+        return {
+            cls: tr.className,
+            major: n === 1,
+            title: text(cells[0]),
+            note: n >= 4 ? text(cells[1]) : '',
+            values: n === 1 ? [] : [cf_parseAmount(cells[n - 2].textContent), cf_parseAmount(cells[n - 1].textContent)],
+        };
+    });
+    return { head, nCols: head.length, titleLines: titleLines.filter(l => l.text), rows };
+}
+
+/* The row's kind, as the server's print form names it (BalanceSheetPrintService). "Disbursements made for:" is a full-width row that is
+   not a section band, so it prints as an ordinary line; the disbursement lines under it are `detail` (one level deeper). */
+function cf_rowKind(r) {
+    if (/major-row/.test(r.cls)) return 'major';
+    if (/grand-row/.test(r.cls)) return /normalcase/.test(r.cls) ? 'total' : 'grand';   // the page prints these in normal case
+    if (/subtotal-row/.test(r.cls)) return 'subtotal';
+    if (/indent-row/.test(r.cls)) return 'detail';
+    return 'account';
+}
+
+/* ── Print / Export: menu → preview → Print / Download ─────────────────────────────────────────
+   PDF   — the server renders it (POST /print/cf → PrintService 'CF', Dompdf, like the other printed forms) from the table on
+           screen; the preview IS that PDF, so Print and Download give exactly what is shown.
+   Excel — built here with ExcelJS from the same model (cf_buildWorkbook); the preview draws that sheet. */
+const CF_PRINT_API = CF_BASE + '/print/cf';
+const cf_x = { format: 'pdf', seq: 0, file: null, url: null };   // file = { blob, filename } shown in the preview
+
+function cf_toggleMenu(open) {
+    const menu = $cf('cf-export-menu'), btn = $cf('cf-export');
+    if (!menu || !btn) return;
+    if (!open) { menu.style.display = 'none'; btn.setAttribute('aria-expanded', 'false'); return; }
+    menu.style.display = '';
+    const r = btn.getBoundingClientRect(), w = menu.offsetWidth || 230, h = menu.offsetHeight || 90;
+    menu.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) + 'px';
+    menu.style.top  = (r.bottom + 6 + h > window.innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+    btn.setAttribute('aria-expanded', 'true');
+}
+
+/* The file name stem both formats share: Statement-of-Cash-Flows_<year> (the server builds the same one for the PDF). */
+function cf_fileStem() { return `Statement-of-Cash-Flows_${$cf('cf-filter-fy').value}`; }
+
+/* There is a loaded table to export (not loading, not the "nothing posted" message). */
+function cf_hasData() {
+    return !!document.querySelector('#cf-tbody tr') && !document.querySelector('#cf-tbody .nha-empty') && !document.querySelector('#cf-tbody .nha-loader');
+}
+
+/* What the server prints: the table on screen. The Note column is always blank on the page, so it is sent as blank. */
+function cf_printPayload() {
+    const m = cf_sheetModel();
+    return {
+        fiscal_yr: $cf('cf-filter-fy').value,
+        lines: m.titleLines,
+        columns: m.head,
+        rows: m.rows.map(r => ({ kind: cf_rowKind(r), title: r.title, values: r.major ? [] : [null, ...r.values] })),
+    };
+}
+
+function cf_xState(msg, err) {
+    $cf('cf-x-msg').hidden = !msg;
+    if (msg) $cf('cf-x-msg').textContent = msg;
+    $cf('cf-x-err').hidden = !err;
+    if (err) $cf('cf-x-err').textContent = err;
+}
+function cf_xReady(on) {
+    $cf('cf-x-print').disabled = $cf('cf-x-download').disabled = !on;
+}
+function cf_releaseFile() {
+    if (cf_x.url) URL.revokeObjectURL(cf_x.url);
+    cf_x.url = null; cf_x.file = null;
+}
+
+async function cf_openExport(format) {
+    if (!cf_hasData()) { cf_showError('Nothing to export — no data for this fiscal year.'); return; }
+    if (format === 'xlsx' && !window.ExcelJS) { cf_showError('Excel library failed to load. Check your internet connection and reload.'); return; }
+    cf_hideError();
+
+    const my = ++cf_x.seq;
+    cf_releaseFile();
+    cf_x.format = format === 'xlsx' ? 'xlsx' : 'pdf';
+    const pdf = cf_x.format === 'pdf';
+    const book = $cf('cf-filter-book').selectedOptions?.[0]?.textContent || '';
+    $cf('cf-x-title').textContent = 'Statement of Cash Flows — ' + (pdf ? 'PDF' : 'Excel');
+    $cf('cf-x-info').textContent = [book, $cf('cf-report-date').textContent].filter(Boolean).join(' · ');
+    $cf('cf-x-print').hidden = !pdf;                       // an Excel file is downloaded, not printed
+    $cf('cf-x-download').textContent = pdf ? 'Download PDF' : 'Download Excel';
+    cf_xReady(false);
+    $cf('cf-x-frame').hidden = true; $cf('cf-x-frame').removeAttribute('src');
+    $cf('cf-x-sheet').hidden = true;
+    cf_xState('Loading preview…', '');
+    $cf('cf-overlay').classList.add('open');
+
+    try {
+        if (pdf) await cf_loadPdf(my); else await cf_loadExcel(my);
+    } catch (e) {
+        if (my !== cf_x.seq) return;                       // closed or reopened while loading
+        cf_xState('The preview could not be loaded.', e.message);
     }
-    const nCols = 4;
-    const headCells = ['Particulars', 'Note', $cf('cf-th-cur').textContent.trim(), $cf('cf-th-prev').textContent.trim()];
+}
+
+function cf_closeExport() {
+    cf_x.seq++;
+    $cf('cf-overlay').classList.remove('open');
+    $cf('cf-x-frame').hidden = true; $cf('cf-x-frame').removeAttribute('src');
+    $cf('cf-x-sheet').innerHTML = '';
+    cf_releaseFile();
+}
+
+async function cf_loadPdf(my) {
+    const res = await cf_authFetch(CF_PRINT_API, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign(cf_printPayload(), { format: 'pdf' })),
+    });
+    let json = null; try { json = await res.json(); } catch (e) { /* not JSON */ }
+    if (!res.ok || !json || json.success === false) throw new Error((json && json.message) || ('HTTP ' + res.status));
+    if (my !== cf_x.seq) return;
+
+    const bin = atob(json.data), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    cf_x.file = { blob: new Blob([bytes], { type: json.mime || 'application/pdf' }), filename: json.filename || (cf_fileStem() + '.pdf') };
+    cf_x.url  = URL.createObjectURL(cf_x.file.blob);
+
+    $cf('cf-x-frame').src = cf_x.url + '#toolbar=0&navpanes=0';   // the viewer's own toolbar is hidden: Print / Download are above
+    $cf('cf-x-frame').hidden = false;
+    cf_xState('', '');
+    cf_xReady(true);
+}
+
+async function cf_loadExcel(my) {
+    const buf = await cf_buildWorkbook().xlsx.writeBuffer();
+    if (my !== cf_x.seq) return;
+    cf_x.file = { blob: new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), filename: cf_fileStem() + '.xlsx' };
+    $cf('cf-x-sheet').innerHTML = cf_excelPreviewHtml();
+    $cf('cf-x-sheet').hidden = false;
+    cf_xState('', '');
+    cf_xReady(true);
+}
+
+/* Print the PDF shown in the preview; if the browser won't print from the frame, open it in a tab (its viewer prints). */
+function cf_printPdf() {
+    const frame = $cf('cf-x-frame');
+    try {
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+    } catch (e) {
+        if (cf_x.url) window.open(cf_x.url, '_blank');
+    }
+}
+
+function cf_downloadFile() {
+    if (!cf_x.file) return;
+    const a = document.createElement('a');
+    const url = URL.createObjectURL(cf_x.file.blob);
+    a.href = url;
+    a.download = cf_x.file.filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* How far the workbook indents a row's label (alignment.indent): disbursement lines 3, other lines 1, subtotals / totals 0. */
+function cf_indent(cls) { return /indent-row/.test(cls) ? 3 : (/^fims-report-table-row/.test(cls) ? 1 : 0); }
+
+/* The Excel preview: the sheet cf_buildWorkbook() writes (same model, same row order and styling rules), drawn as a spreadsheet —
+   keep the two in step. Amounts: zero "-", negative in brackets (the workbook's number format). */
+function cf_excelPreviewHtml() {
+    const m = cf_sheetModel(), n = m.nCols;
+    const num = v => {
+        if (v === null || v === undefined) return '';
+        if (Math.abs(v) < 0.005) return '-';
+        const s = Math.abs(v).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return v < 0 ? `(${s})` : s;
+    };
+    const out = [];
+    let rn = 0;
+    const row = (cells, trStyle = '') => { rn++; out.push(`<tr style="${trStyle}"><td class="rn">${rn}</td>${cells}</tr>`); };
+    const merged = (text, style = '') => row(`<td colspan="${n}" style="${style}">${cf_esc(text)}</td>`);
+    const blank = () => row('<td></td>'.repeat(n));
+
+    m.titleLines.forEach(l => merged(l.text, 'text-align:center;' + (l.bold ? 'font-weight:700;' : '')));
+    blank();
+    const hd = 'background:#D9E1F2;font-weight:700;border:1px solid #000;';
+    row(m.head.map((h, i) => `<td style="${hd}text-align:${i > 1 ? 'right' : 'center'};">${cf_esc(h)}</td>`).join(''));
+
+    m.rows.forEach(r => {
+        if (r.major) {
+            if (/major-row/.test(r.cls)) merged(r.title, 'background:#EDEDED;font-weight:700;');
+            else merged(r.title, 'padding-left:' + (cf_indent(r.cls) * 9 + 6) + 'px;');
+            return;
+        }
+        const kind = cf_rowKind(r);
+        const total = kind === 'subtotal' || kind === 'grand' || kind === 'total';
+        const rule = total ? 'font-weight:700;border-top:1px solid #000;' + (kind !== 'subtotal' ?'border-bottom:3px double #000;' : '') : '';
+        row(`<td style="padding-left:${cf_indent(r.cls) * 9 + 6}px;white-space:normal;vertical-align:top;${rule}">${cf_esc(r.title)}</td>`
+            + `<td style="${rule}">${cf_esc(r.note)}</td>`
+            + r.values.map(v => `<td class="n" style="vertical-align:top;${rule}">${num(v)}</td>`).join(''));
+    });
+
+    blank();
+    merged(CF_CERT, 'height:48px;vertical-align:top;white-space:normal;');
+    blank();
+    blank();
+    row('<td style="border-top:1px solid #000;text-align:center;">Signature Over Printed Name</td>' + '<td></td>'.repeat(n - 1));
+    row('<td style="text-align:center;">Head of Accounting Department</td>' + '<td></td>'.repeat(n - 1));
+
+    const widths = [400, 56, 140, 140];
+    const cols = ['<col style="width:34px">', ...m.head.map((_, i) => `<col style="width:${widths[i] || 140}px">`)].join('');
+    const letters = m.head.map((_, i) => `<th>${String.fromCharCode(65 + i)}</th>`).join('');
+    return `<table class="cfx-xl"><colgroup>${cols}</colgroup><thead><tr><th></th>${letters}</tr></thead><tbody>${out.join('')}</tbody></table>`;
+}
+
+/* ── Excel workbook ────────────────────────────────────────── */
+function cf_buildWorkbook() {
+    const { head: headCells, nCols, titleLines, rows } = cf_sheetModel();
 
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Cash Flows', {
@@ -405,10 +693,7 @@ async function cf_exportExcel() {
         r.getCell(1).alignment = { horizontal: 'center' };
         r.getCell(1).font = { bold, size: 11 };
     };
-    title('NATIONAL HOUSING AUTHORITY');
-    title('STATEMENTS OF CASH FLOW');
-    title($cf('cf-title-book').textContent);
-    title($cf('cf-report-date').textContent, false);
+    titleLines.forEach(l => title(l.text, l.bold));
     ws.addRow([]);
 
     const head = ws.addRow(headCells);
@@ -419,12 +704,9 @@ async function cf_exportExcel() {
         c.alignment = { horizontal: i > 2 ? 'right' : 'center', wrapText: true };
     });
 
-    trs.forEach(tr => {
-        const cls = tr.className;
-        const cells = [...tr.cells];
-        const label = cells[0].textContent.trim();
-        if (cells.length === 1) { // full-width row: section header, or "Disbursements made for:"
-            const m = ws.addRow([label]);
+    rows.forEach(({ cls, major, title: rowTitle, note, values }) => {
+        if (major) { // full-width row: section header, or "Disbursements made for:"
+            const m = ws.addRow([rowTitle]);
             ws.mergeCells(m.number, 1, m.number, nCols);
             if (/major-row/.test(cls)) {
                 m.getCell(1).font = { bold: true };
@@ -434,19 +716,17 @@ async function cf_exportExcel() {
             }
             return;
         }
-        const four = cells.length >= 4;
-        const r = ws.addRow([label, four ? cells[1].textContent.trim() : '', cf_parseAmount(cells[cells.length - 2].textContent), cf_parseAmount(cells[cells.length - 1].textContent)]);
+        const r = ws.addRow([rowTitle, note, ...values]);
         r.getCell(3).numFmt = NUM;
         r.getCell(4).numFmt = NUM;
-        const indent = /indent-row/.test(cls) ? 3 : (/^fims-report-table-row/.test(cls) ? 1 : 0);
-        r.getCell(1).alignment = { indent, wrapText: true, vertical: 'top' };
+        r.getCell(1).alignment = { indent: cf_indent(cls), wrapText: true, vertical: 'top' };
         if (/subtotal-row|grand-row/.test(cls)) {
             r.eachCell(c => { c.font = { bold: true }; c.border = { top: thin, bottom: /grand-row/.test(cls) ? { style: 'double' } : undefined }; });
         }
     });
 
     ws.addRow([]);
-    const cert = ws.addRow(['I HEREBY CERTIFY that the foregoing Statement of Cash Flows is a true and complete statement of the cash receipts and disbursements as shown in the books of accounts, prepared and presented in conformity with International Public Sector Accounting Standards (IPSAS).']);
+    const cert = ws.addRow([CF_CERT]);
     ws.mergeCells(cert.number, 1, cert.number, nCols);
     cert.getCell(1).alignment = { wrapText: true, vertical: 'top' };
     cert.height = 48;
@@ -459,15 +739,7 @@ async function cf_exportExcel() {
 
     ws.views = [{ state: 'frozen', ySplit: head.number }];
 
-    const buf  = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `Statement-of-Cash-Flows_${$cf('cf-filter-fy').value}.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    return wb;
 }
 
 /* ── Formatters ────────────────────────────────────────────── */
