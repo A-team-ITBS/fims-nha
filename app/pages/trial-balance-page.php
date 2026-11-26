@@ -376,8 +376,8 @@ function tb_render(json) {
             return header + `<tr class="fims-report-table-row${contra ? ' fims-report-table-contra-row' : ''}">
                 <td>${tb_esc(r.account_title) || '—'}</td>
                 <td class="nha-mono fims-report-table-num">${tb_esc(r.account_code)}</td>
-                <td class="text-end nha-mono fims-report-table-num">${tb_peso(r.total_debit)}</td>
-                <td class="text-end nha-mono fims-report-table-num">${tb_peso(r.total_credit)}</td>
+                <td class="text-end nha-mono fims-report-table-num">${tb_pesoOrDash(r.total_debit)}</td>
+                <td class="text-end nha-mono fims-report-table-num">${tb_pesoOrDash(r.total_credit)}</td>
             </tr>`;
         }).join('');
     }
@@ -667,6 +667,10 @@ function tb_buildWorkbook() {
 /* ── Formatters ────────────────────────────────────────────── */
 function tb_peso(v) {
     return '₱ ' + Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+/* An empty side of an account (balance method: one side per account) shows "-" instead of ₱ 0.00. */
+function tb_pesoOrDash(v) {
+    return Math.abs(Number(v || 0)) < 0.005 ? '-' : tb_peso(v);
 }
 function tb_esc(text) {
     if (text === null || text === undefined) return '';

@@ -64,7 +64,8 @@ class GeneralLedgerPrintService
         $t     = static fn (string $k) => PrintService::text($p[$k] ?? '');
         $money = static fn (float $v) => abs($v) >= 0.005 ? PrintService::money($v) : '';
         // a balance against the account's normal side prints in brackets, as on the books' sheets: (15,000.00)
-        $bal   = static fn (float $v) => $v <= -0.005 ? '(' . PrintService::money(abs($v)) . ')' : PrintService::money(abs($v) < 0.005 ? 0.0 : $v);
+        // a zero balance prints as a dash
+        $bal   = static fn (float $v) => abs($v) < 0.005 ? '-' : ($v < 0 ? '(' . PrintService::money(abs($v)) . ')' : PrintService::money($v));
         $mainOffice = (bool) preg_match('/\bMAIN\b/i', (string) ($p['fund'] ?? ''));
         $label = static fn (string $j) => $mainOffice && isset(self::MAIN_OFFICE_WORDING[$j]) ? self::MAIN_OFFICE_WORDING[$j] : self::JOURNALS[$j];
         $sign  = in_array($p['debit_normal'] ?? true, [false, 'false', 0, '0'], true) ? -1 : 1;   // balance = sign × (debit − credit)

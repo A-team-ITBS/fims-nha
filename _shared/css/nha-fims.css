@@ -10868,7 +10868,10 @@ tr.comp-at-risk       td { background:rgba(245,158,11,.05)  !important; }
 .nha-root table.fims-report-table thead th {
   padding: 6px 12px;
   font-size: calc(0.8125rem * var(--td-scale, 1)) !important;   /* 13px  column headers */
-  position: sticky; top: 0; z-index: 1;
+  position: sticky; top: 0; z-index: 3;
+  /* The header fill lives on the <tr>, which does not travel with a sticky <th> — without its own background the
+     rows scrolling underneath show through the pinned header. */
+  background: var(--afims-heading-fill, #000E3E);
 }
 .nha-root table.fims-report-table tbody td {
   padding: 4px 12px;
