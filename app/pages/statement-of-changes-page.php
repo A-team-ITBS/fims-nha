@@ -14,38 +14,30 @@ $_sc_api = preg_match('~/api$~', $_sc_api) ? $_sc_api : $_sc_api . '/api';
 
 
 <style>
+    #sc-root :is(.nha-mono, .nha-amt, .u-font-mono, .fims-mono, .amt-cell) { font-family: var(--font-body); font-variant-numeric: tabular-nums; } /* plain zero, no dotted-zero glyph */
     /* Table styling (.fims-report-table*) lives in _shared/css/nha-fims.css. Only page-specific, non-table rules remain here. */
     #sc-root .sc-report-title { text-align: center; margin: 0 0 18px; }
-    #sc-root .sc-report-title div { font-weight: 700; font-size: 14px; line-height: 1.6; }
+    #sc-root .sc-report-title div { font-weight: 700; font-size:var(--fs-md); line-height: 1.6; }
     #sc-root .sc-report-title .sc-report-date { font-weight: 400; }
-    #sc-root .sc-sample { display: none; margin: 0 0 14px; padding: 10px 14px; border-radius: 6px; font-size: 13px; background: #FFF4D6; color: #6B4A00; border: 1px solid #F0D58A; }
+    #sc-root .sc-sample { display: none; margin: 0 0 14px; padding: 10px 14px; border-radius: 6px; font-size:var(--fs-base); background: var(--afims-warning-soft); color: var(--afims-warning-text); border: 1px solid var(--afims-warning); }
 
-    /* Same page-level type scale as the Trial Balance / Balance Sheet / Income Statement pages. _shared/js/custom.js forces
-       `1em * scale !important` on inputs/selects/buttons, so those get the same direct rem + !important. */
-    #sc-root .nha-hdr-tag             { font-size: 0.75rem; }    /* 12px */
-    #sc-root .nha-hdr-title           { font-size: 1.25rem; }    /* 20px */
-    #sc-root .nha-btn-hdr             { font-size: calc(0.875rem * var(--button-scale, 1)) !important; } /* 14px  Refresh */
-    #sc-root .nha-filter-label        { font-size: 0.75rem; }    /* 12px */
-    #sc-root .nha-filter-select       { font-size: calc(0.875rem * var(--input-scale, 1)) !important; }  /* 14px  dropdowns */
-    #sc-root .nha-bdg                 { font-size: 0.8125rem; }  /* 13px  status badge */
-    #sc-root .nha-error               { font-size: 0.875rem; }   /* 14px */
-    #sc-root .nha-hint                { font-size: 0.875rem; padding: 0 16px; margin: 0 0 14px; color: var(--afims-text-muted, #62657E); }   /* 14px; 16px side padding lines it up with the filter card */
+    #sc-root .nha-hint { padding: 0 16px; margin: 0 0 14px; color: var(--afims-text-muted); }
 
 
     html.afims-dark[data-bs-theme="dark"] #sc-root .sc-sample { background: #3A2F10; color: #F5D98A; border-color: #6B5A22; }
     /* Print / Export — one header button → PDF | Excel menu → preview modal (Print / Download on a bar above the preview) */
     #sc-root .sc-menu-item { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; cursor: pointer; font-family: inherit; }
     #sc-root .sc-menu-item:hover, #sc-root .sc-menu-item:focus-visible { background: var(--afims-surface-subtle, #F4F7FA); outline: none; }
-    #sc-root .sc-menu-item strong { display: block; font-size: 13px; color: var(--afims-text, #1e293b); }
-    #sc-root .sc-menu-item small  { display: block; font-size: 11.5px; color: var(--afims-text-muted, #62657E); }
+    #sc-root .sc-menu-item strong { display: block; font-size:var(--fs-base); color: var(--afims-text, #1e293b); }
+    #sc-root .sc-menu-item small  { display: block; font-size:var(--fs-xs); color: var(--afims-text-muted, #62657E); }
     #sc-root .scx-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
-    #sc-root .scx-info { font-size: 12.5px; color: var(--afims-text-muted, #62657E); }
+    #sc-root .scx-info { font-size:var(--fs-sm); color: var(--afims-text-muted, #62657E); }
     #sc-root .scx-actions { display: flex; gap: 8px; }
     #sc-root .scx-actions [hidden] { display: none !important; }
-    #sc-root .scx-stage { position: relative; height: 68vh; overflow: auto; background: #E8ECF2; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; }
-    #sc-root .scx-frame { display: block; width: 100%; height: 100%; border: 0; background: #E8ECF2; }
-    #sc-root .scx-msg { padding: 60px 20px; text-align: center; font-size: 13px; color: var(--afims-text-muted, #62657E); }
-    #sc-root .scx-err { margin-top: 10px; padding: 8px 12px; border-radius: 7px; background: #FDECEC; color: #B42318; font-size: 13px; }
+    #sc-root .scx-stage { position: relative; height: 68vh; overflow: auto; background: var(--afims-surface-subtle); border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; }
+    #sc-root .scx-frame { display: block; width: 100%; height: 100%; border: 0; background: var(--afims-surface-subtle); }
+    #sc-root .scx-msg { padding: 60px 20px; text-align: center; font-size:var(--fs-base); color: var(--afims-text-muted, #62657E); }
+    #sc-root .scx-err { margin-top: 10px; padding: 8px 12px; border-radius: 7px; background: var(--afims-danger-soft); color: var(--afims-danger-text); font-size:var(--fs-base); }
     #sc-root .scx-msg[hidden], #sc-root .scx-err[hidden], #sc-root .scx-frame[hidden], #sc-root .scx-sheet[hidden] { display: none; }
     /* the Excel preview: the sheet the .xlsx will contain, with a spreadsheet's column letters / row numbers, centred in the stage */
     #sc-root .scx-sheet { padding: 14px; }
@@ -57,7 +49,7 @@ $_sc_api = preg_match('~/api$~', $_sc_api) ? $_sc_api : $_sc_api . '/api';
 
     /* SCNAE tab */
     #sc-root .sc-eq-entity { margin: 0 0 22px; }
-    #sc-root .sc-eq-name { margin: 0 0 6px; padding: 0 4px; font-size: 0.9375rem; font-weight: 700; color: var(--afims-heading, #000E3E); }
+    #sc-root .sc-eq-name { margin: 0 0 6px; padding: 0 4px; font-size:var(--fs-md); font-weight: 700; color: var(--afims-heading, #000E3E); }
     #sc-root .sc-eq-label { padding-left: 24px; }
     #sc-root .sc-eq-note { font-style: italic; }
 
@@ -74,7 +66,7 @@ $_sc_api = preg_match('~/api$~', $_sc_api) ? $_sc_api : $_sc_api . '/api';
     <!-- same banner as User Access: app-page-header (styled by the global _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
-            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18M5 7h14M5 7l-2.5 6a3 3 0 005 0L5 7zm14 0l-2.5 6a3 3 0 005 0L19 7z"/>
             </svg>
         </div>

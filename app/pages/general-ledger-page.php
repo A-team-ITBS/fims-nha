@@ -20,68 +20,69 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <style>
+    #gl-root :is(.nha-mono, .nha-amt, .u-font-mono, .fims-mono, .amt-cell) { font-family: var(--font-body); font-variant-numeric: tabular-nums; } /* plain zero, no dotted-zero glyph */
     #gl-root .gl-combo-wrap { position: relative; }
     #gl-root .gl-combo-results {
         position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20;
-        background: #fff; border: 1px solid var(--afims-border, #E2E4ED); border-radius: 8px;
+        background: var(--afims-surface); border: 1px solid var(--afims-border, #E2E4ED); border-radius: 8px;
         box-shadow: 0 8px 24px rgba(0,0,0,.08); max-height: 260px; overflow-y: auto; display: none;
     }
-    #gl-root .gl-combo-item { padding: 8px 12px; cursor: pointer; font-size: 13px; }
-    #gl-root .gl-combo-item:hover { background: var(--afims-bg-soft, #F5F6FA); }
-    #gl-root .gl-combo-empty { padding: 8px 12px; font-size: 13px; color: var(--afims-text-muted,#62657E); }
+    #gl-root .gl-combo-item { padding: 8px 12px; cursor: pointer; font-size:var(--fs-base); }
+    #gl-root .gl-combo-item:hover { background: var(--afims-surface-subtle); }
+    #gl-root .gl-combo-empty { padding: 8px 12px; font-size:var(--fs-base); color: var(--afims-text-muted,#62657E); }
     #gl-root .gl-summary-cards { display: flex; gap: 12px; flex-wrap: wrap; margin: 0 0 14px; }
     #gl-root .gl-summary-card {
         flex: 1 1 160px; border: 1px solid var(--afims-border, #E2E4ED); border-radius: 10px;
-        padding: 12px 14px; background: #fff;
+        padding: 12px 14px; background: var(--afims-surface);
     }
-    #gl-root .gl-summary-label { font-size: 11px; color: var(--afims-text-muted,#62657E); text-transform: uppercase; letter-spacing: .03em; }
-    #gl-root .gl-summary-value { font-size: 18px; font-weight: 600; margin-top: 4px; }
-    #gl-root .gl-group-row td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; }
-    #gl-root .gl-ending-balance { text-align: right; padding: 8px 4px; font-size: 13px; color: var(--afims-text-muted,#62657E); }
+    #gl-root .gl-summary-label { font-size:var(--fs-xs); color: var(--afims-text-muted,#62657E); text-transform: uppercase; letter-spacing: .03em; }
+    #gl-root .gl-summary-value { font-size:var(--fs-xl); font-weight: 600; margin-top: 4px; }
+    #gl-root .gl-group-row td { background: var(--afims-surface-subtle); font-weight: 600; }
+    #gl-root .gl-ending-balance { text-align: right; padding: 8px 4px; font-size:var(--fs-base); color: var(--afims-text-muted,#62657E); }
     #gl-root .gl-ending-balance strong { color: inherit; font-weight: 700; }
     #gl-root .gl-group-row.gl-clickable { cursor: pointer; }
     #gl-root .gl-group-row.gl-clickable:hover td { filter: brightness(.96); }
     #gl-root .gl-node .gl-lbl { padding-left: calc(12px + var(--gl-depth, 0) * 22px); }
     #gl-root .gl-txn td:first-child { padding-left: calc(12px + var(--gl-depth, 0) * 22px); }
-    #gl-root .gl-k-group td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 700; }
+    #gl-root .gl-k-group td { background: var(--afims-surface-subtle); font-weight: 700; }
     #gl-root .gl-k-gl td { font-weight: 600; }
-    #gl-root .gl-k-gl .gl-lbl { color: var(--afims-primary, #1D4ED8); }
+    #gl-root .gl-k-gl .gl-lbl { color: var(--afims-primary-text); }
     #gl-root .gl-k-sl td { font-weight: 400; }
     #gl-root .gl-node.gl-clickable { cursor: pointer; }
     #gl-root .gl-node.gl-clickable:hover td { filter: brightness(.96); }
     #gl-root .gl-combo-wrap .gl-search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--afims-text-muted, #62657E); pointer-events: none; z-index: 1; }
     /* light column header of the GL tree (Account code / Account description / Debit / Credit / Balance) */
-    #gl-root thead.gl-head-light th { background: transparent !important; color: var(--afims-text-muted, #62657E) !important; font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; border-bottom: 1px solid var(--afims-border, #E2E4ED); }
-    #gl-root .gl-link { color: var(--afims-primary, #1D4ED8); text-decoration: none; cursor: pointer; font-weight: 500; }
+    #gl-root thead.gl-head-light th { background: transparent !important; color: var(--afims-text-muted, #62657E) !important; font-size:var(--fs-xs); letter-spacing: .04em; text-transform: uppercase; border-bottom: 1px solid var(--afims-border, #E2E4ED); }
+    #gl-root .gl-link { color: var(--afims-primary-text); text-decoration: none; cursor: pointer; font-weight: 500; font-size: var(--fs-sm); }
     #gl-sl-overlay .nha-tbl td, #gl-sl-overlay .nha-tbl th { white-space: nowrap; }
     #gl-sl-overlay .nha-tbl td:nth-child(4) { white-space: normal; min-width: 220px; }
     #gl-root .gl-amt { color: inherit; text-decoration: none; cursor: pointer; }
-    #gl-root .gl-amt:hover { color: var(--afims-primary, #1D4ED8); text-decoration: underline; }
+    #gl-root .gl-amt:hover { color: var(--afims-primary-text); text-decoration: underline; }
     #gl-root .gl-link .gl-link-icon { margin-left: 6px; vertical-align: -1px; }
     #gl-root .gl-link:hover { text-decoration: underline; }
-    #gl-root .gl-code { font-size: 12px; color: var(--afims-text-muted, #62657E); margin-right: 8px; }
-    #gl-root .gl-abnormal { color: #C0392B; }
+    #gl-root .gl-code { font-size:var(--fs-sm); color: var(--afims-text-muted, #62657E); margin-right: 8px; }
+    #gl-root .gl-abnormal { color: var(--afims-danger); }
     html.afims-dark[data-bs-theme="dark"] #gl-root .gl-k-group td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; }
     html.afims-dark[data-bs-theme="dark"] #gl-root .gl-k-gl .gl-lbl, html.afims-dark[data-bs-theme="dark"] #gl-root .gl-link { color: #8FB4FF; }
-    #gl-root .gl-sl-modal-sub { font-size: 12px; color: rgba(255,255,255,.8); margin-top: 2px; font-weight: 400; }
+    #gl-root .gl-sl-modal-sub { font-size:var(--fs-sm); color: rgba(255,255,255,.8); margin-top: 2px; font-weight: 400; }
     #gl-root .gl-sl-toggle { display: inline-block; width: 12px; margin-right: 2px; color: var(--afims-text-muted, #62657E); }
     /* Balance column hidden (header + every row, tree and popups). To bring it back, delete or comment out this one rule. */
     #gl-root .gl-bal-col { display: none; }
     #gl-printall[disabled] { opacity: .7; cursor: progress; }
-    #gl-printall-menu .gl-printall-opt { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: 6px; padding: 8px 10px; cursor: pointer; color: var(--afims-text, #1e293b); font: inherit; font-size: 13px; }
+    #gl-printall-menu .gl-printall-opt { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: 6px; padding: 8px 10px; cursor: pointer; color: var(--afims-text, #1e293b); font: inherit; font-size:var(--fs-base); }
     #gl-printall-menu .gl-printall-opt:hover { background: var(--afims-surface-subtle, #F4F7FA); }
-    #gl-printall-menu .gl-printall-opt small { display: block; color: var(--afims-text-muted, #62657E); font-size: 11.5px; margin-top: 1px; }
+    #gl-printall-menu .gl-printall-opt small { display: block; color: var(--afims-text-muted, #62657E); font-size:var(--fs-xs); margin-top: 1px; }
     #gl-load-overlay .gl-load-box { padding: 26px 28px 22px; text-align: center; }
     #gl-load-overlay .gl-load-track { background: var(--afims-border, #E2E4ED); height: 8px; border-radius: 4px; margin: 14px 0 10px; overflow: hidden; }
-    #gl-load-overlay .gl-load-bar { height: 8px; width: 0; background: var(--afims-primary, #1D4ED8); border-radius: 4px; transition: width .2s; }
+    #gl-load-overlay .gl-load-bar { height: 8px; width: 0; background: var(--afims-primary-text); border-radius: 4px; transition: width .2s; }
 
     /* Dark mode: --afims-bg-soft is not a theme token, so the account group rows fell back to a near-white #F5F6FA (light text on
        it = unreadable); the account search results and the summary cards were hard-coded white */
     html.afims-dark[data-bs-theme="dark"] #gl-root .gl-group-row td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-top: 1px solid var(--afims-border-strong, #4A5270); }
     html.afims-dark[data-bs-theme="dark"] #gl-root .gl-group-row td span { color: var(--afims-text-muted, #AAAFBE) !important; }
-    html.afims-dark[data-bs-theme="dark"] #gl-root :is(.gl-combo-results, .gl-summary-card) { background: var(--afims-surface, #1A1F38); border-color: var(--afims-border-strong, #4A5270); color: var(--afims-text, #E4ECF2); }
+    html.afims-dark[data-bs-theme="dark"] #gl-root :is(.gl-combo-results) { background: var(--afims-surface, #1A1F38); border-color: var(--afims-border-strong, #4A5270); color: var(--afims-text, #E4ECF2); }
     html.afims-dark[data-bs-theme="dark"] #gl-root .gl-combo-item:hover { background: var(--afims-primary-soft, #0F2456); color: #FFFFFF; }
-    html.afims-dark[data-bs-theme="dark"] #gl-root :is(.gl-summary-label, .gl-combo-empty, .gl-ending-balance) { color: var(--afims-text-muted, #AAAFBE); }
+    html.afims-dark[data-bs-theme="dark"] #gl-root :is(.gl-combo-empty, .gl-ending-balance) { color: var(--afims-text-muted, #AAAFBE); }
 
 </style>
 
@@ -124,14 +125,14 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
             </span>
             <div id="gl-print-menu" role="menu" class="no-print" style="display:none;position:fixed;z-index:1060;min-width:280px;background:var(--afims-surface,#fff);border:1px solid var(--afims-border,#E4ECF2);border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.18);padding:6px;">
                 <div style="padding:6px 10px 4px;">
-                    <strong style="font-size:13px;color:var(--afims-text,#1e293b);">General Ledger</strong>
-                    <div style="font-size:11.5px;color:var(--afims-text-muted,#62657E);">NHA Form No. 11 — pick the book and year to print</div>
+                    <strong style="font-size:var(--fs-base);color:var(--afims-text,#1e293b);">General Ledger</strong>
+                    <div style="font-size:var(--fs-xs);color:var(--afims-text-muted,#62657E);">NHA Form No. 11 — pick the book and year to print</div>
                 </div>
                 <div id="gl-print-sheets" style="max-height:220px;overflow-y:auto;"></div>
                 <div style="height:1px;background:var(--afims-border,#E4ECF2);margin:4px 2px;"></div>
                 <div style="padding:6px 10px 4px;">
-                    <strong style="font-size:13px;color:var(--afims-text,#1e293b);">Subsidiary Ledger</strong>
-                    <div style="font-size:11.5px;color:var(--afims-text-muted,#62657E);">A sheet per SL account under it — pick the book and year</div>
+                    <strong style="font-size:var(--fs-base);color:var(--afims-text,#1e293b);">Subsidiary Ledger</strong>
+                    <div style="font-size:var(--fs-xs);color:var(--afims-text-muted,#62657E);">A sheet per SL account under it — pick the book and year</div>
                 </div>
                 <div id="gl-print-sl-sheets" style="max-height:200px;overflow-y:auto;"></div>
             </div>
@@ -172,26 +173,26 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
     </div>
 
     <!-- ── SUMMARY (account header — code/name/normal balance/class) ──────── -->
-    <div id="gl-summary" class="gl-summary-cards no-print" style="display:none;">
-        <div class="gl-summary-card">
-            <div class="gl-summary-label">Account</div>
-            <div class="gl-summary-value" id="gl-summary-account" style="font-size:14px;">—</div>
+    <div id="gl-summary" class="nha-summary no-print" style="display:none;">
+        <div class="nha-sc nha-sc-navy">
+            <div class="nha-sc-label">Account</div>
+            <div class="nha-sc-val" id="gl-summary-account" style="font-size:var(--fs-md);">—</div>
         </div>
-        <div class="gl-summary-card">
-            <div class="gl-summary-label">Normal Balance</div>
-            <div class="gl-summary-value" id="gl-summary-normal" style="font-size:14px;">—</div>
+        <div class="nha-sc nha-sc-blue">
+            <div class="nha-sc-label">Normal Balance</div>
+            <div class="nha-sc-val" id="gl-summary-normal" style="font-size:var(--fs-md);">—</div>
         </div>
-        <div class="gl-summary-card">
-            <div class="gl-summary-label">Account Class</div>
-            <div class="gl-summary-value" id="gl-summary-class" style="font-size:14px;">—</div>
+        <div class="nha-sc nha-sc-teal">
+            <div class="nha-sc-label">Account Class</div>
+            <div class="nha-sc-val" id="gl-summary-class" style="font-size:var(--fs-md);">—</div>
         </div>
-        <div class="gl-summary-card">
-            <div class="gl-summary-label">Total Debit</div>
-            <div class="gl-summary-value nha-mono" id="gl-summary-debit">₱ 0.00</div>
+        <div class="nha-sc nha-sc-green">
+            <div class="nha-sc-label">Total Debit</div>
+            <div class="nha-sc-val u-tabular-nums" id="gl-summary-debit">₱ 0.00</div>
         </div>
-        <div class="gl-summary-card">
-            <div class="gl-summary-label">Total Credit</div>
-            <div class="gl-summary-value nha-mono" id="gl-summary-credit">₱ 0.00</div>
+        <div class="nha-sc nha-sc-red">
+            <div class="nha-sc-label">Total Credit</div>
+            <div class="nha-sc-val u-tabular-nums" id="gl-summary-credit">₱ 0.00</div>
         </div>
     </div>
 
@@ -221,14 +222,14 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
     </div>
     <div id="gl-ending" class="gl-ending-balance no-print" style="display:none;"></div>
 
-    <style>#gl-print-menu .gl-print-opt:hover:not(:disabled),#gl-print-menu .gl-print-sheet:hover{background:var(--afims-surface-subtle,#F4F7FA);}#gl-print-menu .gl-print-sheet{display:flex;justify-content:space-between;gap:12px;width:100%;text-align:left;background:none;border:0;border-radius:6px;padding:7px 10px;cursor:pointer;color:var(--afims-text,#1e293b);font:inherit;font-size:13px;}#gl-print-menu .gl-print-sheet small{color:var(--afims-text-muted,#62657E);font-size:11px;white-space:nowrap;}#gl-print-menu .gl-print-note{padding:6px 10px;font-size:12px;color:var(--afims-text-muted,#62657E);}#gl-print-menu .gl-print-opt:disabled{opacity:.55;cursor:not-allowed !important;}</style>
+    <style>#gl-print-menu .gl-print-opt:hover:not(:disabled),#gl-print-menu .gl-print-sheet:hover{background:var(--afims-surface-subtle,#F4F7FA);}#gl-print-menu .gl-print-sheet{display:flex;justify-content:space-between;gap:12px;width:100%;text-align:left;background:none;border:0;border-radius:6px;padding:7px 10px;cursor:pointer;color:var(--afims-text,#1e293b);font:inherit;font-size:var(--fs-base);}#gl-print-menu .gl-print-sheet small{color:var(--afims-text-muted,#62657E);font-size:var(--fs-xs);white-space:nowrap;}#gl-print-menu .gl-print-note{padding:6px 10px;font-size:var(--fs-sm);color:var(--afims-text-muted,#62657E);}#gl-print-menu .gl-print-opt:disabled{opacity:.55;cursor:not-allowed !important;}</style>
     <!-- ── LOADING MODAL — shown while Print ▾ → Print GL / Print SL loads every GL, before the preview window opens ── -->
     <div id="gl-load-overlay" class="nha-overlay no-print">
         <div class="nha-modal u-modal-sm gl-load-box" role="dialog" aria-modal="true" aria-labelledby="gl-load-title">
             <h3 class="nha-modal-title" id="gl-load-title" style="margin:0 0 6px;">Preparing report</h3>
-            <div id="gl-load-txt" style="font-size:20px;font-weight:600;">Loading GL 0/0</div>
+            <div id="gl-load-txt" style="font-size:var(--fs-2xl);font-weight:600;">Loading GL 0/0</div>
             <div class="gl-load-track"><div id="gl-load-bar" class="gl-load-bar"></div></div>
-            <div id="gl-load-sub" style="font-size:12px;color:var(--afims-text-muted,#62657E);min-height:16px;">Please wait…</div>
+            <div id="gl-load-sub" style="font-size:var(--fs-sm);color:var(--afims-text-muted,#62657E);min-height:16px;">Please wait…</div>
             <div style="display:flex;justify-content:center;gap:8px;margin-top:16px;">
                 <button type="button" class="nha-btn" id="gl-load-ready" style="display:none;">Open Preview</button>
                 <button type="button" class="nha-btn nha-btn-outline" id="gl-load-cancel">Cancel</button>
@@ -690,9 +691,9 @@ function gl_nodeRow(n, popup) {
     return `<tr class="gl-node gl-k-${n.kind}${expandable && popup ? ' gl-clickable' : ''}" data-id="${gl_esc(n.account_id)}" data-parent="${gl_esc(n.parent_id ?? '')}" data-code="${gl_esc(n.account_code)}" style="--gl-depth:${depth};">
         ${popup ? '' : `<td class="gl-lbl"><span class="nha-mono gl-code">${gl_esc(n.account_code)}</span></td><td colspan="3">${expandable ? `<a href="#" class="gl-link" role="button" title="Click to see the subsidiary ledgers">${gl_esc(n.account_title)}<svg class="gl-link-icon" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/></svg></a>` : gl_esc(n.account_title)}</td>`}
         ${!popup ? '' : `<td colspan="4" class="gl-lbl"><span class="gl-sl-toggle">${expandable ? '&#9656;' : ''}</span><span class="nha-mono gl-code">${n.direct ? '' : gl_esc(n.account_code)}</span> ${n.direct ? 'Direct postings to ' + gl_esc(n.account_code) : gl_esc(n.account_title)}</td>`}
-        <td class="text-end nha-mono">${blank ? '' : amt(Number(n.total_debit) ? gl_peso(n.total_debit) : '-', Number(n.total_debit))}</td>
-        <td class="text-end nha-mono">${blank ? '' : amt(Number(n.total_credit) ? gl_peso(n.total_credit) : '-', Number(n.total_credit))}</td>
-        <td class="text-end nha-mono gl-bal-col${abnormal && !blank ? ' gl-abnormal' : ''}">${blank ? '' : amt((bal === 0 ? '-' : gl_peso(Math.abs(bal))) + side, bal !== 0)}</td>
+        <td class="text-end nha-mono u-tabular-nums u-text-sm">${blank ? '' : amt(Number(n.total_debit) ? gl_peso(n.total_debit) : '-', Number(n.total_debit))}</td>
+        <td class="text-end nha-mono u-tabular-nums u-text-sm">${blank ? '' : amt(Number(n.total_credit) ? gl_peso(n.total_credit) : '-', Number(n.total_credit))}</td>
+        <td class="text-end nha-mono u-tabular-nums u-text-sm gl-bal-col${abnormal && !blank ? ' gl-abnormal' : ''}">${blank ? '' : amt((bal === 0 ? '-' : gl_peso(Math.abs(bal))) + side, bal !== 0)}</td>
     </tr>`;
 }
 
@@ -1153,9 +1154,9 @@ async function gl_openGlTxns(id) {
         $gl('gl-sl-subtitle').textContent = `${rows.length} transaction${rows.length === 1 ? '' : 's'} · ${json.normal_balance}-normal, ${json.account.account_type}`;
         tbody.innerHTML = rows.length
             ? rows.map(r => gl_rowHtml(r, json.debit_normal)).join('') + `<tr class="gl-k-group"><td colspan="4" style="font-weight:700;">Total</td>
-                <td class="text-end nha-mono" style="font-weight:700;">${gl_peso(json.total_debit)}</td>
-                <td class="text-end nha-mono" style="font-weight:700;">${gl_peso(json.total_credit)}</td>
-                <td class="text-end nha-mono gl-bal-col" style="font-weight:700;">${gl_peso(Math.abs(json.ending_balance))}${gl_balSide(json.ending_balance, json.debit_normal)}</td></tr>`
+                <td class="text-end nha-mono u-tabular-nums u-text-sm" style="font-weight:700;">${gl_peso(json.total_debit)}</td>
+                <td class="text-end nha-mono u-tabular-nums u-text-sm" style="font-weight:700;">${gl_peso(json.total_credit)}</td>
+                <td class="text-end nha-mono u-tabular-nums u-text-sm gl-bal-col" style="font-weight:700;">${gl_peso(Math.abs(json.ending_balance))}${gl_balSide(json.ending_balance, json.debit_normal)}</td></tr>`
             : '<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No posted transactions for this account.</span></div></td></tr>';
     } catch (e) {
         if (req !== gl_txnReq) return;
@@ -1204,7 +1205,7 @@ async function gl_loadTxns(row, n) {
         if (!json.success) throw new Error(json.message || 'Failed to load the transactions.');
         const label = '';
         const tpl = document.createElement('tbody');
-        tpl.innerHTML = label + ((json.data ?? []).length ? json.data.map(r => gl_rowHtml(r, json.debit_normal)).join('') : '<tr><td colspan="7" style="color:var(--afims-text-muted,#62657E);font-size:12px;">No postings.</td></tr>');
+        tpl.innerHTML = label + ((json.data ?? []).length ? json.data.map(r => gl_rowHtml(r, json.debit_normal)).join('') : '<tr><td colspan="7" style="color:var(--afims-text-muted,#62657E);font-size:var(--fs-xs);">No postings.</td></tr>');
         tpl.querySelectorAll('tr').forEach(tr => {
             tr.classList.add('gl-txn');
             tr.dataset.txnOf = n.account_id;
@@ -1228,10 +1229,10 @@ function gl_rowHtml(r, debitNormal, groupId) {
         <td class="nha-td-date">${gl_fmtDate(r.posting_date)}</td>
         <td class="nha-mono">${gl_esc(r.jev_no) || '—'}${r.reference_no && r.reference_no.endsWith('-REV') ? ' <span class="nha-bdg nha-bdg-orange" style="margin-left:4px;">Reversal</span>' : ''}</td>
         <td class="nha-mono">${gl_esc(r.dv_no) || '—'}</td>
-        <td>${r.sl_account_code ? `<span class="nha-mono" style="font-size:11px;color:var(--afims-text-muted,#62657E);margin-right:6px;" title="Posted to this subsidiary ledger">${gl_esc(r.sl_account_code)}</span>` : ''}${gl_esc(r.description) || gl_esc(r.sl_name) || '—'}</td>
-        <td class="text-end nha-mono">${Number(r.debit) > 0 ? gl_peso(r.debit) : ''}</td>
-        <td class="text-end nha-mono">${Number(r.credit) > 0 ? gl_peso(r.credit) : ''}</td>
-        <td class="text-end nha-mono gl-bal-col">${gl_peso(Math.abs(r.running_balance))}${gl_balSide(r.running_balance, debitNormal)}</td>
+        <td>${r.sl_account_code ? `<span class="nha-mono" style="font-size:var(--fs-xs);color:var(--afims-text-muted,#62657E);margin-right:6px;" title="Posted to this subsidiary ledger">${gl_esc(r.sl_account_code)}</span>` : ''}${gl_esc(r.description) || gl_esc(r.sl_name) || '—'}</td>
+        <td class="text-end nha-mono u-tabular-nums u-text-sm">${Number(r.debit) > 0 ? gl_peso(r.debit) : ''}</td>
+        <td class="text-end nha-mono u-tabular-nums u-text-sm">${Number(r.credit) > 0 ? gl_peso(r.credit) : ''}</td>
+        <td class="text-end nha-mono u-tabular-nums u-text-sm gl-bal-col">${gl_peso(Math.abs(r.running_balance))}${gl_balSide(r.running_balance, debitNormal)}</td>
     </tr>`;
 }
 
