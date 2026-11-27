@@ -40,6 +40,7 @@ use PHPMaker2024\FIMS as App;
  *   FOR_TREASURY            -> RELEASED | CANCELLED                             (Treasury releases payment)
  *   REJECTED                -> CANCELLED           (or edited + re-saved via update())
  *   RELEASED / CANCELLED are terminal.
+ * The monthly Remittance DV (Remittance List page) skips FMD — DRAFT -> FOR_ACCOUNTING — see transitionsFor().
  *
  * Accounting's first step (FOR_ACCOUNTING, the Section Chief) requires preparing a Journal
  * Entry Voucher (saveJournalEntry() - fims.journal_entry_vouchers/_lines, a balanced single
@@ -114,6 +115,20 @@ class DisbursementVoucherService
         'RELEASED'               => [],
         'CANCELLED'              => [],
     ];
+
+    /**
+     * The statuses a DV in $status may move to. The monthly Remittance DV (Remittance List page — $isRemittance) has no FMD step: there is no RFA
+     * or obligation for FMD to check, so from DRAFT it goes straight to Accounting. Everything after that is the same as for any other DV.
+     * (A Remittance DV already sitting in FOR_FMD_REVIEW — made before that rule — can still be approved by FMD.)
+     */
+    private function transitionsFor(string $status, bool $isRemittance = false): array
+    {
+        if ($isRemittance && $status === 'DRAFT') {
+            return ['FOR_ACCOUNTING', 'CANCELLED'];
+        }
+
+        return self::TRANSITIONS[$status] ?? [];
+    }
 
     // Responsibility Center (fims.responsibility_code.rc_id) that HOLDS the voucher while it sits
     // in this status — the only office allowed to move it forward, reject it, or (together with
@@ -268,12 +283,11 @@ class DisbursementVoucherService
         $remittanceId = $body['payroll_remittance_id'] ?? null;
         $fields['_remittanceId'] = ($remittanceId !== null && $remittanceId !== '' && ctype_digit((string) $remittanceId)) ? (int) $remittanceId : null;
 
-        // Likewise a Remittance DV from the Remittance List page (Remit button): it pays what the month's approved vouchers withheld
-        // (EWT / Withholding VAT / Penalty Tax → BIR). Validated / linked in create()/update() (RemittanceListService).
+        // Likewise the monthly Remittance DV from the Remittance List page (Create DV button): the one DV that pays everything the month's
+        // approved vouchers withheld (EWT + Withholding VAT + Penalty Tax, every vendor → BIR). Validated / linked in create()/update()
+        // (RemittanceListService). It has no FMD step — see the status below.
         $remitPeriod = trim((string) ($body['remit_period'] ?? ''));
-        $remitType   = strtoupper(trim((string) ($body['remit_type'] ?? '')));
-        $remitVendor = trim((string) ($body['remit_vendor'] ?? '')); // the one vendor whose withheld tax this Remittance DV pays
-        $fields['_dvRemit'] = ($remitPeriod !== '' && $remitType !== '') ? ['period' => $remitPeriod, 'type' => $remitType, 'vendor' => $remitVendor] : null;
+        $fields['_dvRemit'] = $remitPeriod !== '' ? ['period' => $remitPeriod] : null;
 
         if (!$rfaIdsRaw && !$fields['_remittanceId'] && !$fields['_dvRemit']) {
             $errors[] = 'At least one RFA is required.';
@@ -450,7 +464,11 @@ class DisbursementVoucherService
         // Status the user is saving as — stored as fims.settings_status.id (status_for =
         // 'disbursement_voucher'), looked up by name; see getStatusIdByName()'s doc comment.
         $status = strtoupper(trim((string) ($body['status'] ?? 'DRAFT')));
-        if (!in_array($status, self::SAVE_STATUSES, true)) {
+        if ($fields['_dvRemit'] && $status === 'FOR_FMD_REVIEW') {
+            // The monthly Remittance DV has no FMD approval (no RFA — the vouchers it pays were obligated already): submitting it goes straight to Accounting.
+            $status = 'FOR_ACCOUNTING';
+        }
+        if (!in_array($status, self::SAVE_STATUSES, true) && !($fields['_dvRemit'] && $status === 'FOR_ACCOUNTING')) {
             $errors[] = 'status must be DRAFT or FOR_FMD_REVIEW when saving; use the status action to move it through FMD/Accounting/Treasury, reject, or cancel.';
         }
         $fields['status']    = $status;
@@ -1346,7 +1364,8 @@ class DisbursementVoucherService
                 return ['success' => false, 'message' => "Disbursement Voucher #{$dvId} not found.", 'httpCode' => 404];
             }
 
-            $row['allowed_transitions'] = self::TRANSITIONS[$row['status']] ?? [];
+            $row['dv_remit']           = (new RemittanceListService())->forDv($dvId); // what this Remittance DV pays to BIR (the month's EWT / VAT / Penalty Tax of every vendor), or null
+            $row['allowed_transitions'] = $this->transitionsFor((string) $row['status'], $row['dv_remit'] !== null);
             $row['is_editable']        = in_array($row['status'], self::EDITABLE, true);
             $row['jev']                = $this->fetchJev($dvId);
             $row['payment_jevs']       = $this->fetchPaymentJevs($dvId);
@@ -1354,7 +1373,6 @@ class DisbursementVoucherService
             $row['atc_lines']          = $this->fetchAtcLines($dvId);
             $row['payroll']            = (new PayrollManagementService())->forDv($dvId); // imported payroll month this DV pays, or null
             $row['remittance']         = (new DeductionRemittanceService())->forDv($dvId); // payroll remittance this DV pays (GSIS/BIR/…), or null
-            $row['dv_remit']           = (new RemittanceListService())->forDv($dvId); // what this Remittance DV pays to BIR (a voucher's EWT / VAT / Penalty Tax), or null
 
             // Every RFA currently linked to this DV — the link lives on the RFA side
             // (budget_allocation.dv_id, see linkRfas()), so this is a plain reverse lookup, not a
@@ -2505,6 +2523,11 @@ class DisbursementVoucherService
             $body = $this->withPayrollAmounts($body);   // a payroll DV's Amount / deductions are the import's
             [$errors, $f] = $this->prepare($body);
 
+            // The monthly Remittance DV is Accounting's: nobody else creates it (RemittanceListService::DV_RCS)
+            if ($f['_dvRemit'] && !(new RemittanceListService())->canCreateDv()) {
+                return ['success' => false, 'message' => RemittanceListService::DENY_MSG, 'httpCode' => 403];
+            }
+
             $dvNo = trim((string) ($body['dv_no'] ?? ''));
             if ($dvNo !== '' && (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->table} WHERE dv_no = " . $this->str($dvNo), 'DB') > 0) {
                 $errors[] = "DV Number '{$dvNo}' already exists.";
@@ -2515,7 +2538,7 @@ class DisbursementVoucherService
             if ($f['_remittanceId'] && ($remError = (new DeductionRemittanceService())->validateDvLink($f['_remittanceId'])) !== null) {
                 $errors[] = $remError;
             }
-            if ($f['_dvRemit'] && ($dvRemitError = (new RemittanceListService())->validateLink($f['_dvRemit']['period'], $f['_dvRemit']['type'], 0, (float) $f['gross_amount'], $f['_dvRemit']['vendor'])) !== null) {
+            if ($f['_dvRemit'] && ($dvRemitError = (new RemittanceListService())->validateLink($f['_dvRemit']['period'], 0, (float) $f['gross_amount'])) !== null) {
                 $errors[] = $dvRemitError;
             }
             [$rfaErrors, $rfaBudget] = $this->checkAmountAgainstRfas($f, null);
@@ -2533,7 +2556,7 @@ class DisbursementVoucherService
             $paymentsPrior = $this->priorPaymentsForRfas(array_column($f['_rfaRows'], 'allocation_id'), null);
             $balance       = round($f['obligation_amount'] - ($paymentsPrior + $f['net_amount']), 2);
 
-            $submitted = $f['status'] === 'FOR_FMD_REVIEW';
+            $submitted = in_array($f['status'], ['FOR_FMD_REVIEW', 'FOR_ACCOUNTING'], true);   // FOR_ACCOUNTING only for a Remittance DV (no FMD step)
             $uid       = $userId > 0 ? (string) $userId : 'NULL';
 
             App\Execute('BEGIN', 'DB');
@@ -2573,7 +2596,7 @@ class DisbursementVoucherService
                     (new DeductionRemittanceService())->syncDvLink((int) $row['dv_id'], $f['_remittanceId']);
                 }
                 if ($f['_dvRemit']) {
-                    (new RemittanceListService())->syncLink((int) $row['dv_id'], $f['_dvRemit']['period'], $f['_dvRemit']['type'], $userId, $f['_dvRemit']['vendor']);
+                    (new RemittanceListService())->syncLink((int) $row['dv_id'], $f['_dvRemit']['period'], $userId);
                 }
 
                 $rfaError = $this->linkRfas((int) $row['dv_id'], $f['_rfaRows']);
@@ -2640,13 +2663,19 @@ class DisbursementVoucherService
 
             $body = $this->withPayrollAmounts($body);   // a payroll DV's Amount / deductions are the import's
             [$errors, $f] = $this->prepare($body);
+
+            // Editing the monthly Remittance DV is Accounting's too — including a request that leaves out remit_period to unlink an existing one
+            $remitList = new RemittanceListService();
+            if (($f['_dvRemit'] || $remitList->isRemittanceDv($dvId)) && !$remitList->canCreateDv()) {
+                return ['success' => false, 'message' => RemittanceListService::DENY_MSG, 'httpCode' => 403];
+            }
             if ($f['_payrollPeriodId'] && ($payrollError = (new PayrollManagementService())->validateDvLink($f['_payrollPeriodId'], $dvId)) !== null) {
                 $errors[] = $payrollError;
             }
             if ($f['_remittanceId'] && ($remError = (new DeductionRemittanceService())->validateDvLink($f['_remittanceId'], $dvId)) !== null) {
                 $errors[] = $remError;
             }
-            if ($f['_dvRemit'] && ($dvRemitError = (new RemittanceListService())->validateLink($f['_dvRemit']['period'], $f['_dvRemit']['type'], $dvId, (float) $f['gross_amount'], $f['_dvRemit']['vendor'])) !== null) {
+            if ($f['_dvRemit'] && ($dvRemitError = (new RemittanceListService())->validateLink($f['_dvRemit']['period'], $dvId, (float) $f['gross_amount'])) !== null) {
                 $errors[] = $dvRemitError;
             }
             [$rfaErrors, $rfaBudget] = $this->checkAmountAgainstRfas($f, $dvId);
@@ -2661,7 +2690,7 @@ class DisbursementVoucherService
             $paymentsPrior = $this->priorPaymentsForRfas(array_column($f['_rfaRows'], 'allocation_id'), $dvId);
             $balance       = round($f['obligation_amount'] - ($paymentsPrior + $f['net_amount']), 2);
 
-            $submitted = $f['status'] === 'FOR_FMD_REVIEW';
+            $submitted = in_array($f['status'], ['FOR_FMD_REVIEW', 'FOR_ACCOUNTING'], true);   // FOR_ACCOUNTING only for a Remittance DV (no FMD step)
             $uid       = $userId > 0 ? (string) $userId : 'NULL';
 
             App\Execute('BEGIN', 'DB');
@@ -2703,7 +2732,7 @@ class DisbursementVoucherService
                 $this->replaceDeductions($dvId, $f['deductions']);
                 (new PayrollManagementService())->syncDvLink($dvId, $f['_payrollPeriodId']); // also releases a month no longer picked
                 (new DeductionRemittanceService())->syncDvLink($dvId, $f['_remittanceId']);
-                (new RemittanceListService())->syncLink($dvId, $f['_dvRemit']['period'] ?? null, $f['_dvRemit']['type'] ?? null, $userId, $f['_dvRemit']['vendor'] ?? null);
+                (new RemittanceListService())->syncLink($dvId, $f['_dvRemit']['period'] ?? null, $userId);
 
                 $rfaError = $this->linkRfas($dvId, $f['_rfaRows']);
                 if ($rfaError !== null) {
@@ -2791,7 +2820,7 @@ class DisbursementVoucherService
      * STAGE_HOLDER_RC) is open to anyone authenticated for both submitting and cancelling their own
      * draft — "their own" is enforced by the creator check in the CANCELLED branch below.
      */
-    private function authorizeTransition(array $cur, string $new): ?string
+    private function authorizeTransition(array $cur, string $new, bool $isRemittance = false): ?string
     {
         // Whoever already approved/forwarded an earlier step of THIS voucher can't reject it later — not even an admin
         // (the admin bypass below is for moving it forward; rejecting your own approved work isn't a review).
@@ -2815,7 +2844,9 @@ class DisbursementVoucherService
             return ($isCreator || $isHolder) ? null : 'Only the voucher\'s creator or the office currently holding it can cancel it.';
         }
         if ($holderRc === null) {
-            return null; // DRAFT -> FOR_FMD_REVIEW: Originating submits, open to anyone authenticated.
+            // DRAFT -> FOR_FMD_REVIEW: Originating submits, open to anyone authenticated — except the monthly Remittance DV
+            // (DRAFT -> FOR_ACCOUNTING), which only Accounting staff submit.
+            return $isRemittance && !(new RemittanceListService())->canCreateDv() ? RemittanceListService::DENY_MSG : null;
         }
         $label = self::STAGE_RC_LABEL[$holderRc] ?? $holderRc;
         if ($userRc !== $holderRc) {
@@ -2858,11 +2889,12 @@ class DisbursementVoucherService
                 return ['success' => false, 'message' => "Status '{$new}' is not configured in fims.settings_status for disbursement vouchers."];
             }
 
-            $allowed = self::TRANSITIONS[$cur['status']] ?? [];
+            $isRemit = (new RemittanceListService())->isRemittanceDv($dvId);
+            $allowed = $this->transitionsFor((string) $cur['status'], $isRemit);
             if (!in_array($new, $allowed, true)) {
                 return ['success' => false, 'message' => "Cannot change a {$cur['status']} disbursement voucher to {$new}."];
             }
-            $authError = $this->authorizeTransition($cur, $new);
+            $authError = $this->authorizeTransition($cur, $new, $isRemit);
             if ($authError !== null) {
                 return ['success' => false, 'message' => $authError, 'httpCode' => 403];
             }
@@ -2903,7 +2935,8 @@ class DisbursementVoucherService
 
             $uid = $userId > 0 ? (string) $userId : 'NULL';
             $set = ["status_id = {$newId}", 'updated_at = CURRENT_TIMESTAMP', "updated_by = {$uid}"];
-            if ($new === 'FOR_FMD_REVIEW') {
+            if ($new === 'FOR_FMD_REVIEW' || ($new === 'FOR_ACCOUNTING' && $cur['status'] === 'DRAFT')) {
+                // submitted (a Remittance DV submits straight to Accounting — no FMD approval is recorded for it)
                 $set[] = "submitted_at = CURRENT_TIMESTAMP, submitted_by = {$uid}";
                 $set[] = 'rejected_at = NULL, rejected_by = NULL, rejection_reason = NULL';
             } elseif ($new === 'FOR_ACCOUNTING') {

@@ -149,7 +149,7 @@ $app->get('/voucher/read/{id}', function ($request, $response, $args) use ($Vouc
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
-// Add. body.status: DRAFT (default) | FOR_FMD_REVIEW
+// Add. body.status: DRAFT (default) | FOR_FMD_REVIEW (the monthly Remittance DV — body.remit_period — has no FMD step: its "submit" is FOR_ACCOUNTING)
 $app->post('/voucher/add', function ($request, $response, $args) use ($VoucherService) {
     try {
         $result = $VoucherService->create($request->getParsedBody() ?: [], (int) $request->getAttribute('user_id'));
