@@ -429,9 +429,9 @@ function cip_render(rows, error) {
                         View
                     </button>
                     ${Number(r.accomplishment) >= 90 || r.transfer_jev_no ? `<div class="cip-menu-divider"></div>
-                    <button type="button" class="cip-menu-item" onclick="cip_closeMenus();cip_transfer(${i})" title="${r.transfer_jev_no ? 'Transferred as ' + cip_esc(r.transfer_jev_no) : 'Physical accomplishment reached 90%'}">
+                    <button type="button" class="cip-menu-item" onclick="cip_closeMenus();cip_transfer(${i})" title="${r.transfer_jev_no ? (r.transfer_approved ? 'Transferred as ' : 'Waiting for the approval of ') + cip_esc(r.transfer_jev_no) : 'Physical accomplishment reached 90%'}">
                         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4-4m-4 4l4 4"/></svg>
-                        ${r.transfer_jev_no ? 'Transferred — ' + cip_esc(r.transfer_jev_no) : 'Transfer to Fixed Assets'}
+                        ${r.transfer_jev_no ? (r.transfer_approved ? 'Transferred — ' : 'For approval — ') + cip_esc(r.transfer_jev_no) : 'Transfer to Fixed Assets'}
                     </button>` : ''}
                 </div>
             </div>
@@ -526,8 +526,9 @@ async function cip_transfer(i) {
     // an already transferred project goes to the Fixed Assets page (the account it was transferred to is one of its tabs), on that tab, filtered to this
     // project, with its View window open. A transfer to an account that has no tab there (Investment Property) opens the read-only pro-forma instead.
     const faTabs = ['1-06-04-010', '1-06-09-020', '1-06-01-010', '1-06-04-990-03', '1-06-02-990-02'];
-    if (r.transfer_jev_no && faTabs.includes(String(r.transfer_account || ''))) {
-        window.location.href = window.location.pathname.replace(/[^/]*$/, '') + 'FixedAssetsPage?tab=' + encodeURIComponent(r.transfer_account) + '&q=' + encodeURIComponent(r.swa_number) + '&open=' + encodeURIComponent(r.swa_number);
+    const mplcTab = ['1-06-03-050', '1-06-04-020', '1-06-04-030', '1-06-04-040'];   // an MPLC-book transfer lands on the MPLC tab
+    if (r.transfer_approved && (faTabs.includes(String(r.transfer_account || '')) || mplcTab.includes(String(r.transfer_account || '')))) {
+        window.location.href = window.location.pathname.replace(/[^/]*$/, '') + 'FixedAssetsPage?tab=' + encodeURIComponent(mplcTab.includes(String(r.transfer_account)) ? 'MPLC' : r.transfer_account) + (mplcTab.includes(String(r.transfer_account)) ? '&sub=' + encodeURIComponent(r.transfer_account) : '') + '&q=' + encodeURIComponent(r.swa_number) + '&open=' + encodeURIComponent(r.swa_number);
         return;
     }
     window.PagePreloader?.show();
@@ -545,20 +546,19 @@ async function cip_transfer(i) {
 function cip_trOpen(d) {
     cip_tr = { data: d, edited: false, code: d.transfer ? d.transfer.account_code : '' };
     const done = !!d.transfer, f = cip_money;
-    const orig = d.original.lines.map(l => (Number(l.debit) ? 'Debit ' : 'Credit ') + cip_esc(l.account_code) + ' - ' + cip_esc(l.account_title || '') + ' &nbsp;₱' + f(Number(l.debit) || Number(l.credit))).join('<br>');
     cip_$('cip-tr-body').innerHTML = `
         <div id="cip-tr-msg" class="cip-tr-msg" hidden></div>
         <div class="cip-card"><h4>Project</h4><div class="cip-grid">
             <div><div class="cip-k">SWA No. / RFA No.</div><div class="cip-v">${cip_esc(d.swa_number)} / ${cip_dash(d.rfa_number)}</div></div>
             <div><div class="cip-k">Name of Project</div><div class="cip-v">${cip_dash(d.project_name)}</div></div>
             <div><div class="cip-k">Physical Accomplishment</div><div class="cip-v">${cip_bar(d.percent_completion)}</div></div>
-            <div><div class="cip-k">Original Entry — ${cip_esc(d.original.jev_no)}</div><div class="cip-v cip-pf-orig">${orig}</div></div>
         </div></div>
         <div class="cip-card">
             <div class="cip-pf-title">Pro-forma JEV — reclassification / transfer</div>
             ${done ? `<div class="cip-tr-done">Already submitted as Journal Entry Voucher <strong>${cip_esc(d.transfer.jev_no)}</strong>.</div>` : ''}
             <div class="cip-pf-field"><label class="cip-pf-lbl">Book <span class="req">*</span></label>
-                <select class="cip-pf-input" disabled tabindex="-1"><option>${cip_esc(d.book_name || '')}</option></select></div>
+                <select class="cip-pf-input" disabled tabindex="-1"><option>${cip_esc(d.book_name || '')}</option></select>
+                ${d.mplc ? '<div style="margin-top:6px;font-size:12px;color:var(--afims-text-secondary,#5B5E73);">MPLC book: only the MPLC accounts can be chosen (Power Supply Systems, School Buildings, Hospitals and Health Centers, Markets).</div>' : ''}</div>
             <div class="cip-pf-field"><label class="cip-pf-lbl" for="cip-tr-part">Particulars <span class="opt">(optional)</span></label>
                 <textarea id="cip-tr-part" class="cip-pf-input" rows="3" style="resize:vertical;"></textarea></div>
             <div class="cip-pf-tbl">

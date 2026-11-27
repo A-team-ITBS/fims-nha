@@ -190,6 +190,11 @@ $app->get('/infra-iar/fa-categories', function ($request, $response, $args) use 
     return $response->withJson($InfraIarService->faCategories());
 })->add($jwtMiddleware);
 
+// The cards under the MPLC tab: one per MPLC account { account_code, account_title, projects, total_amount }
+$app->get('/infra-iar/fa-mplc-cards', function ($request, $response, $args) use ($InfraIarService) {
+    return $response->withJson($InfraIarService->faMplcCards());
+})->add($jwtMiddleware);
+
 $app->get('/infra-iar/fa-filter-options', function ($request, $response, $args) use ($InfraIarService) {
     return $response->withJson($InfraIarService->faFilterOptions());
 })->add($jwtMiddleware);
