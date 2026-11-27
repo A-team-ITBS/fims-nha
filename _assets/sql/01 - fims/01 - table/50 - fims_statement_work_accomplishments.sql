@@ -51,10 +51,11 @@ CREATE TABLE IF NOT EXISTS fims.statement_work_accomplishments (
     date_started             DATE,
     completion_date_revised  DATE,
     contract_duration        VARCHAR(100),                      -- e.g. "180 calendar days"
-    total_land_area          NUMERIC(18,2),                     -- "Area in SQM / Units", typed by the user (optional)
+    total_land_area          NUMERIC(18,2),                     -- "Area in SQM / Units", typed by the user (required by the app; the cost per sqm / unit of the Merchandise Inventory is worked out from it)
     tct_number               VARCHAR(100),                      -- TCT (Transfer Certificate of Title) number, typed by the user (optional)
     category                 VARCHAR(255),                      -- "account code - title" of the record's one CIP / WIP account entry; set when the pro-forma JEV is submitted
     line_transaction       JSONB         NOT NULL DEFAULT '[]'::jsonb,   -- [ { items[], lines[] (account entries), jev_id, jev_no } ]
+    transfer_line            JSONB,                             -- the transfer to MI/PED: [ { jev_id, jev_no, jev_date, amount, from_account_code, lines[{account_code, debit, credit}] } ]; NULL until transferred
     created_by               INTEGER,
     created_at               TIMESTAMPTZ   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by               INTEGER,
@@ -73,11 +74,15 @@ COMMENT ON COLUMN fims.statement_work_accomplishments.line_transaction IS 'One e
 ALTER TABLE fims.statement_work_accomplishments ADD COLUMN IF NOT EXISTS contract VARCHAR(255);
 ALTER TABLE fims.statement_work_accomplishments ADD COLUMN IF NOT EXISTS total_land_area NUMERIC(18,2);
 ALTER TABLE fims.statement_work_accomplishments ADD COLUMN IF NOT EXISTS tct_number VARCHAR(100);
-COMMENT ON COLUMN fims.statement_work_accomplishments.total_land_area IS 'Area in SQM / Units: typed by the user (optional)';
+COMMENT ON COLUMN fims.statement_work_accomplishments.total_land_area IS 'Area in SQM / Units: typed by the user (required by the app)';
 COMMENT ON COLUMN fims.statement_work_accomplishments.tct_number IS 'TCT number: typed by the user (optional)';
 
 -- Category: the record's one CIP / WIP account entry as "account code - title" (e.g. "1-04-03-020-01 - Sites and Services"), set by the app
 -- when the pro-forma JEV is submitted. Records whose JEV was already submitted get it here.
+-- Transfer to MI/PED (Work-In-Process page): the reclassification JEV (Debit the new account, Credit the old WIP account) is kept in transfer_line, and on transfer the
+-- category moves from the old account to the new one.
+ALTER TABLE fims.statement_work_accomplishments ADD COLUMN IF NOT EXISTS transfer_line JSONB;
+COMMENT ON COLUMN fims.statement_work_accomplishments.transfer_line IS 'Transfer to MI/PED: one element { jev_id, jev_no, jev_date, amount, from_account_code, lines[{account_code, debit, credit}] }; NULL until the project is transferred';
 ALTER TABLE fims.statement_work_accomplishments ADD COLUMN IF NOT EXISTS category VARCHAR(255);
 COMMENT ON COLUMN fims.statement_work_accomplishments.category IS 'Category: "account code - title" of the CIP / WIP account entry, set when the pro-forma JEV is submitted';
 UPDATE fims.statement_work_accomplishments s

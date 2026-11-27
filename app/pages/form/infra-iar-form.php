@@ -188,7 +188,7 @@ $_ifr_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
                     </div>
                     <div class="amp-row c2">
                         <div class="amp-group">
-                            <label class="amp-label" for="ifr-land-area">Area in SQM / Units <span class="opt">(optional)</span></label>
+                            <label class="amp-label" for="ifr-land-area">Area in SQM / Units <span class="req">*</span></label>
                             <input type="text" inputmode="decimal" class="amp-input amp-num" id="ifr-land-area" autocomplete="off" placeholder="0.00">
                         </div>
                         <div class="amp-group">
@@ -198,11 +198,11 @@ $_ifr_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
                     </div>
                     <div class="amp-row c3">
                         <div class="amp-group">
-                            <label class="amp-label" for="ifr-start">Date Started</label>
+                            <label class="amp-label" for="ifr-start">Date Started <span class="req">*</span></label>
                             <input type="date" class="amp-input" id="ifr-start">
                         </div>
                         <div class="amp-group">
-                            <label class="amp-label" for="ifr-end">Completion Date (Revised)</label>
+                            <label class="amp-label" for="ifr-end">Completion Date (Revised) <span class="req">*</span></label>
                             <input type="date" class="amp-input" id="ifr-end">
                         </div>
                         <div class="amp-group">
@@ -464,8 +464,8 @@ function ifr_goTo(p) { if (p < 1) return; ifr_page = p; ifr_load(); }
         ['ifr-start', 'ifr-end'].forEach(id => ['input', 'change'].forEach(ev => ifr_$(id)?.addEventListener(ev, () => { ifr_autoDuration(); ifr_refresh(); })));
         // Area in SQM / Units: typed with thousands separators and 2 decimals, like the amounts
         const area = ifr_$('ifr-land-area');
-        area?.addEventListener('input', () => { area.value = amp_liveFmt(area.value, true); });
-        area?.addEventListener('blur', () => { if (area.value) area.value = amp_fmtMoney(amp_unfmt(area.value)); });
+        area?.addEventListener('input', () => { area.value = amp_liveFmt(area.value, true); ifr_refresh(); });
+        area?.addEventListener('blur', () => { if (area.value) area.value = amp_fmtMoney(amp_unfmt(area.value)); ifr_refresh(); });
         // the duration can be typed; clearing it hands it back to the dates
         ifr_$('ifr-duration')?.addEventListener('input', () => { ifr_state.durManual = !!ifr_$('ifr-duration').value.trim(); if (!ifr_state.durManual) ifr_autoDuration(); });
     };
@@ -712,7 +712,7 @@ function ifr_fillProject(p) {
     const vo = p && p.variation_order !== null && p.variation_order !== undefined ? Number(p.variation_order) : null;   // read-only: revised - original
     set('ifr-variation', vo === null ? '' : ifr_signed(vo));
     ifr_$('ifr-variation').className = 'amp-input amp-num' + (vo > 0 ? ' pos' : (vo < 0 ? ' neg' : ''));
-    set('ifr-contract', p?.contract || '');
+    set('ifr-contract', p?.contract || p?.reference_number || '');   // an RFA that carries a contract / reference number (not a PO) starts with it as the Contract
     const cap = p ? (p.rfa_amount ?? p.contract_cost) : null;                    // the account entries may not exceed the RFA amount
     ifr_state.contract = cap !== null && cap !== undefined ? Number(cap) : null;
 }
@@ -791,8 +791,9 @@ async function ifr_edit(i) {
         list.innerHTML = hits.length
             ? hits.map((p, i) => '<div class="amp-combo-opt' + (Number(p.allocation_id) === ifr_state.valid ? ' active' : '') + '" data-i="' + i + '">'
                 + '<strong>' + amp_textEsc(p.rfa_number) + '</strong>'
+                + (p.reference_number ? '<span style="margin-left:8px;font-size:12px;color:var(--afims-primary,#1d4ed8);">Ref. ' + amp_textEsc(p.reference_number) + '</span>' : '')
                 + '<span style="float:right;color:var(--afims-text-disabled,#6b7280);font-size:12px;margin-left:12px;">' + amp_textEsc(p.project_name || '') + '</span></div>').join('')
-            : '<div class="amp-combo-empty">No approved Infrastructure RFA without a PO</div>';
+            : '<div class="amp-combo-empty">No approved Infrastructure RFA (no PO, or a contract / reference number instead of a PO)</div>';
     };
     const load = async () => {
         const mine = ++seq;
@@ -1105,7 +1106,10 @@ function ifr_error() {
         }
         if (ifr_state.contract !== null && ifr_entriesCents() > Math.round(ifr_state.contract * 100)) return 'The account entries exceed the RFA amount.';
     }
+    if (!((parseFloat(amp_unfmt(ifr_$('ifr-land-area').value)) || 0) > 0)) return 'Enter the Area in SQM / Units (greater than 0).';
     const s = ifr_$('ifr-start').value, e = ifr_$('ifr-end').value;
+    if (!s) return 'Enter the Date Started.';
+    if (!e) return 'Enter the Completion Date (Revised).';
     if (s && e && e < s) return 'The completion date (revised) cannot be before the date started.';
     if (ifr_isEdit()) return '';                       // the Statement of Work items are not part of the edit
     const items = ifr_itemRows().filter(r => !r.blank);
@@ -1155,7 +1159,7 @@ async function ifr_save(ev) {
     const edit = ifr_isEdit();
     const payload = {
         contract: ifr_$('ifr-contract').value.trim(),
-        total_land_area: amp_unfmt(ifr_$('ifr-land-area').value),          // Area in SQM / Units (optional)
+        total_land_area: amp_unfmt(ifr_$('ifr-land-area').value),          // Area in SQM / Units (required)
         tct_number: ifr_$('ifr-tct').value.trim(),                         // TCT number (optional)
         date_started: ifr_$('ifr-start').value,
         completion_date_revised: ifr_$('ifr-end').value,

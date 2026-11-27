@@ -478,7 +478,8 @@ class PoDrService
      */
     private function poSource(?array $exact = null, string $search = '', int $limit = 0, bool $onlyWithBalance = false): array
     {
-        $where = "UPPER(COALESCE(a.allocation_type, '')) = 'RFA' AND a.deleted_at IS NULL AND COALESCE(TRIM(a.po_number), '') <> ''";
+        $where = "UPPER(COALESCE(a.allocation_type, '')) = 'RFA' AND a.deleted_at IS NULL AND COALESCE(TRIM(a.po_number), '') <> ''
+                  AND {$this->isPoSql()}";   // a contract / other reference number typed in that field is NOT a PO: such an RFA belongs to the Infrastructure tab
         if ($exact !== null) {
             if (!$exact) {
                 return [];
@@ -934,6 +935,16 @@ class PoDrService
                     SELECT dv.dv_id FROM fims.disbursement_vouchers dv
                     LEFT JOIN fims.settings_status st ON st.id = dv.status_id
                     WHERE st.name IN ('CANCELLED', 'REJECTED')))";
+    }
+
+    /**
+     * SQL condition (alias `a` = fims.budget_allocation): the RFA's po_number field holds a real PO number. The field is also used for a CONTRACT or other
+     * reference number; such a number is not a PO and the RFA belongs to the Infrastructure tab instead. A PO number is one that starts with "PO" followed
+     * by a separator (PO-2026-0101, SAMPLE-PO-PPE-01, PO/2026/…), or one that exists in fims.purchase_orders.
+     */
+    public function isPoSql(): string
+    {
+        return "(a.po_number ~* '^(SAMPLE-)?PO[-/ _]' OR EXISTS (SELECT 1 FROM fims.purchase_orders pp WHERE pp.po_number = a.po_number))";
     }
 
     /** The DV number of the active Disbursement Voucher already processed for the PO, or null when there is none. */
