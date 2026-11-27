@@ -21,11 +21,13 @@ namespace PHPMaker2024\FIMS;
  * the To line. Either way the request is stored as the From line's amount before → after (from_amount → to_amount; a Realignment saves
  * to_amount = from_amount − the amount transferred), so the table's From / To / Change columns and the approval work the same for both.
  *
- * A third tab, SUPPLEMENTAL, files a NEW project released by a DBM SARO that is not in the approved COB (a Program / Sub-Program, a SARO, the project's
- * name and location, and its line items: account, particulars, amount — no Project Code field: the code is generated on approval). It has no budget line, so the
- * table, the details modal and the form describe it by its own supp_* fields. It is filed, processed and reviewed like the others; APPROVING it is what
- * adds the project to the budget — one transaction (BudgetRevisionService::approveSupplemental()): the project, its budget lines (suggested_amount left at 0)
- * and a SUPPLEMENTAL ledger row per line, so the amount shows in the COB's Amendment column and not in its Approved Amount.
+ * A third tab, SUPPLEMENTAL, files one or more NEW projects released by a DBM SARO that are not in the approved COB: a SARO for the whole request, then Program blocks
+ * ("+ Add Program") with a card per project — the same card the Budget Request form uses: Region, Project (search an existing one or enter a new one), Location, Type of
+ * Fund, Component, Sub-Component, ONE Proposed Amount and Supporting Documents (uploaded files or links; new files make the save a multipart FormData). A new project's code
+ * is generated on approval, not asked for. It has no budget line, so the table, the details modal and the form describe it by its own supp_* fields and its projects[]. It
+ * is filed, processed and reviewed like the others; APPROVING it is what adds the projects to the budget — one transaction (BudgetRevisionService::approveSupplemental()):
+ * each project, ONE budget line per project (suggested_amount left at 0) and a SUPPLEMENTAL ledger row per line, so the amount shows in the COB's Amendment column and not
+ * in its Approved Amount.
  */
 @session_start();
 $_brv_api = Config('API.FIMS_URL');
@@ -277,10 +279,16 @@ function brv_typeBadge(r) {
 
 // A Supplemental request has no budget line, so the list and the details describe it by its own fields: where the new project goes
 // ("101 — Socialized Housing Program › 101-003 — Resettlement Housing Units") and the SARO it was released under.
+// A Supplemental request's title: its first project's name, and how many more it carries (the list row has only the first — supp_project_name / supp_project_count)
+function brv_suppTitle(r) {
+    const n = Number(r.supp_project_count) || 0;
+    return (r.supp_project_name || '—') + (n > 1 ? ` (+${n - 1} more)` : '');
+}
 function brv_suppPlace(r) {
     const withName = (code, name) => (code ? code + (name ? ' — ' + name : '') : '');
     const where = [withName(r.supp_program_code, r.supp_program_name), withName(r.supp_sub_program_code, r.supp_sub_program_name)].filter(Boolean).join(' › ');
-    return [where, r.supp_saro_no ? 'SARO NO. ' + r.supp_saro_no : ''].filter(Boolean).join(' · ');
+    const more  = Number(r.supp_program_count) > 1 ? ` (+${Number(r.supp_program_count) - 1} more program${Number(r.supp_program_count) > 2 ? 's' : ''})` : '';
+    return [where + more, r.supp_saro_no ? 'SARO NO. ' + r.supp_saro_no : ''].filter(Boolean).join(' · ');
 }
 
 const $brv = id => document.getElementById(id);
@@ -411,7 +419,7 @@ function brv_renderTable(rows) {
         </td>
         <td>${brv_typeBadge(r)}</td>
         <td>
-            <div class="nha-td-bold">${brv_esc(supp ? (r.supp_project_name || '—') : brv_lineTitle(r, ''))}</div>
+            <div class="nha-td-bold">${brv_esc(supp ? brv_suppTitle(r) : brv_lineTitle(r, ''))}</div>
             <div class="nha-td-sub">${brv_esc(supp ? brv_suppPlace(r) : brv_linePlace(r, ''))}</div>
             ${r.to_budget_line_item_id ? `<div class="nha-td-sub" title="Funds move to this budget line">→ To: ${brv_esc(brv_lineTitle(r, 'to_'))}${r.to_budget_reference_number ? ' (' + brv_esc(r.to_budget_reference_number) + ')' : ''}</div>` : ''}
         </td>
@@ -587,22 +595,33 @@ async function brv_edit(id) {
     }
 }
 
-// Save a Supplemental request — a new project, so it has its own body (window.brvSupp.payload(), form/budget-rev-form.php) and no From / To lines or amounts.
+// Save a Supplemental request — new projects, so it has its own body (window.brvSupp.payload(), form/budget-rev-form.php) and no From / To lines or amounts.
 async function brv_saveSupplemental(mode, id) {
     const problem = window.brvSupp?.validate?.() || '';
     if (problem) { brv_toast(problem, 'error'); return; }
     const payload = window.brvSupp.payload();
+    const files   = window.brvSupp.files();   // the files added to the projects' Supporting Documents (empty = a plain JSON save is enough)
 
     window.PagePreloader?.show();
     try {
-        const url    = mode === 'edit' ? `${BRV_API}/update/${id}` : `${BRV_API}/add`;
-        const method = mode === 'edit' ? 'PUT' : 'POST';
-        const res    = await fetch(url, {
-            method,
-            credentials: 'same-origin',
-            headers: brv_apiHeaders({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify(payload),
-        });
+        const url = mode === 'edit' ? `${BRV_API}/update/${id}` : `${BRV_API}/add`;
+        let init;
+        if (files.length) {
+            // new files: multipart FormData — the body as a JSON string in `data`, the files as doc_file_0, doc_file_1, … (the Budget Request's convention). PHP only fills the
+            // uploaded files on a POST, so an edit is sent as POST too (the route accepts PUT or POST). No Content-Type: the browser sets it, with the boundary.
+            const fd = new FormData();
+            fd.append('data', JSON.stringify(payload));
+            files.forEach((f, i) => fd.append('doc_file_' + i, f));
+            init = { method: 'POST', credentials: 'same-origin', headers: brv_apiHeaders(), body: fd };
+        } else {
+            init = {
+                method: mode === 'edit' ? 'PUT' : 'POST',
+                credentials: 'same-origin',
+                headers: brv_apiHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify(payload),
+            };
+        }
+        const res = await fetch(url, init);
         const json = await res.json().catch(() => null);
         if (!res.ok || !json || !json.success) throw new Error(json?.message || 'Failed to save the supplemental request.');
 
@@ -787,16 +806,39 @@ function brv_closeView() {
     $brv('brv-view-overlay').classList.remove('open');
 }
 
-// The details of a Supplemental request: the new project and where it goes, the SARO, the line items, and what approving does.
-// Nothing of it exists in the budget until it is approved; the project code is generated then (supp_project_code is empty before).
+// The details of a Supplemental request: its new projects (each with where it goes and its line items), the SARO, and what approving does.
+// Nothing of it exists in the budget until it is approved; each project's code is generated then (project_code is empty before).
 function brv_fillSuppView(r) {
     const withName = (code, name) => (code ? code + (name ? ' — ' + name : '') : '');
-    const where    = [withName(r.supp_program_code, r.supp_program_name), withName(r.supp_sub_program_code, r.supp_sub_program_name)].filter(Boolean).join(' › ');
+    const placeOf  = x => [withName(x.program_code, x.program_name), withName(x.sub_program_code, x.sub_program_name)].filter(Boolean).join(' › ');
     const total    = brv_fmtMoney(r.to_amount);
     const fy       = r.supp_fiscal_yr ?? '—';
+    const projects = r.projects || [];
+    const many     = projects.length > 1;
 
-    $brv('brv-view-sp-project').textContent = r.supp_project_name || '—';
-    $brv('brv-view-sp-sub').textContent = [where, r.supp_location ? 'Location: ' + r.supp_location : '', r.supp_project_code ? 'Project code: ' + r.supp_project_code : ''].filter(Boolean).join('\n');
+    // one card per project: where it goes (its own Program), its Region / Location / Project Code, its fund, component and amount, and its supporting documents
+    $brv('brv-view-sp-projects-lbl').textContent = many ? `Projects (${projects.length})` : 'Project';
+    $brv('brv-view-sp-projects').innerHTML = projects.map((pr, i) => {
+        const sub  = [placeOf(pr), pr.rc_name ? 'Region: ' + pr.rc_name : '', pr.location ? 'Location: ' + pr.location : '', pr.project_code ? 'Project code: ' + pr.project_code : ''].filter(Boolean).join('\n');
+        const cell = (k, v) => `<div class="brv-v-cell"><div class="brv-v-cell-k">${k}</div><div class="brv-v-cell-v">${v}</div></div>`;
+        const docs = (pr.supporting_documents || []).map(d => `<li>${d.view_url
+            ? `<a href="${brv_esc(d.view_url)}" target="_blank" rel="noopener">${brv_esc(d.document_name || 'Document')} ↗</a>`
+            : brv_esc(d.document_name || 'Document')}</li>`).join('');
+        return `<div class="brv-v-proj">
+            <div class="brv-v-card is-to">
+                <div class="brv-v-card-top"><span class="nha-bdg nha-bdg-amber">${many ? 'Project ' + (i + 1) : 'New project'}</span> <strong>${brv_esc(pr.project_name || '—')}</strong></div>
+                ${sub ? `<div class="brv-v-card-sub">${brv_esc(sub)}</div>` : ''}
+            </div>
+            <div class="brv-v-kv">
+                ${cell('Type of Fund', brv_esc(pr.type_of_fund_name || '—'))}
+                ${cell('Component', brv_esc(pr.component_name || '—'))}
+                ${cell('Sub-Component', brv_esc(pr.sub_component_name || '—'))}
+                ${cell('Proposed Amount', brv_fmtMoney(pr.proposed_amount))}
+            </div>
+            <div class="brv-v-docs"><div class="brv-v-cell-k">Supporting Documents</div>${docs ? `<ul>${docs}</ul>` : '<div class="brv-v-none">None attached.</div>'}</div>
+        </div>`;
+    }).join('') || '<div class="brv-v-reason is-empty">No projects.</div>';
+    $brv('brv-view-sp-grand').hidden = !many;
 
     const dt = (/^(\d{4})-(\d{2})-(\d{2})/.exec(String(r.supp_saro_date || '')) || []);
     $brv('brv-view-sp-saro').textContent = r.supp_saro_no
@@ -804,18 +846,14 @@ function brv_fillSuppView(r) {
         : 'SARO no longer found';
     $brv('brv-view-sp-saro-sub').textContent = [`FY ${fy}`, Number(r.supp_saro_amount) > 0 ? 'SARO amount ' + brv_fmtMoney(r.supp_saro_amount) : ''].filter(Boolean).join(' · ');
 
-    $brv('brv-view-sp-items').innerHTML = (r.items || []).map(it => `<tr>
-        <td>${brv_esc(it.account_code || it.account_id)}${it.account_title ? ' — ' + brv_esc(it.account_title) : ''}</td>
-        <td>${brv_esc(it.particulars)}</td>
-        <td class="brv-v-num">${brv_fmtMoney(it.amount)}</td>
-    </tr>`).join('') || '<tr><td colspan="3">No line items.</td></tr>';
     $brv('brv-view-sp-total').textContent = total;
 
     const effect = $brv('brv-view-sp-effect');
+    const codes  = projects.map(pr => pr.project_code).filter(Boolean).join(', ');
     effect.classList.remove('is-warn');
-    effect.textContent = r.status === 'APPROVED' ? `Approved — the project${r.supp_project_code ? ' ' + r.supp_project_code : ''} was added to the FY ${fy} budget with ${total} as an Amendment.`
+    effect.textContent = r.status === 'APPROVED' ? `Approved — ${many ? 'the projects' : 'the project'}${codes ? ' ' + codes : ''} ${many ? 'were' : 'was'} added to the FY ${fy} budget with ${total} as an Amendment.`
         : r.status === 'DECLINED' ? 'Declined — nothing was added to the budget.'
-        : `On approval the project is added to the FY ${fy} budget${where ? ' under ' + where : ''} with ${total} as an Amendment (not as an Approved Amount), and its project code is generated.`;
+        : `On approval ${many ? 'the projects are' : 'the project is'} added to the FY ${fy} budget under ${many ? 'their programs' : 'its program'} with ${total} as an Amendment (not as an Approved Amount), and ${many ? 'the codes of the new projects are' : 'the code of a new project is'} generated.`;
 }
 
 // What approving does to the two budget lines. Only shown when the revision has a To line: then it MOVES
@@ -859,8 +897,10 @@ async function brv_review(status) {
     let question = `Are you sure you want to ${verb} budget amendment request #${id}?`;
     if (status === 'APPROVED' && brv_viewRow && brv_typeOf(brv_viewRow) === 'SUPPLEMENTAL') {
         // a new project, not a change to a budget line: say what approving adds
-        question += `\n\nThe project "${brv_viewRow.supp_project_name || ''}" will be added to the FY ${brv_viewRow.supp_fiscal_yr ?? ''} budget of the office that filed it, `
-                  + `with a generated project code, and ${brv_fmtMoney(brv_viewRow.to_amount)} will be recorded as an Amendment (the Approved Amount stays 0).`;
+        const names = (brv_viewRow.projects || []).map(pr => `"${pr.project_name || ''}"`);
+        question += (names.length > 1 ? `\n\nThe ${names.length} projects ${names.join(', ')} will be added` : `\n\nThe project ${names[0] || '""'} will be added`)
+                  + ` to the FY ${brv_viewRow.supp_fiscal_yr ?? ''} budget of the office that filed it, `
+                  + `with ${names.length > 1 ? 'generated project codes' : 'a generated project code'}, and ${brv_fmtMoney(brv_viewRow.to_amount)} will be recorded as an Amendment (the Approved Amount stays 0).`;
     } else if (status === 'APPROVED' && brv_viewRow) {
         const v       = brv_viewRow;
         const current = Number(v.line_amount || 0);

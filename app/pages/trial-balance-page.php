@@ -18,39 +18,31 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
 
 
 <style>
+    #tb-root :is(.nha-mono, .nha-amt, .u-font-mono, .fims-mono, .amt-cell) { font-family: var(--font-body); font-variant-numeric: tabular-nums; } /* plain zero, no dotted-zero glyph */
     /* Table styling (.fims-report-table*) lives in _shared/css/nha-fims.css. Only page-specific, non-table rules remain here. */
     #tb-root .tb-report-title { text-align: center; margin: 0 0 18px; }
-    #tb-root .tb-report-title div { font-weight: 700; line-height: 1.6; font-size: 1rem; }
+    #tb-root .tb-report-title div { font-weight: 700; line-height: 1.6; font-size: var(--fs-lg); }
     #tb-root .tb-report-title .tb-report-date { font-weight: 400; }
 
-    /* The rest of the page used 10-13px (shared nha-fims.css), tiny next to the table. Raised here so the page reads as one scale.
-       _shared/js/custom.js forces `1em * scale !important` on inputs/selects/buttons, so those get the same direct rem + !important. */
-    #tb-root .nha-hdr-tag             { font-size: 0.75rem; }    /* 12px  (was 10) */
-    #tb-root .nha-hdr-title           { font-size: 1.25rem; }    /* 20px  (was 17) */
-    #tb-root .nha-btn-hdr             { font-size: calc(0.875rem * var(--button-scale, 1)) !important; } /* 14px  Refresh */
-    #tb-root .nha-filter-label        { font-size: 0.75rem; }    /* 12px  (was 10) */
-    #tb-root .nha-filter-select       { font-size: calc(0.875rem * var(--input-scale, 1)) !important; }  /* 14px  dropdowns (was 13) */
-    #tb-root .nha-bdg                 { font-size: 0.8125rem; }  /* 13px  status badge (was 11) */
     /* The filter group is a flex column, which stretched the badge across the whole column — keep it pill-sized,
        lined up with the dropdowns beside it. */
     #tb-root #tb-badge { align-self: flex-start; display: inline-flex; align-items: center; min-height: 34px; padding: 0 14px; margin-top: auto; }
-    #tb-root .nha-error               { font-size: 0.875rem; }   /* 14px  (was 13) */
-    #tb-root .nha-hint                { font-size: 0.875rem; padding: 0 16px; margin: 0 0 14px; color: var(--afims-text-muted, #62657E); }   /* 14px  (was 13); 16px side padding lines it up with the filter card's content */
+    #tb-root .nha-hint { padding: 0 16px; margin: 0 0 14px; color: var(--afims-text-muted); }
 
 
     /* Print / Export — one header button → PDF | Excel menu → preview modal (Print / Download on a bar above the preview) */
     #tb-root .tb-menu-item { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; cursor: pointer; font-family: inherit; }
     #tb-root .tb-menu-item:hover, #tb-root .tb-menu-item:focus-visible { background: var(--afims-surface-subtle, #F4F7FA); outline: none; }
-    #tb-root .tb-menu-item strong { display: block; font-size: 13px; color: var(--afims-text, #1e293b); }
-    #tb-root .tb-menu-item small  { display: block; font-size: 11.5px; color: var(--afims-text-muted, #62657E); }
+    #tb-root .tb-menu-item strong { display: block; font-size:var(--fs-base); color: var(--afims-text, #1e293b); }
+    #tb-root .tb-menu-item small  { display: block; font-size:var(--fs-xs); color: var(--afims-text-muted, #62657E); }
     #tb-root .tbx-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
-    #tb-root .tbx-info { font-size: 12.5px; color: var(--afims-text-muted, #62657E); }
+    #tb-root .tbx-info { font-size:var(--fs-sm); color: var(--afims-text-muted, #62657E); }
     #tb-root .tbx-actions { display: flex; gap: 8px; }
     #tb-root .tbx-actions [hidden] { display: none !important; }
-    #tb-root .tbx-stage { position: relative; height: 68vh; overflow: auto; background: #E8ECF2; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; }
-    #tb-root .tbx-frame { display: block; width: 100%; height: 100%; border: 0; background: #E8ECF2; }
-    #tb-root .tbx-msg { padding: 60px 20px; text-align: center; font-size: 13px; color: var(--afims-text-muted, #62657E); }
-    #tb-root .tbx-err { margin-top: 10px; padding: 8px 12px; border-radius: 7px; background: #FDECEC; color: #B42318; font-size: 13px; }
+    #tb-root .tbx-stage { position: relative; height: 68vh; overflow: auto; background: var(--afims-surface-subtle); border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; }
+    #tb-root .tbx-frame { display: block; width: 100%; height: 100%; border: 0; background: var(--afims-surface-subtle); }
+    #tb-root .tbx-msg { padding: 60px 20px; text-align: center; font-size:var(--fs-base); color: var(--afims-text-muted, #62657E); }
+    #tb-root .tbx-err { margin-top: 10px; padding: 8px 12px; border-radius: 7px; background: var(--afims-danger-soft); color: var(--afims-danger-text); font-size:var(--fs-base); }
     #tb-root .tbx-msg[hidden], #tb-root .tbx-err[hidden], #tb-root .tbx-frame[hidden], #tb-root .tbx-sheet[hidden] { display: none; }
     /* the Excel preview: the sheet the .xlsx will contain, with a spreadsheet's column letters / row numbers */
     #tb-root .tbx-sheet { padding: 14px; }
@@ -72,7 +64,7 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
     <!-- same banner as User Access: app-page-header (styled by the global _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
-            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h7"/>
             </svg>
         </div>
@@ -376,8 +368,8 @@ function tb_render(json) {
             return header + `<tr class="fims-report-table-row${contra ? ' fims-report-table-contra-row' : ''}">
                 <td>${tb_esc(r.account_title) || '—'}</td>
                 <td class="nha-mono fims-report-table-num">${tb_esc(r.account_code)}</td>
-                <td class="text-end nha-mono fims-report-table-num">${tb_peso(r.total_debit)}</td>
-                <td class="text-end nha-mono fims-report-table-num">${tb_peso(r.total_credit)}</td>
+                <td class="text-end nha-mono fims-report-table-num">${tb_pesoOrDash(r.total_debit)}</td>
+                <td class="text-end nha-mono fims-report-table-num">${tb_pesoOrDash(r.total_credit)}</td>
             </tr>`;
         }).join('');
     }
@@ -667,6 +659,10 @@ function tb_buildWorkbook() {
 /* ── Formatters ────────────────────────────────────────────── */
 function tb_peso(v) {
     return '₱ ' + Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+/* An empty side of an account (balance method: one side per account) shows "-" instead of ₱ 0.00. */
+function tb_pesoOrDash(v) {
+    return Math.abs(Number(v || 0)) < 0.005 ? '-' : tb_peso(v);
 }
 function tb_esc(text) {
     if (text === null || text === undefined) return '';

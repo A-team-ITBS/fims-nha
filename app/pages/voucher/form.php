@@ -22,8 +22,9 @@ if (!isset($_vf_api)) {
 ?>
 
 <style>
+    #vf-root :is(.nha-mono, .nha-amt, .u-font-mono, .fims-mono, .amt-cell) { font-family: var(--font-body); font-variant-numeric: tabular-nums; } /* plain zero, no dotted-zero glyph */
 #vf-root .vf-card { background: var(--afims-surface, #fff); border: 1px solid var(--afims-border, #E4ECF2); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
-#vf-root .vf-card-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin: 0 0 12px; }
+#vf-root .vf-card-title { font-size:var(--fs-sm); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin: 0 0 12px; }
 #vf-root .vf-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 #vf-root .vf-a-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 16px; align-items: start; }
 #vf-root .vf-a-grid > .vf-a-full { grid-column: 1 / -1; }
@@ -32,25 +33,25 @@ if (!isset($_vf_api)) {
 #vf-root .vf-grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 #vf-root .vf-span2 { grid-column: span 2; }
 #vf-root .vf-span3 { grid-column: span 3; }
-#vf-root .vf-hint  { font-size: 11px; color: var(--afims-text-muted, #62657E); margin-top: 3px; }
-#vf-root .vf-err   { display: none; font-size: 11px; color: var(--afims-danger, #DC3545); margin-top: 3px; }
+#vf-root .vf-hint  { font-size:var(--fs-xs); color: var(--afims-text-muted, #62657E); margin-top: 3px; }
+#vf-root .vf-err   { display: none; font-size:var(--fs-xs); color: var(--afims-danger, #DC3545); margin-top: 3px; }
 
 #vf-root .vf-number { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 18px; margin-bottom: 14px;
     border: 2px solid var(--afims-primary-soft, #E6EBF6); border-radius: 12px;
     background: linear-gradient(to right, var(--afims-primary-soft, #E6EBF6), var(--afims-surface, #fff)); }
-#vf-root .vf-number small { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); }
-#vf-root .vf-number strong { font-family: "IBM Plex Mono", monospace; font-size: 20px; color: var(--afims-primary-text, #0035A9); }
+#vf-root .vf-number small { display: block; font-size:var(--fs-xs); text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); }
+#vf-root .vf-number strong { font-family:var(--font-body);font-variant-numeric:tabular-nums; font-size:var(--fs-2xl); color: var(--afims-primary-text, #0035A9); }
 
 #vf-root .vf-vendor-card { display: none; margin-top: 10px; padding: 12px 16px; gap: 20px; flex-wrap: wrap;
     background: var(--afims-success-soft, #DBF2E5); border: 1px solid var(--afims-success-soft-hover, #C4E9D4); border-radius: 10px; }
 #vf-root .vf-vendor-card.visible { display: flex; }
-#vf-root .vf-remit-sched { margin-bottom: 12px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; }
-#vf-root .vf-rs-hdr { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin-bottom: 6px; }
+#vf-root .vf-remit-sched { margin-bottom: 12px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 8px; padding: 10px 12px; font-size:var(--fs-sm); }
+#vf-root .vf-rs-hdr { font-size:var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin-bottom: 6px; }
 #vf-root .vf-rs-tbl { width: 100%; border-collapse: collapse; margin: 4px 0 8px; }
-#vf-root .vf-rs-tbl th { text-align: left; font-size: 10.5px; font-weight: 700; color: var(--afims-text-muted, #62657E); padding: 4px 6px; border-bottom: 1px solid var(--afims-border, #E4ECF2); }
+#vf-root .vf-rs-tbl th { text-align: left; font-size:var(--fs-xs); font-weight: 700; color: var(--afims-text-muted, #62657E); padding: 4px 6px; border-bottom: 1px solid var(--afims-border, #E4ECF2); }
 #vf-root .vf-rs-tbl td { padding: 4px 6px; border-bottom: 1px dashed var(--afims-border, #E4ECF2); }
 #vf-root .vf-rs-tbl .r { text-align: right; font-variant-numeric: tabular-nums; }
-#vf-root .vf-rs-tbl .m { font-family: "IBM Plex Mono", monospace; }
+#vf-root .vf-rs-tbl .m { font-family:var(--font-body);font-variant-numeric:tabular-nums; }
 #vf-root .vf-rs-tbl tr.rate td { font-weight: 600; background: var(--afims-surface-alt, #F6F8FB); }
 #vf-root .vf-rs-tbl tr.ven td { color: var(--afims-text, #1e293b); }
 #vf-root .vf-rs-tbl tr.dv td { font-weight: 600; background: var(--afims-surface-alt, #F6F8FB); }
@@ -62,21 +63,21 @@ if (!isset($_vf_api)) {
 #vf-root #vf-claimant-grid.vf-remit-on { grid-template-columns: 1fr; margin-bottom: 0; }
 #vf-root #vf-claimant-grid.vf-remit-on > div:first-child { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; align-items: start; }
 #vf-root #vf-claimant-grid.vf-remit-on .nha-fg { margin-top: 0 !important; }
-#vf-root .vf-remit-sched.vf-remit-main { border: 0; padding: 0; margin: 0; font-size: 13px; }
+#vf-root .vf-remit-sched.vf-remit-main { border: 0; padding: 0; margin: 0; font-size:var(--fs-base); }
 #vf-root .vf-remit-total { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 12px 14px; margin: 4px 0 12px; border-radius: 8px; background: var(--afims-surface-subtle, #F4F7FA); }
-#vf-root .vf-remit-total span { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--afims-text-muted, #62657E); }
-#vf-root .vf-remit-total strong { font-family: "IBM Plex Mono", monospace; font-size: 18px; }
+#vf-root .vf-remit-total span { font-size:var(--fs-sm); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--afims-text-muted, #62657E); }
+#vf-root .vf-remit-total strong { font-family:var(--font-body);font-variant-numeric:tabular-nums; font-size:var(--fs-xl); }
 #vf-root .vf-remit-sched details { border: 1px solid var(--afims-border, #E4ECF2); border-radius: 8px; padding: 6px 12px; margin-top: 8px; }
 @media (max-width: 768px) { #vf-root #vf-claimant-grid.vf-remit-on > div:first-child { grid-template-columns: 1fr; } }
-#vf-root .vf-vendor-card label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-success-hover, #0C7539); }
-#vf-root .vf-vendor-card span { font-size: 13px; font-weight: 600; color: var(--afims-success-hover, #0C7539); }
+#vf-root .vf-vendor-card label { display: block; font-size:var(--fs-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-success-hover, #0C7539); }
+#vf-root .vf-vendor-card span { font-size:var(--fs-base); font-weight: 600; color: var(--afims-success-hover, #0C7539); }
 
-#vf-root .vf-ledger { border-collapse: collapse; width: 100%; font-size: 13px; }
+#vf-root .vf-ledger { border-collapse: collapse; width: 100%; font-size:var(--fs-base); }
 #vf-root .vf-ledger td, #vf-root .vf-ledger th { padding: 6px 4px; border-bottom: 1px solid var(--afims-surface-subtle, #F4F7FA); }
 #vf-root .vf-ledger td.vf-l-label { color: var(--afims-text-muted, #62657E); font-weight: 600; width: 45%; }
-#vf-root .vf-ledger td.vf-l-val { text-align: right; font-family: "IBM Plex Mono", monospace; font-weight: 600; }
+#vf-root .vf-ledger td.vf-l-val { text-align: right; font-family:var(--font-body);font-variant-numeric:tabular-nums; font-weight: 600; }
 #vf-root .vf-ledger tr.vf-l-total td { border-top: 2px solid var(--afims-border, #E4ECF2); border-bottom: none; font-weight: 700; }
-#vf-root .vf-ledger input, #vf-root .vf-ledger select { width: 100%; font-size: 12.5px; padding: 6px 8px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px; box-sizing: border-box; font-family: inherit; }
+#vf-root .vf-ledger input, #vf-root .vf-ledger select { width: 100%; font-size:var(--fs-sm); padding: 6px 8px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px; box-sizing: border-box; font-family: inherit; }
 
 /* GL-grouped Accounting Entries grid (Journal Entry Voucher layout) — same convention as
    readone.php's #vr-root rules. */
@@ -84,15 +85,15 @@ if (!isset($_vf_api)) {
 #vf-root .vje-grp-edit-table tr.vje-grp-hdr:first-child td { padding-top: 6px; }
 #vf-root .vje-grp-edit-table tr.vje-grp-hdr input.vje-grp-acct { font-weight: 700; background: var(--afims-surface, #fff); }
 #vf-root .vje-grp-edit-table tr.vje-grp-hdr .vje-grp-debit,
-#vf-root .vje-grp-edit-table tr.vje-grp-hdr .vje-grp-credit { font-weight: 700; font-family: "IBM Plex Mono", monospace; text-align: right; }
+#vf-root .vje-grp-edit-table tr.vje-grp-hdr .vje-grp-credit { font-weight: 700; font-family:var(--font-body);font-variant-numeric:tabular-nums; text-align: right; }
 #vf-root .vje-grp-edit-table tr.vje-grp-line td:first-child { padding-left: 22px; }
-#vf-root .vje-grp-edit-table .vje-grp-add-btn { font-size: 11.5px; padding: 4px 10px; }
+#vf-root .vje-grp-edit-table .vje-grp-add-btn { font-size:var(--fs-xs); padding: 4px 10px; }
 
-#vf-root .vje-sl-hint { margin-top: 4px; font-size: 11px; color: var(--afims-text-muted, #62657E); line-height: 1.6; min-height: 1px; }
+#vf-root .vje-sl-hint { margin-top: 4px; font-size:var(--fs-xs); color: var(--afims-text-muted, #62657E); line-height: 1.6; min-height: 1px; }
 /* The picked account's title, inside the Account Code field right after the code ("1-04-01-010 - Due to BIR"). The input keeps only the
    code; this is a click-through label whose left edge vf_renderAcctTitle() sets to the end of the typed text. */
 #vf-root .vje-acct-wrap { position: relative; }
-#vf-root .vje-acct-title { position: absolute; top: 0; bottom: 0; right: 8px; display: none; align-items: center; pointer-events: none; font-size: 12.5px; font-family: inherit; color: var(--afims-text-muted, #62657E); }
+#vf-root .vje-acct-title { position: absolute; top: 0; bottom: 0; right: 8px; display: none; align-items: center; pointer-events: none; font-size:var(--fs-sm); font-family: inherit; color: var(--afims-text-muted, #62657E); }
 #vf-root .vje-acct-title > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Deduction / ATC rows are plain blocks inside the RFA Breakdown box — no card border or padding of their own. */
 #vf-root .vf-ded-row { margin-bottom: 14px; position: relative; }
@@ -109,26 +110,26 @@ if (!isset($_vf_api)) {
 #vf-root .vf-ded-row .nha-fg, #vf-root .vf-atc-row .nha-fg { margin-bottom: 0; }
 #vf-root .vf-ded-row .nha-fg label, #vf-root .vf-atc-row .nha-fg label { margin-bottom: 3px; }
 #vf-root .vf-ded-row .vf-grid2, #vf-root .vf-atc-row .vf-grid3 { gap: 8px; }
-#vf-root .vf-ded-remove { position: absolute; top: 8px; right: 10px; background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); font-size: 16px; line-height: 1; padding: 4px 6px; border-radius: 5px; }
+#vf-root .vf-ded-remove { position: absolute; top: 8px; right: 10px; background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); font-size:var(--fs-lg); line-height: 1; padding: 4px 6px; border-radius: 5px; }
 #vf-root .vf-ded-remove:hover { background: var(--afims-danger-soft, #FAE1E3); }
-#vf-root .vf-ded-type-label { font-weight: 600; font-size: 13px; color: var(--afims-heading-fill, #000E3E); padding-right: 24px; }
+#vf-root .vf-ded-type-label { font-weight: 600; font-size:var(--fs-base); color: var(--afims-heading-fill, #000E3E); padding-right: 24px; }
 /* VAT deduction row — Inclusive/Exclusive toggle, an informational VAT Computation block and the Withholding VAT block
    (see vf_addVatLine()). Same two-block layout as the Accounting DV Processing page's VAT tab. */
 #vf-root .vf-ap-card { padding: 0; overflow: hidden; }
-#vf-root .vf-ap-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-#vf-root .vf-ap-table th { padding: 12px 16px; text-align: left; font-size: 12.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; color: var(--afims-text-muted, #475069); background: #F7F9FC; border-bottom: 1px solid #E4ECF6; }
-#vf-root .vf-ap-table td { padding: 10px 16px; border-bottom: 1px solid #EEF2F8; }
-#vf-root .vf-ap-table td:nth-child(1) { font-family: "IBM Plex Mono", monospace; font-size: 13px; letter-spacing: .02em; }
+#vf-root .vf-ap-table { width: 100%; border-collapse: collapse; font-size:var(--fs-md); }
+#vf-root .vf-ap-table th { padding: 12px 16px; text-align: left; font-size:var(--fs-sm); font-weight: 600; text-transform: uppercase; letter-spacing: .02em; color: var(--afims-text-muted, #475069); background: var(--afims-surface-subtle); border-bottom: 1px solid var(--afims-border); }
+#vf-root .vf-ap-table td { padding: 10px 16px; border-bottom: 1px solid var(--afims-border); }
+#vf-root .vf-ap-table td:nth-child(1) { font-family:var(--font-body);font-variant-numeric:tabular-nums; font-size:var(--fs-base); letter-spacing: .02em; }
 #vf-root .vf-ap-table td:nth-child(3), #vf-root .vf-ap-table td:nth-child(4) { text-align: right; }
 #vf-root .vf-ap-table tr.vf-ap-total td { font-weight: 700; border-bottom: 0; }
 #vf-root .vf-ap-table tr.vf-ap-empty td { text-align: center; color: var(--afims-text-muted, #62657E); padding: 18px; }
 #vf-root .vf-ap-table tr.vf-ap-bad td:nth-child(3), #vf-root .vf-ap-table tr.vf-ap-bad td:nth-child(4) { color: var(--afims-danger-text, #8F222D); }
 #vf-root .vf-vat-types { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-#vf-root .vf-vat-opt { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; border: 1px solid var(--afims-border, #E4ECF2); background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-text-muted, #62657E); }
+#vf-root .vf-vat-opt { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 7px 14px; border-radius: 6px; font-size:var(--fs-sm); font-weight: 600; border: 1px solid var(--afims-border, #E4ECF2); background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-text-muted, #62657E); }
 #vf-root .vf-vat-opt.active { border-color: var(--afims-primary, #0035A9); color: var(--afims-primary-text, #0035A9); }
-#vf-root .vf-vat-opt small { font-size: 10px; font-weight: 400; }
+#vf-root .vf-vat-opt small { font-size:var(--fs-2xs); font-weight: 400; }
 #vf-root .vf-vat-block { margin-top: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--afims-border, #E4ECF2); background: var(--afims-surface-subtle, #F4F7FA); }
-#vf-root .vf-vat-block-title { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 6px; }
+#vf-root .vf-vat-block-title { font-size:var(--fs-xs); font-weight: 700; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 6px; }
 #vf-root .vf-vat-block-title span { font-weight: 400; text-transform: none; letter-spacing: 0; }
 #vf-root .vf-vat-block.info .vf-vat-block-title { color: var(--afims-primary-text, #0035A9); }
 #vf-root .vf-vat-block.real .vf-vat-block-title { color: var(--afims-danger, #DC3545); }
@@ -136,100 +137,100 @@ if (!isset($_vf_api)) {
 /* RFA Breakdown: the editable Amount cell of each line. */
 #vf-root .vf-rfa-line-amt {
     width: 100%; padding: 6px 8px; text-align: right; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px;
-    font-size: 12.5px; font-family: var(--font); color: var(--afims-text, #1C1E29);
+    font-size:var(--fs-sm); font-family: var(--font); color: var(--afims-text, #1C1E29);
     background: var(--afims-surface, #FFFFFF); box-sizing: border-box; transition: border-color .15s, box-shadow .15s;
 }
 #vf-root .vf-rfa-line-amt:focus { outline: none; border-color: var(--afims-heading-fill, #000E3E); box-shadow: 0 0 0 3px rgba(15,32,69,.1); }
 /* One line under the ATC rows: how much of the base the ATC rows' Tax Bases add up to (red when they exceed it). */
-#vf-root .vf-atc-summary { margin: 4px 0 10px; font-size: 11.5px; line-height: 1.5; color: var(--afims-text-muted, #62657E); }
+#vf-root .vf-atc-summary { margin: 4px 0 10px; font-size:var(--fs-xs); line-height: 1.5; color: var(--afims-text-muted, #62657E); }
 #vf-root .vf-atc-summary.over { padding: 6px 10px; border-radius: 6px; color: var(--afims-danger-text, #8F222D); background: var(--afims-danger-soft, #FAE1E3); }
 /* One pill button per deduction type (Retention, Advance Recoupment, etc.) — clicking a pill adds
    a row already bound to that type, instead of a single "+ Add Deduction" control. */
 /* ── Section B as one table-like box: RFA lines, Gross, Computation, "Less:" rows, add-deduction row ── */
-#vf-root #vf-rfa-breakdown { padding: 0; overflow: hidden; background: var(--afims-surface, #fff); border-color: #D5E0F0; }
-#vf-root .vf-bd-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 14px; }
+#vf-root #vf-rfa-breakdown { padding: 0; overflow: hidden; background: var(--afims-surface, #fff); border-color: var(--afims-border); }
+#vf-root .vf-bd-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size:var(--fs-md); }
 #vf-root .vf-bd-table th:nth-child(2), #vf-root .vf-bd-table td:nth-child(2) { width: 170px; }
 #vf-root .vf-bd-table th:nth-child(3), #vf-root .vf-bd-table td:nth-child(3) { width: 180px; }
 #vf-root .vf-bd-table th:nth-child(4), #vf-root .vf-bd-table td:nth-child(4) { width: 170px; }
 #vf-root .vf-bd-table th:nth-child(5), #vf-root .vf-bd-table td:nth-child(5) { width: 44px; }
-#vf-root .vf-bd-table th { padding: 12px 14px; background: #EEF3FB; color: #0B1B43; font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
-#vf-root .vf-bd-table td { padding: 10px 14px; border-top: 1px solid #E4ECF6; vertical-align: middle; }
+#vf-root .vf-bd-table th { padding: 12px 14px; background: var(--afims-surface-subtle); color: var(--afims-heading); font-size:var(--fs-sm); font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+#vf-root .vf-bd-table td { padding: 10px 14px; border-top: 1px solid var(--afims-border); vertical-align: middle; }
 #vf-root .vf-bd-table tbody td:nth-child(2) { color: var(--afims-text-muted, #62657E); }
 #vf-root .vf-bd-table td:nth-child(3), #vf-root .vf-bd-table td:nth-child(4) { text-align: right; }
 #vf-root .vf-bd-table .vf-rfa-line-amt, #vf-root .vf-bd-table .vf-comp-base, #vf-root .vf-bd-table .vf-comp-pct, #vf-root .vf-comp-line input {
-    width: 100%; padding: 8px 12px; text-align: right; border: 1px solid var(--afims-border, #D7DCE6); border-radius: 8px; font-size: 14px;
+    width: 100%; padding: 8px 12px; text-align: right; border: 1px solid var(--afims-border, #D7DCE6); border-radius: 8px; font-size:var(--fs-md);
     font-family: var(--font); background: var(--afims-surface, #fff); box-sizing: border-box;
 }
-#vf-root .vf-bd-gross td { background: #E3EBF8; border-top: 1px solid #D5E0F0; padding: 8px 14px; }
-#vf-root .vf-bd-gross .vf-bd-muted { color: var(--afims-text-muted, #62657E); font-size: 13px; }
-#vf-root .vf-bd-comp small { display: block; margin-top: 6px; font-size: 12px; color: var(--afims-text-muted, #62657E); }
-#vf-root .vf-comp-line { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--afims-text-muted, #62657E); }
+#vf-root .vf-bd-gross td { background: var(--afims-surface-subtle); border-top: 1px solid var(--afims-border); padding: 8px 14px; }
+#vf-root .vf-bd-gross .vf-bd-muted { color: var(--afims-text-muted, #62657E); font-size:var(--fs-base); }
+#vf-root .vf-bd-comp small { display: block; margin-top: 6px; font-size:var(--fs-sm); color: var(--afims-text-muted, #62657E); }
+#vf-root .vf-comp-line { display: flex; align-items: center; gap: 8px; font-size:var(--fs-base); color: var(--afims-text-muted, #62657E); }
 #vf-root .vf-comp-line span { white-space: nowrap; }
 #vf-root .vf-comp-line input { text-align: left; }
 /* deduction rows line up under the table's columns: label | rate (under RFA Balance / %) | amount | remove */
-#vf-root #vf-rfa-breakdown .vf-ded-section { border-top: 1px solid #E4ECF6 !important; margin: 0 !important; padding: 0 !important; }
+#vf-root #vf-rfa-breakdown .vf-ded-section { border-top: 1px solid var(--afims-border) !important; margin: 0 !important; padding: 0 !important; }
 #vf-root #vf-rfa-breakdown #vf-rfa-breakdown-body:empty + .vf-err + .vf-ded-section { border-top: 0 !important; }
 #vf-root .vf-less { font-weight: 400; margin-right: 4px; }
-#vf-root .vf-ded-acct-hint { font-size: 12px; font-weight: 400; color: var(--afims-text-muted, #62657E); margin-left: 6px; }
-#vf-root .vf-ded-row, #vf-root .vf-atc-row { margin: 0; padding: 10px 14px; border-top: 1px solid #E4ECF6; }
+#vf-root .vf-ded-acct-hint { font-size:var(--fs-sm); font-weight: 400; color: var(--afims-text-muted, #62657E); margin-left: 6px; }
+#vf-root .vf-ded-row, #vf-root .vf-atc-row { margin: 0; padding: 10px 14px; border-top: 1px solid var(--afims-border); }
 #vf-root .vf-ded-section #vf-ded-container > :first-child { border-top: 0; }
 #vf-root .vf-ded-row:not([data-vat="1"]) { display: grid; grid-template-columns: minmax(0, 1fr) 180px 170px 44px; align-items: center; }
-#vf-root .vf-ded-row:not([data-vat="1"]) .vf-ded-type-label { grid-column: 1; grid-row: 1; padding: 0; font-weight: 400; font-size: 14px; color: var(--afims-text, #1C1E29); }
+#vf-root .vf-ded-row:not([data-vat="1"]) .vf-ded-type-label { grid-column: 1; grid-row: 1; padding: 0; font-weight: 400; font-size:var(--fs-md); color: var(--afims-text, #1C1E29); }
 #vf-root .vf-ded-row:not([data-vat="1"]) > .vf-grid2 { display: contents; }
 #vf-root .vf-ded-row:not([data-vat="1"]) > .vf-grid2 > .nha-fg { margin: 0; }
 #vf-root .vf-ded-row:not([data-vat="1"]) > .vf-grid2 > .nha-fg:nth-child(1) { grid-column: 2; grid-row: 1; padding: 0 14px 0 0; }
 #vf-root .vf-ded-row:not([data-vat="1"]) > .vf-grid2 > .nha-fg:nth-child(2) { grid-column: 3; grid-row: 1; }
 #vf-root .vf-ded-row:not([data-vat="1"]) > .vf-grid2 > .nha-fg label { display: none; }
-#vf-root .vf-ded-row:not([data-vat="1"]) > .vf-grid2 input { width: 100%; padding: 8px 12px; text-align: right; border: 1px solid var(--afims-border, #D7DCE6); border-radius: 8px; font-size: 14px; box-sizing: border-box; background: var(--afims-surface, #fff); }
+#vf-root .vf-ded-row:not([data-vat="1"]) > .vf-grid2 input { width: 100%; padding: 8px 12px; text-align: right; border: 1px solid var(--afims-border, #D7DCE6); border-radius: 8px; font-size:var(--fs-md); box-sizing: border-box; background: var(--afims-surface, #fff); }
 #vf-root .vf-ded-row:not([data-vat="1"]) > .nha-fg { grid-column: 1 / -1; grid-row: 2; margin-top: 8px !important; }
 #vf-root .vf-ded-row:not([data-vat="1"]) > .vf-ded-remove { position: static; grid-column: 4; grid-row: 1; justify-self: center; }
 /* VAT row: same columns as the other deductions; the informational VAT computation sits on a muted line beneath */
 #vf-root .vf-ded-row[data-vat="1"] { display: grid; grid-template-columns: minmax(0, 1fr) 180px 170px 44px; align-items: center; }
-#vf-root .vf-ded-row[data-vat="1"] .vf-ded-type-label { grid-column: 1; grid-row: 1; padding: 0; font-weight: 400; font-size: 14px; color: var(--afims-text, #1C1E29); }
+#vf-root .vf-ded-row[data-vat="1"] .vf-ded-type-label { grid-column: 1; grid-row: 1; padding: 0; font-weight: 400; font-size:var(--fs-md); color: var(--afims-text, #1C1E29); }
 #vf-root .vf-ded-row[data-vat="1"] .vf-vat-types { display: inline-flex; margin: 0 0 0 10px; gap: 6px; vertical-align: middle; }
-#vf-root .vf-ded-row[data-vat="1"] .vf-vat-opt { padding: 4px 10px; font-size: 12px; }
+#vf-root .vf-ded-row[data-vat="1"] .vf-vat-opt { padding: 4px 10px; font-size:var(--fs-sm); }
 #vf-root .vf-ded-row[data-vat="1"] .vf-vat-rate { grid-column: 2; grid-row: 1; margin: 0; padding-right: 14px; }
 #vf-root .vf-ded-row[data-vat="1"] .vf-vat-wamt { grid-column: 3; grid-row: 1; margin: 0; }
 #vf-root .vf-ded-row[data-vat="1"] .vf-vat-rate input, #vf-root .vf-ded-row[data-vat="1"] .vf-vat-wamt input {
-    width: 100%; padding: 8px 12px; text-align: right; border: 1px solid var(--afims-border, #D7DCE6); border-radius: 8px; font-size: 14px; box-sizing: border-box; background: var(--afims-surface, #fff);
+    width: 100%; padding: 8px 12px; text-align: right; border: 1px solid var(--afims-border, #D7DCE6); border-radius: 8px; font-size:var(--fs-md); box-sizing: border-box; background: var(--afims-surface, #fff);
 }
 #vf-root .vf-ded-row[data-vat="1"] > .vf-ded-remove { position: static; grid-column: 4; grid-row: 1; justify-self: center; }
-#vf-root .vf-vat-info { grid-column: 1 / -1; grid-row: 2; margin-top: 6px; font-size: 12px; color: var(--afims-text-muted, #62657E); }
-#vf-root .vf-vat-info input { width: 110px; padding: 2px 6px; border: 0; border-bottom: 1px dashed var(--afims-border, #B9C4D0); background: transparent; font-size: 12px; text-align: right; color: inherit; }
+#vf-root .vf-vat-info { grid-column: 1 / -1; grid-row: 2; margin-top: 6px; font-size:var(--fs-sm); color: var(--afims-text-muted, #62657E); }
+#vf-root .vf-vat-info input { width: 110px; padding: 2px 6px; border: 0; border-bottom: 1px dashed var(--afims-border, #B9C4D0); background: transparent; font-size:var(--fs-sm); text-align: right; color: inherit; }
 #vf-root .vf-ded-row[data-vat="1"] .vf-vat-hint { grid-column: 1 / -1; grid-row: 3; margin-top: 2px; }
 /* ATC row: Less: [ATC code] | Rate % | Withholding tax | x — the editable Tax Base sits on a muted line beneath */
 #vf-root .vf-atc-row { display: grid; grid-template-columns: minmax(0, 1fr) 180px 170px 44px; align-items: center; }
-#vf-root .vf-atc-label { grid-column: 1; grid-row: 1; display: flex; align-items: center; gap: 6px; padding: 0 14px 0 0; font-weight: 400; font-size: 14px; color: var(--afims-text, #1C1E29); }
+#vf-root .vf-atc-label { grid-column: 1; grid-row: 1; display: flex; align-items: center; gap: 6px; padding: 0 14px 0 0; font-weight: 400; font-size:var(--fs-md); color: var(--afims-text, #1C1E29); }
 #vf-root .vf-atc-codewrap { position: relative; flex: 1; min-width: 0; }
 #vf-root .vf-atc-rate-cell { grid-column: 2; grid-row: 1; padding-right: 14px; }
 #vf-root .vf-atc-wh-cell { grid-column: 3; grid-row: 1; }
 #vf-root .vf-atc-row > .vf-ded-remove { position: static; grid-column: 4; grid-row: 1; justify-self: center; }
 #vf-root .vf-atc-row .vf-atc-code, #vf-root .vf-atc-row .vf-atc-rate, #vf-root .vf-atc-row .vf-atc-wh {
-    width: 100%; padding: 8px 12px; border: 1px solid var(--afims-border, #D7DCE6); border-radius: 8px; font-size: 14px; box-sizing: border-box; background: var(--afims-surface, #fff);
+    width: 100%; padding: 8px 12px; border: 1px solid var(--afims-border, #D7DCE6); border-radius: 8px; font-size:var(--fs-md); box-sizing: border-box; background: var(--afims-surface, #fff);
 }
 #vf-root .vf-atc-row .vf-atc-rate, #vf-root .vf-atc-row .vf-atc-wh { text-align: right; }
-#vf-root .vf-atc-info { grid-column: 1 / -1; grid-row: 2; margin-top: 6px; font-size: 12px; color: var(--afims-text-muted, #62657E); }
-#vf-root .vf-atc-info input { width: 130px; padding: 2px 6px; border: 0; border-bottom: 1px dashed var(--afims-border, #B9C4D0); background: transparent; font-size: 12px; text-align: right; color: var(--afims-text, #1C1E29); }
+#vf-root .vf-atc-info { grid-column: 1 / -1; grid-row: 2; margin-top: 6px; font-size:var(--fs-sm); color: var(--afims-text-muted, #62657E); }
+#vf-root .vf-atc-info input { width: 130px; padding: 2px 6px; border: 0; border-bottom: 1px dashed var(--afims-border, #B9C4D0); background: transparent; font-size:var(--fs-sm); text-align: right; color: var(--afims-text, #1C1E29); }
 /* Amount column: the box text sits 12px inside its box, so the header, Gross and Net values are inset the same 12px to line up with it */
 #vf-root .vf-bd-table th:nth-child(4), #vf-root .vf-bd-gross td:nth-child(4) { padding-right: 26px; }
-#vf-root .vf-net-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 70px 12px 14px; background: #E3EBF8; border-top: 1px solid #D5E0F0; font-size: 14px; color: #0B1B43; }
-#vf-root .vf-net-row b { font-family: "IBM Plex Mono", monospace; font-size: 15px; }
-#vf-root .vf-atc-acct-hint, #vf-root .vf-ded-acct-hint { font-family: "IBM Plex Mono", monospace; font-size: 12px; font-weight: 400; color: var(--afims-text-muted, #62657E); white-space: nowrap; }
+#vf-root .vf-net-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 70px 12px 14px; background: var(--afims-surface-subtle); border-top: 1px solid var(--afims-border); font-size:var(--fs-md); color: var(--afims-heading); }
+#vf-root .vf-net-row b { font-family:var(--font-body);font-variant-numeric:tabular-nums; font-size:var(--fs-md); }
+#vf-root .vf-atc-acct-hint, #vf-root .vf-ded-acct-hint { font-family:var(--font-body);font-variant-numeric:tabular-nums; font-size:var(--fs-sm); font-weight: 400; color: var(--afims-text-muted, #62657E); white-space: nowrap; }
 #vf-root .vf-atc-label .vf-atc-codewrap { flex: 0 1 430px; }
 /* the Tax Base line only matters when the base is split over several ATC rows */
 #vf-root .vf-atc-info { display: none; }
 #vf-root #vf-ded-container.vf-atc-multi .vf-atc-info { display: block; }
-#vf-root .vf-ded-types { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid #E4ECF6; }
-#vf-root .vf-ded-less { font-size: 13px; color: var(--afims-text, #1C1E29); }
+#vf-root .vf-ded-types { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--afims-border); }
+#vf-root .vf-ded-less { font-size:var(--fs-base); color: var(--afims-text, #1C1E29); }
 #vf-root .vf-ded-add-select {
     width: auto; min-width: 190px; padding: 7px 12px; border: 1px dashed var(--afims-border, #B9C4D0); border-radius: 8px;
-    background: transparent; color: var(--afims-text-muted, #62657E); font-size: 13px; font-family: var(--font); cursor: pointer;
+    background: transparent; color: var(--afims-text-muted, #62657E); font-size:var(--fs-base); font-family: var(--font); cursor: pointer;
 }
 #vf-root .vf-ded-add-select:hover, #vf-root .vf-ded-add-select:focus { border-color: var(--afims-heading-fill, #000E3E); outline: none; }
 #vf-root .vf-ded-type-btn {
     display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 20px;
     border: 1px solid var(--afims-border, #E4ECF2); background: var(--afims-surface, #FFFFFF);
-    color: var(--afims-heading-fill, #000E3E); font-size: 12px; font-weight: 600; letter-spacing: .02em;
+    color: var(--afims-heading-fill, #000E3E); font-size:var(--fs-sm); font-weight: 600; letter-spacing: .02em;
     cursor: pointer; transition: background .15s, border-color .15s;
 }
 #vf-root .vf-ded-type-btn:hover { background: var(--afims-surface-subtle, #F4F7FA); border-color: var(--afims-heading-fill, #000E3E); }
@@ -237,11 +238,11 @@ if (!isset($_vf_api)) {
    WITHOUT position:absolute, which inside a <td> (no positioned ancestor of its own) escaped to
    the nearest positioned ancestor up the DOM tree — the modal itself — landing as a stray red ×
    floating near the modal's close button instead of inside its own row. */
-#vf-root .vf-table-remove { background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); font-size: 16px; line-height: 1; padding: 4px 6px; border-radius: 5px; }
+#vf-root .vf-table-remove { background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); font-size:var(--fs-lg); line-height: 1; padding: 4px 6px; border-radius: 5px; }
 #vf-root .vf-table-remove:hover { background: var(--afims-danger-soft, #FAE1E3); }
 #vf-root .vf-atc-rc {
     width: 100%; padding: 8px 12px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 8px;
-    font-size: 13px; font-family: var(--font); color: var(--afims-text, #1C1E29);
+    font-size:var(--fs-base); font-family: var(--font); color: var(--afims-text, #1C1E29);
     background: var(--afims-surface, #FFFFFF); box-sizing: border-box; transition: border-color .15s, box-shadow .15s;
 }
 #vf-root .vf-atc-rc:focus {
@@ -251,37 +252,43 @@ if (!isset($_vf_api)) {
 #vf-root .vf-errors { display: none; margin-bottom: 14px; padding: 12px 16px; background: var(--afims-danger-soft, #FAE1E3);
     border: 1px solid var(--afims-danger-soft, #FAE1E3); border-left: 4px solid var(--afims-danger, #DC3545); border-radius: 10px; }
 #vf-root .vf-errors.visible { display: block; }
-#vf-root .vf-errors ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: var(--afims-danger-text, #8F222D); line-height: 1.7; }
+#vf-root .vf-errors ul { margin: 6px 0 0; padding-left: 18px; font-size:var(--fs-base); color: var(--afims-danger-text, #8F222D); line-height: 1.7; }
 
 #vf-root .vf-rfa-dropdown { position: relative; display: none; margin-top: 4px; max-height: 260px; overflow-y: auto;
     border: 1px solid var(--afims-border, #E4ECF2); border-radius: 8px; background: var(--afims-surface, #fff); box-shadow: 0 6px 16px rgba(0,0,0,.08); }
 #vf-root .vf-rfa-dropdown.open { display: block; }
-#vf-root .vf-rfa-opt { padding: 8px 12px; cursor: pointer; font-size: 12.5px; border-bottom: 1px solid var(--afims-surface-subtle, #F4F7FA); }
+#vf-root .vf-rfa-opt { padding: 8px 12px; cursor: pointer; font-size:var(--fs-sm); border-bottom: 1px solid var(--afims-surface-subtle, #F4F7FA); }
 #vf-root .vf-rfa-opt:hover { background: var(--afims-surface-subtle, #F4F7FA); }
 #vf-root .vf-rfa-opt small { display: block; color: var(--afims-text-muted, #62657E); margin-top: 2px; }
 #vf-root .vf-rfa-opt.vf-rfa-opt-empty { cursor: default; color: var(--afims-text-muted, #62657E); }
+#vf-root .vf-rfa-opt-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+#vf-root .vf-rfa-bal { font-size:var(--fs-xs); font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+#vf-root .vf-rfa-bal.has  { background: var(--afims-success-soft); color: var(--afims-success); }
+#vf-root .vf-rfa-bal.none { background: var(--afims-danger-soft); color: var(--afims-danger); }
+#vf-root .vf-rfa-opt.vf-rfa-opt-nobal { cursor: not-allowed; opacity: .6; }
+#vf-root .vf-rfa-opt.vf-rfa-opt-nobal:hover { background: transparent; }
 #vf-root .vf-rfa-chips { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 #vf-root .vf-rfa-chip { border: 1px solid var(--afims-primary-soft, #E6EBF6); border-radius: 10px; padding: 10px 12px; background: var(--afims-primary-soft, #E6EBF6); }
 #vf-root .vf-rfa-chip-hdr { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-#vf-root .vf-rfa-chip-hdr strong { font-size: 13px; color: var(--afims-primary-text, #0035A9); }
-#vf-root .vf-rfa-chip-remove { background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 5px; }
+#vf-root .vf-rfa-chip-hdr strong { font-size:var(--fs-base); color: var(--afims-primary-text, #0035A9); }
+#vf-root .vf-rfa-chip-remove { background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); font-size:var(--fs-lg); line-height: 1; padding: 2px 6px; border-radius: 5px; }
 #vf-root .vf-rfa-chip-remove:hover { background: var(--afims-danger-soft, #FAE1E3); }
 #vf-root .vf-rfa-chip-dl { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px 16px; margin: 8px 0 0; }
-#vf-root .vf-rfa-chip-dl dt { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--afims-text-muted, #62657E); margin: 0; }
-#vf-root .vf-rfa-chip-dl dd { font-size: 12.5px; font-weight: 600; color: var(--afims-text, #1e293b); margin: 1px 0 0; }
+#vf-root .vf-rfa-chip-dl dt { font-size:var(--fs-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--afims-text-muted, #62657E); margin: 0; }
+#vf-root .vf-rfa-chip-dl dd { font-size:var(--fs-sm); font-weight: 600; color: var(--afims-text, #1e293b); margin: 1px 0 0; }
 
-#vf-root .vf-dz { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border: 1px dashed var(--afims-border, #E4ECF2); border-radius: 10px; padding: 10px 14px; font-size: 14px; }
+#vf-root .vf-dz { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border: 1px dashed var(--afims-border, #E4ECF2); border-radius: 10px; padding: 10px 14px; font-size:var(--fs-md); }
 #vf-root .vf-dz.drag-over { border-color: var(--afims-primary, #0035A9); background: var(--afims-primary-soft, #E6EBF6); }
-#vf-root .vf-dz-hint { font-size: 11px; color: var(--afims-text-muted, #62657E); margin-left: auto; }
+#vf-root .vf-dz-hint { font-size:var(--fs-xs); color: var(--afims-text-muted, #62657E); margin-left: auto; }
 #vf-root .vf-att-link-row { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
-#vf-root .vf-att-link-row input { flex: 1; font-size: 13px; padding: 8px 10px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px; box-sizing: border-box; }
+#vf-root .vf-att-link-row input { flex: 1; font-size:var(--fs-base); padding: 8px 10px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px; box-sizing: border-box; }
 #vf-root .vf-att-link-row input#vf-att-link-name { flex: 0 0 200px; }
 #vf-root .vf-att-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 #vf-root .vf-att-name a { color: var(--afims-primary-text, #0035A9); text-decoration: none; }
 #vf-root .vf-att-name a:hover { text-decoration: underline; }
 #vf-root .vf-att-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 8px; }
-#vf-root .vf-att-name { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#vf-root .vf-att-remove { background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 5px; }
+#vf-root .vf-att-name { flex: 1; font-size:var(--fs-base); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#vf-root .vf-att-remove { background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); font-size:var(--fs-lg); line-height: 1; padding: 2px 6px; border-radius: 5px; }
 #vf-root .vf-att-remove:hover { background: var(--afims-danger-soft, #FAE1E3); }
 
 /* Dark mode — the Budget / Obligation inputs, the attachment link inputs and the Accounting Entries lines / SL Code selects
@@ -307,7 +314,7 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
    #vf-root markup/ids — no field, id, or JS binding moved or renamed. */
 #vf-root .vf-doc-section { margin-bottom: 22px; }
 #vf-root .vf-doc-section-hdr {
-    font-size: 14px; font-weight: 700; color: #fff; background: #0B1B43;
+    font-size:var(--fs-md); font-weight: 700; color: var(--afims-text-on-dark); background: var(--afims-heading);
     margin: 0 0 12px; padding: 10px 14px; border-radius: 8px;
     text-transform: uppercase; letter-spacing: .02em;
 }
@@ -316,15 +323,15 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
     border: 1px solid var(--afims-border, #D7DCE6); padding: 10px 14px; vertical-align: top; width: 50%;
 }
 #vf-root .vf-doc-table td.vf-doc-full { width: 100%; }
-#vf-root .vf-doc-table .vf-doc-k { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--afims-text-muted, #62657E); margin: 0 0 6px; }
+#vf-root .vf-doc-table .vf-doc-k { font-size:var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--afims-text-muted, #62657E); margin: 0 0 6px; }
 #vf-root .vf-doc-table .nha-fg { margin: 0; }
 #vf-root .vf-doc-table .nha-fg label { display: none; } /* the table cell's own .vf-doc-k already labels it */
 #vf-root .vf-doc-summary-table { width: 100%; border-collapse: collapse; border: 1px solid var(--afims-border, #D7DCE6); margin-top: 14px; }
-#vf-root .vf-doc-summary-table td { border: 1px solid var(--afims-border, #D7DCE6); padding: 10px 14px; font-size: 13px; }
+#vf-root .vf-doc-summary-table td { border: 1px solid var(--afims-border, #D7DCE6); padding: 10px 14px; font-size:var(--fs-base); }
 #vf-root .vf-doc-summary-table td:first-child { font-weight: 600; color: var(--afims-text, #1C1E29); }
-#vf-root .vf-doc-summary-table td:last-child { text-align: right; font-family: "IBM Plex Mono", monospace; font-weight: 600; width: 220px; }
-#vf-root .vf-doc-summary-table tr.vf-doc-summary-final td { font-weight: 700; background: #E8EEF9; color: #0B1B43; text-transform: uppercase; font-size: 12.5px; }
-#vf-root .vf-doc-summary-table tr.vf-doc-summary-final td:last-child { text-transform: none; font-size: 14px; }
+#vf-root .vf-doc-summary-table td:last-child { text-align: right; font-family:var(--font-body);font-variant-numeric:tabular-nums; font-weight: 600; width: 220px; }
+#vf-root .vf-doc-summary-table tr.vf-doc-summary-final td { font-weight: 700; background: var(--afims-primary-soft); color: var(--afims-heading); text-transform: uppercase; font-size:var(--fs-sm); }
+#vf-root .vf-doc-summary-table tr.vf-doc-summary-final td:last-child { text-transform: none; font-size:var(--fs-md); }
 
 @media (max-width: 768px) {
     #vf-root .vf-doc-table { display: block; }
@@ -355,7 +362,7 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                 </div>
 
                 <div class="vf-errors" id="vf-errors">
-                    <strong style="font-size:13px;color:var(--afims-danger,#DC3545);">Please fix the following before saving:</strong>
+                    <strong style="font-size:var(--fs-base);color:var(--afims-danger,#DC3545);">Please fix the following before saving:</strong>
                     <ul id="vf-errors-ul"></ul>
                 </div>
 
@@ -397,7 +404,7 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                                 <label>PO / Contract <span class="vf-hint" style="display:inline;">(optional · type the PO or contract number)</span></label>
                                 <input type="text" id="vf-po-number" placeholder="e.g. GSD-2025-09-103">
                                 <!-- shown when the PO has no IAR (Inspection and Acceptance Report) — checked via GET /voucher/po-iar -->
-                                <span id="vf-po-warn" role="alert" style="display:none;margin-top:4px;font-size:12px;color:var(--afims-danger-text,#8F222D);"></span>
+                                <span id="vf-po-warn" role="alert" style="display:none;margin-top:4px;font-size:var(--fs-sm);color:var(--afims-danger-text,#8F222D);"></span>
                             </div>
 
                             <div class="vf-vendor-card vf-a-full" id="vf-vendor-card" style="display:none !important;"><!-- hidden: repeats Payee / Address / TIN above; kept because the vendor JS still fills it -->
@@ -450,7 +457,7 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                      RFA(s) above), and the Gross/Less Deductions/Net Amount Payable summary. ══ -->
                 <div class="vf-doc-section">
                     <p class="vf-doc-section-hdr" id="vf-sec-b-hdr">B. Amount and Deductions</p>
-                    <p class="vf-hint" id="vf-sec-b-note" style="margin:0 0 10px;font-size:13px;">Account codes and amounts are filled in from the RFAs selected above, starting at each RFA balance. Change the amount to what this DV charges.</p>
+                    <p class="vf-hint" id="vf-sec-b-note" style="margin:0 0 10px;font-size:var(--fs-base);">Account codes and amounts are filled in from the RFAs selected above, starting at each RFA balance. Change the amount to what this DV charges.</p>
 
                     <!-- A Remittance DV's amount: the total and the rate table, with the accounting entry and the vouchers it pays folded away
                          underneath (vf_renderRemitSchedule()). Hidden for every other DV. -->
@@ -588,7 +595,7 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                         </div>
                         <button type="button" class="nha-btn nha-btn-ghost" style="margin-top:8px;" onclick="vf_addJevLine()">+ Add Line</button>
                         <div style="margin-top:12px;">
-                            <span id="vf-jev-balance-msg" style="font-weight:600;font-size:13px;"></span>
+                            <span id="vf-jev-balance-msg" style="font-weight:600;font-size:var(--fs-base);"></span>
                         </div>
                     </div>
                 </div>
@@ -1062,12 +1069,18 @@ function vf_renderRfaDropdown() {
         .filter(r => !search || r.allocation_number?.toLowerCase().includes(search) || r.request_referrence_no?.toLowerCase().includes(search))
         .slice(0, 30);
 
+    // An RFA with a budget ceiling and nothing left on it can't fund this DV (a ceiling of 0 means "no cap", as in vf_renderRfaBreakdown).
+    const hasBalance = r => !(Number(r.budget_amount) > 0) || (Number(r.remaining_balance) || 0) > 0.005;
     box.innerHTML = options.length
-        ? options.map(r => `
-            <div class="vf-rfa-opt" onclick="vf_selectRfa('${r.allocation_id}')">
-                <strong>${vf_esc(r.allocation_number)}</strong>
+        ? options.map(r => {
+            const ok = hasBalance(r);
+            return `
+            <div class="vf-rfa-opt${ok ? '' : ' vf-rfa-opt-nobal'}"${ok ? ` onclick="vf_selectRfa('${r.allocation_id}')"` : ' title="This RFA has no remaining balance"'}>
+                <span class="vf-rfa-opt-top"><strong>${vf_esc(r.allocation_number)}</strong>
+                    <span class="vf-rfa-bal ${ok ? 'has' : 'none'}">${ok ? 'Balance: ' + vf_peso(r.remaining_balance) : 'No balance'}</span></span>
                 <small>${vf_esc(r.department_name || 'Unassigned Dept.')} &middot; FY ${vf_esc(r.fiscal_year)} &middot; ${vf_peso(r.remaining_balance)} left of ${vf_peso(r.budget_amount)}</small>
-            </div>`).join('')
+            </div>`;
+        }).join('')
         : `<div class="vf-rfa-opt vf-rfa-opt-empty">${vf_esc(vf_rfaEmptyMessage(lockedClass, lockedVendor))}</div>`;
     box.classList.add('open');
 }
@@ -2006,7 +2019,7 @@ function vf_renderAcctHint(tr) {
 
     if (code === $vf('vf-account-code').value.trim()) {
         const name = $vf('vf-claimant').value.trim();
-        if (name) { hint.innerHTML = `<span style="color:#D32F2F;">${vf_esc(name)}</span>`; return; }
+        if (name) { hint.innerHTML = `<span style="color:var(--afims-danger);">${vf_esc(name)}</span>`; return; }
     }
 
     const atcMatches = [];
@@ -2062,10 +2075,10 @@ function vf_codeChip(code) {
     const parts = String(code ?? '').split('-').filter(p => p !== '');
     if (!parts.length) return '';
     const segs = parts.map((p, i) => {
-        const bg     = i === 0 ? '#EEF1F7' : '#EAF1FE';
-        const fg     = i === 0 ? '#1A1B21' : '#2F5FD6';
-        const border = i > 0 ? 'border-left:1px solid rgba(15,32,69,.08);' : '';
-        return `<span style="background:${bg};color:${fg};padding:2px 6px;font-size:11px;font-weight:700;font-family:'IBM Plex Mono',monospace;${border}">${vf_esc(p)}</span>`;
+        const bg     = i === 0 ? 'var(--afims-surface-subtle)' : 'var(--afims-primary-soft)';
+        const fg     = i === 0 ? 'var(--afims-text)' : 'var(--afims-primary-text)';
+        const border = i > 0 ? 'border-left:1px solid var(--afims-border);' : '';
+        return `<span style="background:${bg};color:${fg};padding:2px 6px;font-size:var(--fs-xs);font-weight:700;font-family:var(--font-body);font-variant-numeric:tabular-nums;${border}">${vf_esc(p)}</span>`;
     }).join('');
     return `<span style="display:inline-flex;border:1px solid var(--afims-border, #E4ECF2);border-radius:5px;overflow:hidden;vertical-align:middle;">${segs}</span>`;
 }

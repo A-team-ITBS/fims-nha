@@ -35,12 +35,21 @@ class BudgetReqService
 
     /**
      * The statuses of the review chain, by NAME (their ids differ per install, so they are looked up — see
-     * getStatusIdByName()). The originating office submits a request ("For Review", submitForReview()); the Financial
-     * Management Department then moves it step by step to Approved, or back (REVIEW_STEPS). Seeded by
-     * sample_data/01 and seed_data/07.
+     * getStatusIdByName()). The originating office submits a COE request ("For Review", submitForReview()); the
+     * Financial Management Department then moves it step by step to Approved, or back (REVIEW_STEPS). Seeded by
+     * sample_data/01 and seed_data/07 (a database that still has the old "Endorsed" name instead gets it
+     * renamed by alter_table/60 — see REVIEW_STEPS' own doc comment below).
+     *
+     * There is no separate "Endorsed" status any more — 'For Endorsement' now plays that exact role (the Budget
+     * Head's step, 'next' => Approved) for BOTH request types, just reached differently:
+     *   COE (region-submitted): Draft -> [Submit for Review] -> For Review -> [Budget Officer endorses] -> For Endorsement -> [Budget Head approves] -> Approved
+     *   CO  (Budget-Officer-created): Draft -> [Submit for Review] -> For Endorsement -> [Budget Head approves] -> Approved
+     * A CO request skips "For Review" entirely — the Budget Officer created it themselves, so there's no one
+     * else's review to wait through before it's ready for the Budget Head; submitForReview() sends it straight
+     * to 'For Endorsement' instead (see its own doc comment for the Programs-vs-coe_line_items test it uses).
      */
     private const STATUS_FOR_REVIEW = 'For Review';
-    private const STATUS_ENDORSED = 'Endorsed';
+    private const STATUS_FOR_ENDORSEMENT = 'For Endorsement';
     private const STATUS_APPROVED = 'Approved';
     private const STATUS_RETURNED = 'Returned';
     private const STATUS_RETURNED_TO_BUDGET_OFFICER = 'Returned to Budget Officer';
@@ -51,22 +60,22 @@ class BudgetReqService
      * row — its id differs per install), the status an approval ('next') moves it to and the status a Return ('return')
      * moves it to.
      *
-     *   For Review -> Budget Officer -> Endorsed -> Budget Head -> Approved
+     *   For Review -> Budget Officer -> For Endorsement -> Budget Head -> Approved
      *
-     * A Return goes back ONE step, to the user who endorsed it, who then sees it in their own status and can endorse it
+     * A Return goes back ONE step, to the user who acted on it, who then sees it in their own status and can act
      * again or return it further; only the Budget Officer's Return reaches the originating office ('Returned'):
      *   Budget Head returns    -> 'Returned to Budget Officer' (acted on by the Budget Officer)
      *   Budget Officer returns -> 'Returned'                   (back to the originating office)
      */
     private const REVIEW_STEPS = [
         self::STATUS_FOR_REVIEW => [
-            'actor' => 'Budget Officer', 'next' => self::STATUS_ENDORSED, 'return' => self::STATUS_RETURNED,
+            'actor' => 'Budget Officer', 'next' => self::STATUS_FOR_ENDORSEMENT, 'return' => self::STATUS_RETURNED,
         ],
-        self::STATUS_ENDORSED => [
+        self::STATUS_FOR_ENDORSEMENT => [
             'actor' => 'Budget Head',    'next' => self::STATUS_APPROVED, 'return' => self::STATUS_RETURNED_TO_BUDGET_OFFICER,
         ],
         self::STATUS_RETURNED_TO_BUDGET_OFFICER => [
-            'actor' => 'Budget Officer', 'next' => self::STATUS_ENDORSED, 'return' => self::STATUS_RETURNED,
+            'actor' => 'Budget Officer', 'next' => self::STATUS_FOR_ENDORSEMENT, 'return' => self::STATUS_RETURNED,
         ],
     ];
 
@@ -130,6 +139,10 @@ class BudgetReqService
         $accountId = trim((string) ($lineItem['account_id'] ?? ''));
         $amount = $lineItem['proposed_amount'] ?? $lineItem['amount'] ?? '';
         $particulars = trim((string) ($lineItem['particulars'] ?? ''));
+        // Historically only ever set later, by Budget Processing — the Budget Request form's regular
+        // (non-COE) flow now collects the office's own initial pick up front too (see
+        // form/budget-req-form.php's Type of Fund select), so it's required here like every other field.
+        $typeOfFundId = trim((string) ($lineItem['type_of_fund_id'] ?? ''));
         $label = 'Project '.($projectIndex + 1).', line item '.($index + 1).': ';
 
         if ($accountId === '') {
@@ -141,6 +154,9 @@ class BudgetReqService
         if ($particulars === '') {
             return $label.'particulars is required.';
         }
+        if ($typeOfFundId === '') {
+            return $label.'select a type of fund.';
+        }
 
         $account = App\ExecuteRow(
             "SELECT account_id FROM {$this->tableChartOfAccounts}
@@ -150,6 +166,14 @@ class BudgetReqService
         );
         if (!$account) {
             return $label."chart of accounts entry '{$accountId}' does not exist or is not postable.";
+        }
+
+        $typeOfFundExists = (int) App\ExecuteScalar(
+            "SELECT COUNT(*) FROM {$this->tableTypeOfFund} WHERE type_of_fund_id = ".App\QuotedValue($typeOfFundId, DataType::NUMBER, 'DB')." AND deleted_at IS NULL",
+            'DB'
+        );
+        if ($typeOfFundExists === 0) {
+            return $label."type of fund '{$typeOfFundId}' does not exist.";
         }
 
         return null;
@@ -218,6 +242,21 @@ class BudgetReqService
                 if ($projectRow['program_code'] !== $programCode) {
                     return "Project '{$projectCode}' does not belong to program '{$programCode}'.";
                 }
+            } else {
+                // A brand-new project (typed name, no existing project_code) needs its own region picked —
+                // an existing project already has one (or doesn't; either way this form never reassigns it,
+                // see resolveProjectCode()).
+                $rcId = trim((string) ($project['rc_id'] ?? ''));
+                if ($rcId === '') {
+                    return 'Project '.($pi + 1).': select a region for this new project.';
+                }
+                $rcExists = (int) App\ExecuteScalar(
+                    'SELECT COUNT(*) FROM fims.responsibility_code WHERE rc_id = '.App\QuotedValue($rcId, DataType::STRING, 'DB'),
+                    'DB'
+                );
+                if ($rcExists === 0) {
+                    return 'Project '.($pi + 1).": region '{$rcId}' does not exist.";
+                }
             }
 
             if (empty($lineItems)) {
@@ -259,7 +298,12 @@ class BudgetReqService
         }
 
         $projectName = trim((string) ($project['project_name'] ?? ''));
-        $result = (new ProjectService())->findOrCreateByName($projectName, $programCode, $subProgramCode, (int) $fiscalYr);
+        // The region manually picked for a brand-new project (see validateProgramBlock's own check,
+        // which already required this before insertProjectsAndLineItems() got here) — an EXISTING
+        // project (project_code branch above) keeps whatever region it already has; this form never
+        // reassigns one.
+        $rcId = trim((string) ($project['rc_id'] ?? ''));
+        $result = (new ProjectService())->findOrCreateByName($projectName, $programCode, $subProgramCode, (int) $fiscalYr, $rcId);
         if (!$result['success']) {
             throw new \Exception($result['message'] ?? "Failed to resolve project '{$projectName}'.");
         }
@@ -349,9 +393,11 @@ class BudgetReqService
         ) ?: [];
 
         $projectRows = App\ExecuteRows(
-            "SELECT brp2.budget_req_project_id, brp2.budget_req_program_id, brp2.budget_reference_number, brp2.project_code, brp2.location, pj.project_name
+            "SELECT brp2.budget_req_project_id, brp2.budget_req_program_id, brp2.budget_reference_number, brp2.project_code, brp2.location,
+                    pj.project_name, pj.rc_id, rc.rc_code, rc.rc_name
              FROM {$this->tableBudgetReqProject} brp2
              LEFT JOIN {$this->tableProject} pj ON pj.project_code = brp2.project_code
+             LEFT JOIN fims.responsibility_code rc ON rc.rc_id = pj.rc_id
              WHERE brp2.budget_reference_number IN ({$idList}){$noSuppProject}
              ORDER BY brp2.budget_req_project_id ASC",
             'DB'
@@ -361,6 +407,11 @@ class BudgetReqService
             // revision_amount: the line's net of approved Budget Revisions / Realignments, summed from the ledger fims.budget_line_item_revision_transaction;
             // latest_adjustment: the amount of its last ledger row (the card's "Latest adjustment"); held_amount: what approved CBAs / CFAs hold against the line and RFAs / LAAs have drawn (the earmark table). The Budget Revision form works out the
             // line's current balance from them: suggested_amount + revision_amount - held_amount (approving a revision no longer changes suggested_amount)
+            // account_code/account_title: meaningful for a COE line item (its account is the real PS/MOOE account
+            // the office picked — see budget-preview-readone.php's bpv_coeBlockHtml, which shows it), but NOT for a
+            // regular-flow line item, which is always coded to the fixed "Work-in-Process Inventory" placeholder
+            // account until Budget Processing re-codes it — bpv_tableHtml's `showAccountCode` flag hides the column
+            // there rather than this query needing to filter it out per row.
             "SELECT li.*, coa.account_code, coa.account_title,
                     tof.name AS type_of_fund_name, ct.name AS component_name,
                     " . BudgetLineBalanceSql::revisionExpr('li') . " AS revision_amount,
@@ -420,6 +471,26 @@ class BudgetReqService
     private static ?bool $suppTagExists = null;
 
     /**
+     * Blanks out every header's 'programs' (never 'coe_line_items') when the caller is a plain Regional/District
+     * (originating office) user — Program-based origination now belongs to FMD (or a superadmin) only, so their
+     * own list / "View Proposal" COB should never surface a Program a header still carries from before that rule
+     * (fetchAlls() is the one place both GET /budget_req/all and /budget_req/list read headers from). $userId = 0
+     * (no caller resolved) leaves the data untouched — only a positively-identified originating office is narrowed.
+     */
+    private function stripProgramsForOriginatingOffice(array $headerRows, int $userId): array
+    {
+        if ($userId <= 0 || !$this->isOriginatingOfficeUser($userId)) {
+            return $headerRows;
+        }
+        foreach ($headerRows as &$header) {
+            $header['programs'] = [];
+        }
+        unset($header);
+
+        return $headerRows;
+    }
+
+    /**
      * Whether the proposal filter can be applied: $requested AND the tag column exists. A database that has not had 03 - alter_table/63 yet has no tagged line (the approval that
      * writes the tag needs the column too), so the filter is simply skipped there instead of failing every proposal screen on a missing column.
      */
@@ -477,7 +548,7 @@ class BudgetReqService
      *                           rc_office_type) and that RC's parent (rc_parent_id / _code / _name), which
      *                           the tree view of the budget request list groups by.
      */
-    public function fetchAlls(?int $page = null, int $limit = 10, string $fiscalYr = '', string $programCode = '', string $rcId = '', string $rcCodeFrom = '', bool $excludeSupplemental = false): array
+    public function fetchAlls(?int $page = null, int $limit = 10, string $fiscalYr = '', string $programCode = '', string $rcId = '', string $rcCodeFrom = '', int $userId = 0, string $alsoIncludeRcId = '', bool $excludeSupplemental = false): array
     {
         try {
             $excludeSupplemental = self::excludeSupplemental($excludeSupplemental);   // skipped on a database without the tag column (03 - alter_table/63)
@@ -496,6 +567,14 @@ class BudgetReqService
                                        AND brp.program_code = ".App\QuotedValue($programCode, DataType::STRING, 'DB')
                     . ($excludeSupplemental ? ' AND NOT ' . $this->suppOnlyProgramSql('brp') : '') . ')';
             }
+            // $rcId / $rcCodeFrom / $alsoIncludeRcId are OR'd together, not AND'd — each names an
+            // independent way a row can be "in scope", and a row only needs to satisfy one. In
+            // practice no caller today sets more than one of these at once except the FMD "View
+            // Proposal" widen (rc_code_from, with $rcId already forced '' by resolveBudgetReqRcFilter)
+            // and GET /fmd/budget_req/list ($rcCodeFrom + $alsoIncludeRcId together — see its own doc
+            // comment: FMD's own Program-based requests, under FMD's own rc_id, don't sort at or after
+            // CENTRAL_REVIEW_RC_CODE_FROM, so they'd otherwise never appear in FMD's own list).
+            $rcWhereParts = [];
             if ($rcId !== '') {
                 // A parent RC also sees its descendants' rows (e.g. a Region 3 user
                 // sees Region 3's district offices too) — not a flat equality.
@@ -504,11 +583,17 @@ class BudgetReqService
                     fn ($id) => App\QuotedValue($id, DataType::STRING, 'DB'),
                     $rcIds
                 ));
-                $where[] = "br.rc_id IN ({$quotedRcIds})";
+                $rcWhereParts[] = "br.rc_id IN ({$quotedRcIds})";
             }
             if ($rcCodeFrom !== '') {
-                $where[] = 'br.rc_id IN (SELECT rc_id FROM fims.responsibility_code WHERE rc_code >= '
+                $rcWhereParts[] = 'br.rc_id IN (SELECT rc_id FROM fims.responsibility_code WHERE rc_code >= '
                     .App\QuotedValue($rcCodeFrom, DataType::STRING, 'DB').')';
+            }
+            if ($alsoIncludeRcId !== '') {
+                $rcWhereParts[] = 'br.rc_id = '.App\QuotedValue($alsoIncludeRcId, DataType::STRING, 'DB');
+            }
+            if ($rcWhereParts) {
+                $where[] = '('.implode(' OR ', $rcWhereParts).')';
             }
             $whereSql = implode(' AND ', $where);
 
@@ -560,14 +645,14 @@ class BudgetReqService
             if ($page === null) {
                 $data = App\ExecuteRows($joinSql.' ORDER BY br.fiscal_yr DESC, br.budget_reference_number DESC', 'DB') ?: [];
 
-                return ['success' => true, 'data' => $this->attachProgramsToHeaders($data, $excludeSupplemental)];
+                return ['success' => true, 'data' => $this->stripProgramsForOriginatingOffice($this->attachProgramsToHeaders($data, $excludeSupplemental), $userId)];
             }
 
             $offset = ($page - 1) * $limit;
 
             $total = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->table} br WHERE {$whereSql}", 'DB');
             $data = App\ExecuteRows($joinSql." ORDER BY br.fiscal_yr DESC, br.budget_reference_number DESC LIMIT {$limit} OFFSET {$offset}", 'DB') ?: [];
-            $data = $this->attachProgramsToHeaders($data, $excludeSupplemental);
+            $data = $this->stripProgramsForOriginatingOffice($this->attachProgramsToHeaders($data, $excludeSupplemental), $userId);
 
             $totalAmount = (float) App\ExecuteScalar(
                 "SELECT COALESCE(SUM(li.proposed_amount), 0) FROM {$this->tableLineItems} li
@@ -590,6 +675,143 @@ class BudgetReqService
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * COE's own chart-of-accounts tree (5-01 Personal Services / 5-02 Maintenance and Other Operating
+     * Expenses), rolled up across every budget request this scope covers — backs the "View Proposal" COB's
+     * "CORPORATE OPERATING EXPENDITURE" table (bgrv_openCobModal, budget-req-readone.php), which used to fold
+     * COE line items into just two rows (PS / MOOE) with no account breakdown. Gives a Regional/District
+     * office the same account-level detail BurService otherwise only shows once a request is Approved — this
+     * is NOT restricted to Approved, since the COB reflects whatever status a request currently holds, same as
+     * fetchAlls(). Same $rcId / $rcCodeFrom / $fiscalYr scope fetchAlls() uses.
+     *
+     * Same account_id / account_code / account_title / parent_account_id shape BurService / chart-of-accounts-
+     * page.php use, with four amount keys (not BurService's seven, which need an Approved request's actual
+     * RFA/LAA draw and disbursement — meaningless before Approved): proposed (budget_line_items.proposed_amount),
+     * approved (suggested_amount), adjustment (the native adjustment column — a Budget Revision's net effect),
+     * revised (approved + adjustment) — the same four figures bgrv_cobCollect already computes client-side per
+     * line item, just rolled up by account instead of folded into a flat PS/MOOE pair.
+     *
+     * @return array{success: bool, data?: array, totals?: array, message?: string}
+     */
+    public function fetchCoeTree(string $fiscalYr, string $rcId = '', string $rcCodeFrom = ''): array
+    {
+        try {
+            $where = ['li.budget_req_project_id IS NULL', "(coa.account_code LIKE '5-01%' OR coa.account_code LIKE '5-02%')"];
+            if ($fiscalYr !== '') {
+                $where[] = 'br.fiscal_yr = '.(int) $fiscalYr;
+            }
+            if ($rcId !== '') {
+                $rcIds = GlobalService::getRcIdsInScope($rcId) ?: [$rcId];
+                $quotedRcIds = implode(', ', array_map(
+                    fn ($id) => App\QuotedValue($id, DataType::STRING, 'DB'),
+                    $rcIds
+                ));
+                $where[] = "br.rc_id IN ({$quotedRcIds})";
+            }
+            if ($rcCodeFrom !== '') {
+                $where[] = 'br.rc_id IN (SELECT rc_id FROM fims.responsibility_code WHERE rc_code >= '
+                    .App\QuotedValue($rcCodeFrom, DataType::STRING, 'DB').')';
+            }
+
+            $leafRows = App\ExecuteRows(
+                "SELECT coa.account_id, coa.account_code, coa.account_title, coa.parent_account_id,
+                        COALESCE(SUM(li.proposed_amount), 0) AS proposed,
+                        COALESCE(SUM(li.suggested_amount), 0) AS approved,
+                        COALESCE(SUM(li.adjustment), 0) AS adjustment,
+                        COALESCE(SUM(li.suggested_amount + li.adjustment), 0) AS revised
+                 FROM {$this->tableLineItems} li
+                 JOIN {$this->table} br ON br.budget_reference_number = li.budget_reference_number
+                 JOIN {$this->tableChartOfAccounts} coa ON coa.account_id = li.account_id
+                 WHERE ".implode(' AND ', $where)."
+                 GROUP BY coa.account_id, coa.account_code, coa.account_title, coa.parent_account_id",
+                'DB'
+            ) ?: [];
+
+            $accounts = $this->coeTreeAncestorsOf(array_map(fn ($r) => (string) $r['account_id'], $leafRows));
+            $zeroAmounts = ['proposed' => 0.0, 'approved' => 0.0, 'adjustment' => 0.0, 'revised' => 0.0];
+            $sums = [];
+            foreach (array_keys($accounts) as $id) {
+                $sums[$id] = $zeroAmounts;
+            }
+
+            foreach ($leafRows as $leaf) {
+                $id = (string) $leaf['account_id'];
+                if (!isset($accounts[$id])) {
+                    continue; // a code outside 5-01% / 5-02% cannot happen (the WHERE already restricts it), kept defensive only
+                }
+                $cursor = $id;
+                while ($cursor !== null && isset($accounts[$cursor])) {
+                    foreach (array_keys($zeroAmounts) as $k) {
+                        $sums[$cursor][$k] = round($sums[$cursor][$k] + (float) $leaf[$k], 2);
+                    }
+                    $parent = $accounts[$cursor]['parent_account_id'];
+                    $cursor = $parent !== null ? (string) $parent : null;
+                }
+            }
+
+            $data = [];
+            foreach ($accounts as $id => $acc) {
+                $data[] = [
+                    'account_id' => $acc['account_id'],
+                    'account_code' => $acc['account_code'],
+                    'account_title' => $acc['account_title'],
+                    'parent_account_id' => isset($accounts[(string) $acc['parent_account_id']]) ? $acc['parent_account_id'] : null,
+                ] + $sums[$id];
+            }
+
+            $totals = $zeroAmounts;
+            foreach ($data as $row) {
+                if ($row['parent_account_id'] === null) { // the two roots, 5-01 and 5-02 — already the sum of everything under them
+                    foreach (array_keys($zeroAmounts) as $k) {
+                        $totals[$k] = round($totals[$k] + $row[$k], 2);
+                    }
+                }
+            }
+
+            return ['success' => true, 'data' => $data, 'totals' => $totals];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Every chart-of-accounts code that carries a COE line item (the query's leaves) PLUS every one of their
+     * ancestors up to (and including) '5-01' / '5-02' themselves — same recursive walk as BurService's own
+     * ancestorsOf(), kept as this class's own copy (different amount shape — see fetchCoeTree's doc).
+     *
+     * @param string[] $leafIds
+     * @return array<string, array{account_id:string, account_code:string, account_title:string, parent_account_id:?string}>
+     */
+    private function coeTreeAncestorsOf(array $leafIds): array
+    {
+        if (!$leafIds) {
+            return [];
+        }
+        $ids = implode(', ', array_map(fn ($id) => App\QuotedValue((string) $id, DataType::STRING, 'DB'), $leafIds));
+        $rows = App\ExecuteRows(
+            "WITH RECURSIVE anc AS (
+                 SELECT account_id, account_code, account_title, parent_account_id
+                 FROM {$this->tableChartOfAccounts}
+                 WHERE account_id IN ({$ids})
+                 UNION ALL
+                 SELECT p.account_id, p.account_code, p.account_title, p.parent_account_id
+                 FROM anc
+                 JOIN {$this->tableChartOfAccounts} p ON p.account_id = anc.parent_account_id
+             )
+             SELECT DISTINCT account_id, account_code, account_title, parent_account_id
+             FROM anc
+             WHERE account_code LIKE '5-01%' OR account_code LIKE '5-02%'",
+            'DB'
+        ) ?: [];
+
+        $out = [];
+        foreach ($rows as $r) {
+            $out[(string) $r['account_id']] = $r;
+        }
+
+        return $out;
     }
 
     /**
@@ -758,6 +980,9 @@ class BudgetReqService
             $accountId = trim((string) ($lineItem['account_id'] ?? ''));
             $amount = $lineItem['proposed_amount'] ?? $lineItem['amount'] ?? '';
             $particulars = trim((string) ($lineItem['particulars'] ?? ''));
+            // Required here like the regular (non-COE) flow's own validateLineItem() — the form now
+            // collects a Type of Fund per COE line item too (form/budget-req-form.php's Type of Fund select).
+            $typeOfFundId = trim((string) ($lineItem['type_of_fund_id'] ?? ''));
 
             if ($accountId === '') {
                 return $label.'select a chart of accounts entry.';
@@ -768,6 +993,9 @@ class BudgetReqService
             if ($particulars === '') {
                 return $label.'particulars is required.';
             }
+            if ($typeOfFundId === '') {
+                return $label.'select a type of fund.';
+            }
 
             $account = App\ExecuteRow(
                 "SELECT account_id FROM {$this->tableChartOfAccounts}
@@ -777,6 +1005,14 @@ class BudgetReqService
             );
             if (!$account) {
                 return $label."chart of accounts entry '{$accountId}' does not exist or is not postable.";
+            }
+
+            $typeOfFundExists = (int) App\ExecuteScalar(
+                "SELECT COUNT(*) FROM {$this->tableTypeOfFund} WHERE type_of_fund_id = ".App\QuotedValue($typeOfFundId, DataType::NUMBER, 'DB')." AND deleted_at IS NULL",
+                'DB'
+            );
+            if ($typeOfFundExists === 0) {
+                return $label."type of fund '{$typeOfFundId}' does not exist.";
             }
         }
 
@@ -790,7 +1026,8 @@ class BudgetReqService
      * fetchHeaderByFiscalYearAndRc()): creates it (status Draft) if it doesn't exist
      * yet, or appends to it if it does and is still Draft/Returned. A header can end up
      * with Programs, headless COE line items, or both.
-     * $lineItems shape: [['account_id'=>.., 'particulars'=>.., 'proposed_amount'=>..], ...].
+     * $lineItems shape: [['account_id'=>.., 'particulars'=>.., 'proposed_amount'=>.., 'type_of_fund_id'=>..,
+     * 'component_id'=>.. (optional), 'sub_component_id'=>.. (optional)], ...].
      * $supportingDocuments: one shared list for the whole request (see persistCoeAttachments()).
      */
     public function addCoeRequest(array $header, array $lineItems, array $supportingDocuments = []): array
@@ -1125,11 +1362,28 @@ class BudgetReqService
     }
 
     /**
-     * Transitions a Draft OR Returned budget request to "For Review". Locks it from further Program
-     * additions/edits. 'Returned' (the Budget Officer's Return — see REVIEW_STEPS) is the originating
+     * Transitions a Draft OR Returned budget request onward into the review chain. Locks it from further
+     * Program additions/edits. 'Returned' (the Budget Officer's Return — see REVIEW_STEPS) is the originating
      * office's own request sent back to them for correction; updateProgram() already treats it the same
      * as Draft for editing (see its own guard), so it must be resubmittable the same way too, or there
      * would be no way back into the review chain after a Return.
+     *
+     * Which status it lands on depends on what kind of request this is: a CO (Program-based) header —
+     * created by the Budget Officer themselves, Program-based filing having moved to FMD — goes to
+     * 'For Endorsement' (they're not waiting on anyone else's review, just getting their own creation
+     * ready to endorse); a COE header — filed by the originating region, genuinely awaiting the Budget
+     * Officer's review — goes to 'For Review' as before. A header carrying both goes to 'For Endorsement'
+     * (it has at least one Program, so by definition it is no longer purely region-filed).
+     *
+     * A CO header never goes through Budget Processing's "Endorse" — the step that, for a COE request,
+     * is what copies each line item's proposed_amount into suggested_amount (BudgetLineItemService::
+     * applyProcessing(), starting it as a copy of the Amount unless the Budget Officer edits it there —
+     * see budget-processing-form.php's bpr_initialSuggested()). Skipping that step entirely would leave
+     * every CO line item's suggested_amount at its column default (0), which Budget Preview would then
+     * show as 0 to the Budget Head and — since suggested_amount is also what downstream reporting
+     * treats as the real "Approved" figure once approved (BudgetReqCobReportService) — would carry
+     * through as 0 everywhere after that too. So this does that same copy itself, for a CO header only,
+     * at the moment it reaches 'For Endorsement'.
      */
     public function submitForReview(string $budgetReferenceNumber, ?int $userId = null): array
     {
@@ -1146,21 +1400,37 @@ class BudgetReqService
             return ['success' => false, 'message' => 'Add at least one program before submitting for review.'];
         }
 
-        $forReviewId = $this->getStatusIdByName('For Review');
-        if ($forReviewId === null) {
-            return ['success' => false, 'message' => "'For Review' status is not configured."];
+        $isCo = !empty($check['data']['programs']);
+        $targetStatus = $isCo ? self::STATUS_FOR_ENDORSEMENT : self::STATUS_FOR_REVIEW;
+        $targetId = $this->getStatusIdByName($targetStatus);
+        if ($targetId === null) {
+            return ['success' => false, 'message' => "'{$targetStatus}' status is not configured."];
         }
 
-        // submitted_at = the "Date Submitted" shown on the FMD's Budget Requirements list (alter_table/16).
-        App\Execute("UPDATE {$this->table} SET status_id = {$forReviewId}, submitted_at = NOW() WHERE budget_reference_number = ".App\QuotedValue($id, DataType::STRING, 'DB'), 'DB');
-        GlobalService::logStatusChange('budget_req', $id, 'For Review', $userId);
+        try {
+            App\Execute('BEGIN', 'DB');
+
+            // submitted_at = the "Date Submitted" shown on the FMD's Budget Requirements list (alter_table/16).
+            App\Execute("UPDATE {$this->table} SET status_id = {$targetId}, submitted_at = NOW() WHERE budget_reference_number = ".App\QuotedValue($id, DataType::STRING, 'DB'), 'DB');
+            if ($isCo) {
+                App\Execute("UPDATE {$this->tableLineItems} SET suggested_amount = proposed_amount WHERE budget_reference_number = ".App\QuotedValue($id, DataType::STRING, 'DB'), 'DB');
+            }
+
+            App\Execute('COMMIT', 'DB');
+        } catch (\Exception $e) {
+            App\Execute('ROLLBACK', 'DB');
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        GlobalService::logStatusChange('budget_req', $id, $targetStatus, $userId);
 
         $fy = $check['data']['fiscal_yr'] ?? '';
-        $this->notifyNextActors($id, self::STATUS_FOR_REVIEW, $userId,
+        $this->notifyNextActors($id, $targetStatus, $userId,
             'Budget request submitted for review',
-            "Budget request {$id}".($fy !== '' ? " (FY {$fy})" : '').' was submitted and is now For Review.');
+            "Budget request {$id}".($fy !== '' ? " (FY {$fy})" : '')." was submitted and is now {$targetStatus}.");
 
-        return ['success' => true, 'message' => 'Budget request submitted for review.'];
+        return ['success' => true, 'message' => "Budget request submitted — it is now {$targetStatus}."];
     }
 
     /**
@@ -1168,10 +1438,13 @@ class BudgetReqService
      * item's Type of Fund (required for every item) plus its optional Suggested Amount (blank = 0), Component
      * (hidden in budget-processing-form.php's own UI), and Account (the Budget Officer may re-code a line to
      * another chart-of-accounts entry), and moves the request to
-     * "Endorsed" — for the Budget Head — all in one transaction: if any item is invalid, nothing is saved and the
-     * status is unchanged. Only a request that is "For Review" or "Returned to Budget Officer" can be endorsed, only by
-     * an FMD user holding the Budget Officer user level (see guardReviewStep()). The status lives on the request
-     * header, so it applies to the whole request, not just the Program the items came from.
+     * "For Endorsement" — for the Budget Head — all in one transaction: if any item is invalid, nothing is saved and
+     * the status is unchanged. Only a request that is "For Review" or "Returned to Budget Officer" can be endorsed,
+     * only by an FMD user holding the Budget Officer user level (see guardReviewStep()). The status lives on the
+     * request header, so it applies to the whole request, not just the Program the items came from. (A CO request
+     * never reaches this method at all — submitForReview() sends it straight to "For Endorsement", skipping this
+     * step entirely, since the Budget Officer who'd otherwise call it here is the same person who already created
+     * and submitted it.)
      *
      * @param array $items [['budget_line_item_id' => .., 'type_of_fund_id' => .., 'component_id' => .., 'suggested_amount' => .., 'account_id' => ..], ...]
      *                     (the last two are optional — see BudgetLineItemService::applyProcessing())
@@ -1185,14 +1458,14 @@ class BudgetReqService
             return $check;
         }
 
-        $guard = $this->guardReviewStep($check['data'], $userId, self::STATUS_ENDORSED);
+        $guard = $this->guardReviewStep($check['data'], $userId, self::STATUS_FOR_ENDORSEMENT);
         if (!$guard['success']) {
             return $guard;
         }
 
-        $endorsedId = $this->getStatusIdByName(self::STATUS_ENDORSED);
-        if ($endorsedId === null) {
-            return $this->statusMissing(self::STATUS_ENDORSED);
+        $forEndorsementId = $this->getStatusIdByName(self::STATUS_FOR_ENDORSEMENT);
+        if ($forEndorsementId === null) {
+            return $this->statusMissing(self::STATUS_FOR_ENDORSEMENT);
         }
         $currentId = (int) ($check['data']['status_id'] ?? 0);
 
@@ -1210,7 +1483,7 @@ class BudgetReqService
 
             // the UPDATE re-checks the status, so two reviewers acting at once cannot both succeed
             $done = App\ExecuteRow(
-                "UPDATE {$this->table} SET status_id = {$endorsedId} WHERE budget_reference_number = ".App\QuotedValue($id, DataType::STRING, 'DB')
+                "UPDATE {$this->table} SET status_id = {$forEndorsementId} WHERE budget_reference_number = ".App\QuotedValue($id, DataType::STRING, 'DB')
                 ." AND status_id = {$currentId} RETURNING budget_reference_number",
                 'DB'
             );
@@ -1223,17 +1496,17 @@ class BudgetReqService
             App\Execute('COMMIT', 'DB');
             $inTransaction = false;
 
-            GlobalService::logStatusChange('budget_req', $id, self::STATUS_ENDORSED, $userId);
+            GlobalService::logStatusChange('budget_req', $id, self::STATUS_FOR_ENDORSEMENT, $userId);
 
             $fy = $check['data']['fiscal_yr'] ?? '';
-            $this->notifyNextActors($id, self::STATUS_ENDORSED, $userId,
+            $this->notifyNextActors($id, self::STATUS_FOR_ENDORSEMENT, $userId,
                 'Budget request endorsed',
                 "Budget request {$id}".($fy !== '' ? " (FY {$fy})" : '').' was endorsed and needs your approval.');
 
             return [
                 'success' => true,
-                'message' => 'Budget request endorsed: it is now '.self::STATUS_ENDORSED.' ('.self::REVIEW_STEPS[self::STATUS_ENDORSED]['actor'].').',
-                'status_name' => self::STATUS_ENDORSED,
+                'message' => 'Budget request endorsed: it is now '.self::STATUS_FOR_ENDORSEMENT.' ('.self::REVIEW_STEPS[self::STATUS_FOR_ENDORSEMENT]['actor'].').',
+                'status_name' => self::STATUS_FOR_ENDORSEMENT,
             ];
         } catch (\Exception $e) {
             if ($inTransaction) {
@@ -1317,9 +1590,10 @@ class BudgetReqService
     }
 
     /**
-     * Budget Preview "Approve" — the last step of the review chain: the Budget Head moves an Endorsed request to
-     * "Approved". Only an Endorsed request can be approved — it has to have been through Budget Processing first — and
-     * only by an FMD user holding the Budget Head user level (see guardReviewStep()). Applies to the whole request.
+     * Budget Preview "Approve" — the last step of the review chain: the Budget Head moves a "For Endorsement" request
+     * to "Approved". Only a "For Endorsement" request can be approved — for COE it has to have been through Budget
+     * Processing first; a CO request reaches "For Endorsement" directly via submitForReview() instead — and only by
+     * an FMD user holding the Budget Head user level (see guardReviewStep()). Applies to the whole request.
      */
     public function approve(string $budgetReferenceNumber, ?int $userId = null): array
     {
@@ -1369,13 +1643,13 @@ class BudgetReqService
     /**
      * Tells whoever the review chain's next step belongs to (fims.settings_status.next_actors, for status_for =
      * 'budget_req' and $statusName — seeded by "04 - seed_data/07 - budget_req_review_chain_statuses.sql") that a
-     * request now needs them, via NotificationService::toNextActors(). Called right after submitForReview() /
-     * endorse() / returnRequest() commit the new status. A status with no next_actors (Draft, Returned, Approved —
-     * there is no single FMD role to resolve a request's own originating office to) just notifies nobody; never
-     * throws. Not keyed by event_key: each call already corresponds to exactly one real transition — endorse() /
-     * approve() / returnRequest()'s own optimistic-concurrency UPDATE (status_id = the row's CURRENT id) means a
-     * second, stale attempt never reaches this far — so re-notifying every time the SAME status is reached again
-     * later (e.g. Endorsed, Returned, Endorsed again) is the correct behaviour, not a duplicate to suppress.
+     * request now needs them, via NotificationService::toNextActors(). Called right after submitForReview() / endorse() / returnRequest() commit
+     * the new status. A status with no next_actors (Draft, Returned, Approved — there is no single FMD role to
+     * resolve a request's own originating office to) just notifies nobody; never throws. Not keyed by event_key: each
+     * call already corresponds to exactly one real transition — endorse() / approve() / returnRequest()'s own
+     * optimistic-concurrency UPDATE (status_id = the row's CURRENT id) means a second, stale attempt never reaches
+     * this far — so re-notifying every time the SAME status is reached again later (e.g. For Endorsement, Returned,
+     * For Endorsement again) is the correct behaviour, not a duplicate to suppress.
      */
     private function notifyNextActors(string $id, string $statusName, ?int $userId, string $subject, string $body): int
     {
@@ -1421,7 +1695,7 @@ class BudgetReqService
      * route answers 403 for a result carrying `forbidden`. The request must be one of the REVIEW_STEPS statuses (never
      * Draft, Returned or Approved), the user must be of the central review RC (FMD) AND hold the user level of THAT step,
      * and — when $expectedNext is given — the step must be the one that leads there: endorse() only works on a step whose
-     * approval gives "Endorsed" (the Budget Officer's), approve() only on the one that gives "Approved" (the Budget Head's).
+     * approval gives "For Endorsement" (the Budget Officer's), approve() only on the one that gives "Approved" (the Budget Head's).
      * A superadmin (isSuperAdmin) needs neither the FMD office nor the step's user level — only the status checks above apply.
      * Returns { success: true, step } (the REVIEW_STEPS entry + 'status') or the refusal.
      */
@@ -1593,6 +1867,20 @@ class BudgetReqService
 
             return false;   // (not cached: a failed lookup is retried)
         }
+    }
+
+    /**
+     * Is this user a plain Regional/District (originating office) user — not Budget Officer, not Budget Head,
+     * not FMD (isReviewer), not a superadmin? Program/Sub-Program/Project origination now belongs to FMD (or a
+     * superadmin) only (see POST /budget_req/add's own check); an originating office's own list/COB view never
+     * needs a header's Program data, even one left over from before that rule — fetchAlls() strips it for them.
+     */
+    private function isOriginatingOfficeUser(?int $userId): bool
+    {
+        return !$this->hasUserLevel($userId, 'Budget Officer')
+            && !$this->hasUserLevel($userId, 'Budget Head')
+            && !$this->isReviewer($userId)
+            && !$this->isSuperAdmin($userId);
     }
 
     /** Is this user of the central review RC (FMD)? A missing user, no RC, or a lookup failure is "no" — never "yes". */

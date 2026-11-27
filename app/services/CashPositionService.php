@@ -58,6 +58,8 @@ class CashPositionService
     private string $tableChartOfAccounts = 'fims.chart_of_accounts';
     private string $tableViewJournals = 'fims.v_journals';
     private string $tableOpeningBalances = 'fims.opening_balances';
+    private string $tableChecks = 'fims.checks';
+    private string $tableFundTransfers = 'fims.fund_transfers';
 
     private const UPDATE_TYPES = ['RECEIPT', 'DISBURSEMENT', 'TRANSFER', 'ADJUSTMENT', 'COLLECTION', 'SOA_UPLOAD'];
     // Same normal-balance convention as GeneralLedgerService::DEBIT_NORMAL_TYPES —
@@ -227,34 +229,69 @@ class CashPositionService
         return $this->dataTable($params['draw'] ?? 1, $rows);
     }
 
-    // Row-click drill-down from the Position Updates list: every disbursement
-    // (direction <> 'INFLOW' — same convention getComputedBalance()'s own
-    // ledger sum uses) posted to fims.bank_transactions for this account on
-    // this exact date — i.e. the transactions that make up that row's own
-    // "− Disbursements" figure. Excludes transaction_id LIKE 'SOA-%' — an
-    // older version of CashPositionSoaService::confirmUpload() auto-posted
-    // one of these per SOA line (bankTxnId()'s own "SOA-" prefix); that's
-    // been removed (SOA upload only records the statement now, it doesn't
-    // touch this ledger), but rows it already created before the fix are
-    // still sitting in the table — this filter keeps them out of the
-    // drill-down list going forward, in addition to physically deleting the
-    // pre-existing stray rows.
+    // Row-click drill-down from the Position Updates list: every real
+    // disbursement this system itself recorded against this bank account on
+    // this exact date — checks released, FTLA fund transfers, any other
+    // GL-posted credit to the account's tagged Cash code.
+    //
+    // Reads fims.v_journals (same GL-backed view glBalanceAsOf() already
+    // uses for this account), NOT fims.bank_transactions — that table was
+    // designed to carry exactly this (transaction_type CHECK|COLLECTION|
+    // FTLA|INTEREST, see "01 - table/37 - fims_soa_bank_transactions.sql"'s
+    // own docblock) but nothing actually populates it any more: the only
+    // writer was CashPositionSoaService::confirmUpload()'s old per-SOA-line
+    // auto-post, which was removed once SOA upload stopped touching this
+    // ledger (see that service's own comments) — so this drill-down always
+    // came back empty. v_journals already carries every check/FTLA payment
+    // (they post through GeneralLedgerService::createPaymentJev()/postJev())
+    // without needing a second, separately-maintained ledger table at all.
+    //
+    // A disbursement is a CREDIT to the account's Cash GL code (an asset
+    // account — debit increases it, credit decreases it), same convention
+    // BankReconciliationService::getLedger() uses.
+    //
+    // transaction_type/counterpart are inferred, not stored: dv_no joined
+    // back to fims.checks (via dv_number) names the actual check/payee when
+    // one exists; otherwise doc_ref_no matched to fims.fund_transfers.
+    // ftla_number identifies an FTLA transfer. Neither join fires for a
+    // plain adjustment JEV, which is why the type still falls back to 'GL'.
     public function getDisbursementTransactions(int $bankAccountId, string $positionDate): string
     {
         if ($bankAccountId <= 0 || $positionDate === '') {
             return $this->ok([]);
         }
+        $account = App\ExecuteRow(
+            "SELECT account_code FROM {$this->tableBankAccounts} WHERE bank_account_id = {$bankAccountId}",
+            'DB'
+        );
+        $accountCode = trim((string) ($account['account_code'] ?? ''));
+        if ($accountCode === '') {
+            return $this->ok([]);
+        }
+
         $rows = App\ExecuteRowsAssociative(
-            "SELECT bank_transaction_id, transaction_type, transaction_id, reference_number,
-                    transaction_date, amount, description, status, counterpart, direction
-             FROM {$this->tableBankTransactions}
-             WHERE bank_account_id = {$bankAccountId}
-               AND transaction_date = " . $this->str($positionDate) . "
-               AND direction != 'INFLOW'
-               AND transaction_id NOT LIKE 'SOA-%'
-             ORDER BY bank_transaction_id",
+            "SELECT v.gl_id, v.jev_no, v.reference_no, v.description, v.credit AS amount,
+                    chk.check_number, chk.payee, ft.ftla_number, ft.purpose AS ftla_purpose
+             FROM {$this->tableViewJournals} v
+             LEFT JOIN {$this->tableChecks} chk ON chk.dv_number = v.dv_no AND chk.bank_account_id = {$bankAccountId}
+             LEFT JOIN {$this->tableFundTransfers} ft ON ft.ftla_number = v.doc_ref_no
+             WHERE v.account_code = " . $this->str($accountCode) . '
+               AND v.posting_date = ' . $this->str($positionDate) . '
+               AND v.credit > 0
+             ORDER BY v.gl_id',
             'DB'
         ) ?: [];
+
+        foreach ($rows as &$row) {
+            $row['transaction_id'] = $row['jev_no'] ?: ('GL-' . $row['gl_id']);
+            $row['reference_number'] = $row['reference_no'] ?: $row['jev_no'];
+            $row['transaction_type'] = $row['check_number'] ? 'CHECK' : ($row['ftla_number'] ? 'FTLA' : 'GL');
+            $row['counterpart'] = $row['payee'] ?: $row['ftla_purpose'];
+            $row['status'] = 'POSTED';
+            $row['amount'] = $this->num($row['amount']);
+            unset($row['gl_id'], $row['jev_no'], $row['reference_no'], $row['check_number'], $row['payee'], $row['ftla_number'], $row['ftla_purpose']);
+        }
+        unset($row);
 
         return $this->ok($rows);
     }

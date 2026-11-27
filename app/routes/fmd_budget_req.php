@@ -15,10 +15,13 @@ use PHPMaker2024\FIMS\Service\GlobalService;
  *   Query: fiscal_yr, program_code (filters), page (default 1), limit (default 15, 1–100).
  *
  * Unlike /budget_req/list, the SCOPE is decided here, not by the client: the list is always every Regional / District office
- * (GlobalService::CENTRAL_REVIEW_RC_CODE_FROM), and the `central`, `rc_id` and `rc_code_from` query parameters are not read, so they
- * can't widen or narrow it. Any logged-in user (the JWT) gets the list — it is no longer limited to the Financial Management Department
- * (it used to answer 403 to every other RC). What a user may DO with a row is still decided per row by `review` (withReview(): its
- * can_decide, from the user's level), so Budget Processing and Return / Approve stay with the Budget Officer / Budget Head.
+ * (GlobalService::CENTRAL_REVIEW_RC_CODE_FROM) PLUS the caller's own RC (so FMD's own Program-based requests — under FMD's
+ * own rc_id, which does not sort at or after CENTRAL_REVIEW_RC_CODE_FROM — still show up in its own list; see
+ * BudgetReqService::fetchAlls()'s $alsoIncludeRcId), and the `central`, `rc_id` and `rc_code_from` query parameters are not
+ * read, so they can't widen or narrow it. Any logged-in user (the JWT) gets the list — it is no longer limited to the
+ * Financial Management Department (it used to answer 403 to every other RC). What a user may DO with a row is still decided
+ * per row by `review` (withReview(): its can_decide, from the user's level), so Budget Processing and Return / Approve stay
+ * with the Budget Officer / Budget Head.
  */
 $FmdBudgetReqService = new BudgetReqService();
 
@@ -31,17 +34,30 @@ $app->get('/fmd/budget_req/list', function ($request, $response, $args) use ($Fm
         $page   = max(1, (int) $text('page'));
         $limit  = $text('limit') === '' ? 15 : min(100, max(1, (int) $text('limit')));
 
+        // The caller's own RC — so FMD sees requests it authored itself too, not just Regional/
+        // District offices' (see this file's own doc comment). A lookup failure (no logged-in user
+        // resolvable) just means nothing extra is included, same as a plain '' would.
+        $ownRcId = '';
+        try {
+            $ownRcId = (string) (GlobalService::getUserRcId($userId) ?? '');
+        } catch (\InvalidArgumentException $e) {
+            // leave unset
+        }
+
         $result = $FmdBudgetReqService->fetchAlls(
             $page,
             $limit,
             $text('fiscal_yr'),
             $text('program_code'),
             '',                                                   // every RC …
-            GlobalService::CENTRAL_REVIEW_RC_CODE_FROM,           // … that is a Regional / District office
-            true                                                  // the proposal list: the projects added by approved SUPPLEMENTAL revisions are not in it
+            GlobalService::CENTRAL_REVIEW_RC_CODE_FROM,           // … that is a Regional / District office …
+            $userId,                                              // strips 'programs' if THIS caller turns out to be a
+                                                                   // plain originating-office user (see fetchAlls' own doc)
+            $ownRcId,                                             // … plus the caller's own RC (FMD's own requests)
+            excludeSupplemental: true                             // the proposal list: the projects added by approved SUPPLEMENTAL revisions are not in it
         );
         if ($result['success']) {
-            // where each row stands in the review chain (For Review -> Budget Officer -> Endorsed -> Budget Head -> Approved)
+            // where each row stands in the review chain (For Review -> Budget Officer -> For Endorsement -> Budget Head -> Approved)
             // and whether THIS user may decide it now — the row actions are driven by it
             $result['data'] = $FmdBudgetReqService->withReview($result['data'], $userId);
         }

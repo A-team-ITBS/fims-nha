@@ -25,6 +25,7 @@ $_vl_remit_type = preg_match('/^[A-Za-z_]{1,20}$/', (string) ($_GET['remit_type'
 <script src="/_shared/js/searchable-select.js?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/js/searchable-select.js') ?>"></script>
 
 <style>
+    #vl-root :is(.nha-mono, .nha-amt, .u-font-mono, .fims-mono, .amt-cell) { font-family: var(--font-body); font-variant-numeric: tabular-nums; } /* plain zero, no dotted-zero glyph */
 </style>
 
 <div id="vl-root" class="nha-root">
@@ -33,7 +34,7 @@ $_vl_remit_type = preg_match('/^[A-Za-z_]{1,20}$/', (string) ($_GET['remit_type'
     <!-- same banner as User Access (app-page-header in _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
-            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
             </svg>
         </div>
@@ -387,26 +388,25 @@ function vl_showError(msg) { $vl('vl-error').style.display = 'flex'; $vl('vl-err
 function vl_hideError()    { $vl('vl-error').style.display = 'none'; }
 
 function vl_toast(msg, type = 'info') {
-    const colors = { success: '#16a34a', error: '#dc2626', warning: '#d97706', info: '#2563eb' };
-    let wrap = document.getElementById('nha-toast-wrap');
+    // shared toast chrome (.nha-toast* in _shared/css/nha-fims.css)
+    let wrap = document.getElementById('nha-toast-container');
     if (!wrap) {
         wrap = document.createElement('div');
-        wrap.id = 'nha-toast-wrap';
-        wrap.style.cssText = 'position:fixed;top:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
+        wrap.id = 'nha-toast-container';
         document.body.appendChild(wrap);
     }
-    const color = colors[type] || colors.info;
     const t = document.createElement('div');
-    t.style.cssText = `display:flex;align-items:flex-start;gap:10px;padding:12px 14px;background:#fff;border-left:4px solid ${color};border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.14);font-size:13px;color:#1e293b;min-width:260px;max-width:340px;pointer-events:auto;`;
-    const span = document.createElement('span');
-    span.style.flex = '1';
-    span.textContent = msg;
+    t.className = 'nha-toast nha-toast-' + (['success', 'error', 'warning', 'info'].includes(type) ? type : 'info');
+    const body = document.createElement('div');
+    body.className = 'nha-toast-body';
+    body.textContent = msg;
     const close = document.createElement('button');
+    close.className = 'nha-toast-close';
     close.innerHTML = '&times;';
-    close.style.cssText = 'border:none;background:none;cursor:pointer;color:#A9AAB8;font-size:18px;line-height:1;padding:0 2px;flex-shrink:0';
     close.onclick = () => t.remove();
-    t.append(span, close);
+    t.append(body, close);
     wrap.appendChild(t);
+    requestAnimationFrame(() => t.classList.add('show'));
     setTimeout(() => t.remove(), 4000);
 }
 </script>

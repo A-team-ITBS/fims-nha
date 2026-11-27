@@ -324,7 +324,7 @@ class BankReconciliationService
         $beginningBalance = round((float) ($beginRow['bal'] ?? 0), 2);
 
         $rows = App\ExecuteRowsAssociative(
-            "SELECT g.gl_id, g.posting_date, g.reference_no, g.description, g.debit, g.credit,
+            "SELECT g.gl_id, g.posting_date, g.reference_no, g.doc_ref_no, g.description, g.debit, g.credit,
                     c.forced_cleared
              FROM {$this->tableGl} g
              LEFT JOIN {$this->tableCleared} c ON c.gl_id = g.gl_id AND c.bank_account_id = {$id}

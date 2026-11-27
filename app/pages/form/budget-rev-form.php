@@ -254,13 +254,12 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-cancel {
 html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save { color: #FFFFFF; background: #3861BC; border-color: #3861BC; }
 html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not([disabled]) { background: #2E59B8; }
 
-/* ── Supplemental tab: a NEW project released by a SARO ──
+/* ── Supplemental tab: NEW projects released by a SARO ──
    The Amendment / Realignment steps and the Supplemental panel are two <fieldset>s; setType() hides AND disables the one that is not on, so the
-   required fields of the hidden tab never block the submit. The layout of the Project block follows the Budget Proposal form's project card. */
+   required fields of the hidden tab never block the submit. The Program blocks and the project cards follow the Budget Request form's (Region, Project, Location /
+   Type of Fund, Component, Sub-Component, Proposed Amount / Supporting Documents; the Project Code field is kept but hidden). */
 .nha-root #brv-overlay fieldset.brv-fs { border: 0; padding: 0; margin: 0; min-width: 0; }
 .nha-root #brv-overlay fieldset.brv-fs[hidden] { display: none; }
-.nha-root .brv-sp-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-bottom: 14px; }
-@media (min-width: 768px) { .nha-root .brv-sp-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 .nha-root .brv-sp-saro {
     margin-top: 12px; padding: 10px 14px; font-size: 13px; line-height: 1.5;
     background: var(--blue-bg, #E6EBF6); border: 1px solid var(--navy-bdr, #E6EBF6); border-left: 4px solid var(--afims-heading-fill, #000E3E); border-radius: 4px 10px 10px 4px;
@@ -268,31 +267,101 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
 .nha-root .brv-sp-saro[hidden] { display: none; }
 .nha-root .brv-sp-saro-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .nha-root .brv-sp-saro-sub { color: var(--subtle, #62657E); }
-.nha-root .brv-sp-blk {
-    padding: 14px; background: var(--surf, #F4F7FA); border: 1px solid var(--bdr, #E4ECF2); border-radius: 10px;
-    box-shadow: 0 1px 3px rgba(15, 32, 69, .08);
+
+/* a Program block: its Program / Sub-Program and the project cards under it */
+.nha-root .brv-sp-pblock {
+    padding: 16px; background: var(--afims-surface, #FFFFFF); border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--afims-heading-fill, #000E3E) 20%, var(--bdr, #E4ECF2));
 }
-.nha-root .brv-sp-blk-hd {
-    display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding-bottom: 14px; margin-bottom: 14px;
-    border-bottom: 1px solid var(--bdr, #E4ECF2);
+.nha-root .brv-sp-pblock + .brv-sp-pblock { margin-top: 18px; }
+.nha-root .brv-sp-pblock-hd { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 4px; }
+.nha-root .brv-sp-pblock-fields { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+@media (min-width: 768px) { .nha-root .brv-sp-pblock-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.nha-root .brv-sp-subhd {
+    margin: 12px 0 10px; padding-bottom: 7px; font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--afims-heading-fill, #000E3E); border-bottom: 2px solid var(--bdr, #E4ECF2);
 }
-@media (min-width: 768px) { .nha-root .brv-sp-blk-hd { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); } }
-.nha-root .brv-sp-lit { overflow-x: auto; background: var(--afims-surface, #FFFFFF); border: 1px solid var(--bdr, #E4ECF2); border-radius: 10px; }
-.nha-root .brv-sp-tbl { width: 100%; min-width: 620px; border-collapse: collapse; table-layout: fixed; }
-.nha-root .brv-sp-tbl th {
-    height: 34px; padding: 0 8px; text-align: left; white-space: nowrap; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+.nha-root .brv-sp-cards { display: flex; flex-direction: column; gap: 16px; margin-bottom: 12px; }
+
+/* a project card */
+.nha-root .brv-sp-card {
+    padding: 14px; background: var(--surf, #F4F7FA); border-radius: 10px; box-shadow: 0 1px 3px rgba(15, 32, 69, .08);
+    border: 1px solid color-mix(in srgb, var(--bdr, #E4ECF2) 55%, var(--subtle, #62657E));
+}
+.nha-root .brv-sp-card-hd {
+    display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; padding-bottom: 14px; margin-bottom: 14px;
+    border-bottom: 1px solid color-mix(in srgb, var(--bdr, #E4ECF2) 55%, var(--subtle, #62657E));
+}
+/* wide enough: the whole header on one row — chevron · Region · Project · Project Code · Location · remove (the last track is empty while the card cannot be removed) */
+@media (min-width: 1000px) {
+    .nha-root .brv-sp-card-hd {
+        display: grid; align-items: start;
+        grid-template-columns: 42px minmax(180px, 1.3fr) minmax(190px, 1.8fr) minmax(160px, 1.2fr) auto;
+    }
+}
+.nha-root .brv-sp-card.is-collapsed .brv-sp-card-hd { padding-bottom: 0; margin-bottom: 0; border-bottom: 0; }
+.nha-root .brv-sp-card.is-collapsed .brv-sp-card-body { display: none; }
+.nha-root .brv-sp-card-region  { flex: 0 0 200px; min-width: 0; }
+.nha-root .brv-sp-card-project { flex: 1 1 240px; min-width: 0; }
+.nha-root .brv-sp-card-code    { flex: 0 0 230px; min-width: 0; }
+/* The Project Code field is kept in the card (it holds a picked project's code, which goes with the save) but not shown: a new project's code is generated on approval. */
+.nha-root .brv-sp-card-code[hidden] { display: none; }
+.nha-root .brv-sp-card-loc     { flex: 0 0 230px; min-width: 0; }
+.nha-root .brv-sp-codeview::placeholder { font-family: 'IBM Plex Sans', sans-serif; }
+.nha-root .brv-sp-codeview { font-family: 'IBM Plex Mono', monospace; background: var(--afims-surface, #FFFFFF); border-style: dashed; color: var(--subtle, #62657E); cursor: default; }
+.nha-root .brv-sp-toggle, .nha-root .brv-sp-card-rm, .nha-root .brv-sp-pblock-rm {
+    flex-shrink: 0; width: 42px; height: 42px; margin-top: 20px; border-radius: 8px; line-height: 1; cursor: pointer; transition: background .15s, color .15s, transform .15s;
+}
+.nha-root .brv-sp-toggle { display: flex; align-items: center; justify-content: center; border: 1px solid var(--bdr, #E4ECF2); background: var(--afims-surface, #FFFFFF); color: var(--afims-heading-fill, #000E3E); }
+.nha-root .brv-sp-toggle:hover { background: var(--surf, #F4F7FA); }
+.nha-root .brv-sp-card.is-collapsed .brv-sp-toggle { transform: rotate(-90deg); }
+.nha-root .brv-sp-card-rm, .nha-root .brv-sp-pblock-rm { border: 1px solid var(--red-bg, #FAE1E3); background: var(--red-bg, #FAE1E3); color: var(--red, #DC3545); font-size: 24px; }
+.nha-root .brv-sp-card-rm:hover, .nha-root .brv-sp-pblock-rm:hover { background: var(--red, #DC3545); color: #FFFFFF; }
+.nha-root .brv-sp-card-rm[hidden], .nha-root .brv-sp-pblock-rm[hidden] { display: none; }
+.nha-root .brv-sp-card-body { display: flex; flex-direction: column; gap: 12px; }
+.nha-root .brv-sp-row4 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+@media (min-width: 640px) { .nha-root .brv-sp-row4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1000px) { .nha-root .brv-sp-row4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.nha-root .brv-sp-amtwrap { display: flex; align-items: stretch; overflow: hidden; border: 1px solid var(--bdr, #E4ECF2); border-radius: 8px; background: var(--afims-surface, #FFFFFF); }
+.nha-root .brv-sp-amtwrap:focus-within { border-color: var(--afims-heading-fill, #000E3E); box-shadow: 0 0 0 3px rgba(15, 32, 69, .08); }
+.nha-root .brv-sp-amtpre { display: flex; align-items: center; padding: 0 12px; font-size: 13px; font-weight: 700; color: var(--subtle, #62657E); background: var(--surf, #F4F7FA); border-right: 1px solid var(--bdr, #E4ECF2); }
+.nha-root .brv-sp-amtwrap .brv-in { border: 0; border-radius: 0; text-align: right; font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+.nha-root .brv-sp-amtwrap .brv-in:focus { box-shadow: none; }
+
+/* supporting documents of a project */
+.nha-root .brv-sp-docs { margin-top: 4px; padding-top: 14px; border-top: 1px solid var(--bdr, #E4ECF2); }
+.nha-root .brv-sp-docs-title { margin: 0 0 4px; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.nha-root .brv-sp-docs-hint { margin: 0 0 10px; font-size: 11px; color: var(--subtle, #62657E); }
+.nha-root .brv-sp-doctbl { width: 100%; margin-bottom: 10px; border-collapse: collapse; }
+.nha-root .brv-sp-doctbl th {
+    height: 30px; padding: 0 6px; text-align: left; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
     color: var(--sec, #62657E); background: var(--surf, #F4F7FA); border-bottom: 2px solid var(--bdr, #E4ECF2);
 }
-.nha-root .brv-sp-tbl td { padding: 6px; vertical-align: middle; border-bottom: 1px solid var(--bdr, #E4ECF2); }
-.nha-root .brv-sp-tbl tfoot td { padding: 8px; font-size: 12.5px; font-weight: 700; border-bottom: 0; background: var(--surf, #F4F7FA); }
-.nha-root .brv-sp-tbl .brv-in { padding: 6px 9px; font-size: 12.5px; border-radius: 6px; }
-.nha-root .brv-sp-tbl textarea.brv-in { min-height: 32px; height: 32px; resize: vertical; line-height: 1.3; }
-.nha-root .brv-sp-tbl .brv-sp-amt { text-align: right; font-variant-numeric: tabular-nums; }
-.nha-root .brv-sp-tbl .brv-sp-sum { text-align: right; font-variant-numeric: tabular-nums; }
-.nha-root .brv-sp-tbl .brv-sp-x { text-align: center; }
-.nha-root .brv-sp-rm { width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent; color: var(--red, #DC3545); font-size: 18px; line-height: 1; cursor: pointer; }
-.nha-root .brv-sp-rm:hover { background: var(--red-bg, #FAE1E3); }
-.nha-root .brv-sp-add { margin-top: 12px; width: 100%; justify-content: center; }
+.nha-root .brv-sp-doctbl td { padding: 6px; vertical-align: middle; border-bottom: 1px solid var(--bdr, #E4ECF2); }
+.nha-root .brv-sp-doctbl .brv-in { padding: 6px 9px; font-size: 12.5px; border-radius: 6px; }
+.nha-root .brv-sp-docpanel { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.nha-root .brv-sp-docpick {
+    flex-shrink: 0; padding: 6px 10px; font-size: 11px; font-weight: 600; white-space: nowrap; cursor: pointer; border-radius: 6px;
+    color: var(--afims-text, #1A1B21); background: var(--surf, #F4F7FA); border: 1px solid var(--bdr, #E4ECF2);
+}
+.nha-root .brv-sp-docpick:hover { background: var(--afims-surface, #FFFFFF); }
+.nha-root .brv-sp-docfile { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--subtle, #62657E); }
+.nha-root .brv-sp-docopen { flex-shrink: 0; font-size: 11.5px; font-weight: 600; white-space: nowrap; text-decoration: none; color: var(--afims-heading-fill, #000E3E); }
+.nha-root .brv-sp-docrm { flex-shrink: 0; width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--red, #DC3545); font-size: 16px; line-height: 1; cursor: pointer; }
+.nha-root .brv-sp-docrm:hover { background: var(--red-bg, #FAE1E3); }
+.nha-root .brv-sp-docactions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.nha-root .brv-sp-ghost {
+    height: 34px; padding: 0 16px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 8px;
+    color: var(--afims-text, #1A1B21); background: var(--afims-surface, #FFFFFF); border: 1px solid var(--bdr, #E4ECF2);
+}
+.nha-root .brv-sp-ghost:hover { background: var(--surf, #F4F7FA); }
+.nha-root .brv-sp-add-program { margin-top: 14px; }
+.nha-root .brv-sp-grand {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding: 10px 14px;
+    font-size: 13px; background: var(--blue-bg, #E6EBF6); border: 1px solid var(--navy-bdr, #E6EBF6); border-radius: 8px;
+}
+.nha-root .brv-sp-grand strong { font-variant-numeric: tabular-nums; }
 .nha-root .brv-sp-note { margin-top: 8px; font-size: 12px; font-weight: 600; color: var(--red-txt, #8F222D); }
 .nha-root .brv-sp-note[hidden] { display: none; }
 </style>
@@ -519,23 +588,13 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
 
                 </fieldset><!-- /#brv-std -->
 
-                <!-- ── SUPPLEMENTAL: a NEW project released by a SARO — shown (and enabled) by setType('SUPPLEMENTAL'); filled by the script at the bottom of this file (window.brvSupp).
-                     No Project Code field: the code is generated when the request is approved (BudgetRevisionService::approveSupplemental()). ── -->
+<!-- ── SUPPLEMENTAL: NEW projects released by a SARO — shown (and enabled) by setType('SUPPLEMENTAL'); filled by the script at the bottom of this file (window.brvSupp).
+                     The SARO is the request's; the Programs and the projects under them are built by the script (the same cards the Budget Request form uses). No Project Code
+                     field to fill in: a new project's code is generated when the request is approved (BudgetRevisionService::approveSupplemental()). ── -->
                 <fieldset id="brv-supp" class="brv-fs" hidden disabled>
 
                     <section class="brv-step">
-                        <h4 class="brv-step-hd">Program &amp; SARO <span class="brv-step-sub">Pick the program and the SARO DBM released the project under. Only this year's SAROs (FY <?php echo date('Y'); ?>) are listed, and picking a Program or Sub-Program narrows them to the SAROs tagged to it.</span></h4>
-
-                        <div class="brv-sp-row">
-                            <div class="brv-fld">
-                                <label class="brv-lbl" for="brv-sp-program">Program <span class="brv-req">*</span></label>
-                                <select class="brv-in" id="brv-sp-program" required><option value="">Loading…</option></select>
-                            </div>
-                            <div class="brv-fld">
-                                <label class="brv-lbl" for="brv-sp-subprogram">Sub-Program <span class="brv-optional">(optional)</span></label>
-                                <select class="brv-in" id="brv-sp-subprogram"><option value="">— None —</option></select>
-                            </div>
-                        </div>
+                        <h4 class="brv-step-hd">SARO <span class="brv-step-sub">Pick the SARO DBM released the projects under. Only this year's SAROs (FY <?php echo date('Y'); ?>) are listed, and the Program / Sub-Program picked below narrow them to the SAROs tagged to it.</span></h4>
 
                         <div class="brv-fld">
                             <label class="brv-lbl" for="brv-sp-saro">SARO <span class="brv-req">*</span></label>
@@ -546,44 +605,19 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                     </section>
 
                     <section class="brv-step">
-                        <h4 class="brv-step-hd">Project <span class="brv-step-sub">The new project this SARO funds — it is not in the approved COB.</span></h4>
+                        <h4 class="brv-step-hd">Projects <span class="brv-step-sub">Add a Program, then the new projects under it — none of them is in the approved COB. "+ Add Program" adds another Program with its own projects.</span></h4>
 
-                        <div class="brv-sp-blk">
-                            <div class="brv-sp-blk-hd">
-                                <div class="brv-fld">
-                                    <label class="brv-lbl" for="brv-sp-project">Project <span class="brv-req">*</span></label>
-                                    <input type="text" class="brv-in" id="brv-sp-project" maxlength="255" autocomplete="off" placeholder="Enter the name of the new project" required>
-                                </div>
-                                <div class="brv-fld">
-                                    <label class="brv-lbl" for="brv-sp-location">Location <span class="brv-optional">(optional)</span></label>
-                                    <input type="text" class="brv-in" id="brv-sp-location" maxlength="255" autocomplete="off" placeholder="e.g. Brgy. San Jose, Quezon City">
-                                </div>
-                            </div>
+                        <!-- one block per Program (built by the script): its Program / Sub-Program and the project cards under it -->
+                        <div id="brv-sp-pblocks"></div>
+                        <button type="button" class="brv-sp-ghost brv-sp-add-program" id="brv-sp-add-program">+ Add Program</button>
 
-                            <div class="brv-sp-lit">
-                                <table class="brv-sp-tbl">
-                                    <thead><tr>
-                                        <th style="width:36%;">Account Code - Account Name</th>
-                                        <th style="width:38%;">Particulars</th>
-                                        <th style="width:20%;text-align:right;">Amount</th>
-                                        <th style="width:6%;"></th>
-                                    </tr></thead>
-                                    <tbody id="brv-sp-items"></tbody>
-                                    <tfoot><tr>
-                                        <td colspan="2">Total</td>
-                                        <td class="brv-sp-sum" id="brv-sp-total">0.00</td>
-                                        <td></td>
-                                    </tr></tfoot>
-                                </table>
-                            </div>
-                            <datalist id="brv-sp-accounts"></datalist>
-                            <button type="button" class="nha-btn nha-btn-ghost brv-sp-add" id="brv-sp-add-item">+ Add Line Item</button>
-                            <div class="brv-sp-note" id="brv-sp-note" hidden></div>
-                        </div>
+                        <!-- the total of every project's Proposed Amount: what is checked against the SARO's amount (shown once there is more than one project) -->
+                        <div class="brv-sp-grand" id="brv-sp-grand" hidden><span>Total of all projects</span><strong id="brv-sp-total">0.00</strong></div>
+                        <div class="brv-sp-note" id="brv-sp-note" hidden></div>
 
                         <div class="brv-fld brv-reason-fld">
                             <label class="brv-lbl" for="brv-sp-reason">Reason <span class="brv-optional">(optional)</span></label>
-                            <textarea class="brv-in" id="brv-sp-reason" rows="2" placeholder="Anything FMD should know about this project"></textarea>
+                            <textarea class="brv-in" id="brv-sp-reason" rows="2" placeholder="Anything FMD should know about these projects"></textarea>
                         </div>
                     </section>
 
@@ -695,7 +729,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     };
     // SUPPLEMENTAL has its own panel (#brv-supp, window.brvSupp): only the intro is used; the rest keeps the (hidden) Amendment wording so setType never meets an undefined text.
     TYPE_TEXT.SUPPLEMENTAL = Object.assign({}, TYPE_TEXT.REVISION, {
-        intro: "Record the additional project DBM released a SARO for — a project that is not in the approved COB. Saving files it as Saved, and you can still edit it; choose Process in its Actions menu to submit it for review (after that it cannot be edited). Once it is approved the project is added to the budget, and its amount goes to the Amendment column of the COB, not to the Approved Amount.",
+        intro: "Record the additional projects DBM released a SARO for — projects that are not in the approved COB. One request can carry several projects. Saving files it as Saved, and you can still edit it; choose Process in its Actions menu to submit it for review (after that it cannot be edited). Once it is approved the projects are added to the budget, and their amounts go to the Amendment column of the COB, not to the Approved Amount.",
     });
 
     // Only a line of an Approved budget request may be revised or receive funds (status compared ignoring case and spaces,
@@ -1509,22 +1543,27 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
 
 <script>
 /* ══════════════════════════════════════════════════════════════════════════
-   Supplemental tab (#brv-supp) — a NEW project released by a SARO and not in the approved COB.
+   Supplemental tab (#brv-supp) — NEW projects released by a SARO and not in the approved COB.
 
-   The user picks the Program (and, optionally, the Sub-Program) and the SARO, names the project (and, optionally, its location) and enters its line
-   items: a chart-of-accounts entry, particulars and an amount each. There is NO Project Code field — the code is generated when the request is approved
-   (BudgetRevisionService::approveSupplemental()), so nothing here asks for or shows one. One request is one project: to add another project, file another request.
+   The user picks the SARO (the request's own), then builds the projects the way the Budget Request form does: a Program block (Program + optional Sub-Program),
+   and under it a card per project — Region, Project (type to search an existing project or enter a new one), Location, Type of Fund, Component, Sub-Component, ONE Proposed Amount and Supporting Documents (an uploaded
+   file ≤ 20 MB or a pasted link each). "+ Add Project" adds a card to a Program, "+ Add Program" adds another Program block. The card's chevron collapses it.
+   The total of ALL the projects' amounts is what is held to the SARO's amount.
+   The card has a Project Code field but it is not shown (hidden): it holds a picked existing project's code, which goes with the save; a NEW project has none — its code is
+   generated when the request is approved. (The code is still on the project and is shown in the request's details once it is approved.)
 
-   Lists (fetched once, the first time the tab is opened): GET /program/all, /sub_program/all, /fund_tracking/list?type=SARO&fiscal_year=<this year> (only
-   this year's SAROs are offered; a saved request whose SARO is of another year still shows that SARO when it is opened for Edit) and
-   /chart_of_accounts/all?postable_only=1&for_budget_proposal=1 (the accounts a budget proposal may use). Picking a SARO whose sub-program is known fills
-   the program in, when none is picked yet. The fiscal year is not asked for: the server takes it from the SARO.
+   Lists (fetched once, the first time the tab is opened): GET /program/all, /sub_program/all, /fund_tracking/list?type=SARO&fiscal_year=<this year> (only this year's
+   SAROs are offered; a saved request whose SARO is of another year still shows that SARO when it is opened for Edit), /responsibility-center/all (the Regional offices are
+   the Regions), /type_of_fund/all, /component_type/all and /sub_component_type/all. The Project field searches GET /project/all?search=&program_code=&sub_program_code=
+   as the user types. Picking a SARO whose sub-program is known fills the first empty Program block. The fiscal year is not asked for: the server takes it from the SARO.
+   Removing a SAVED document of an existing project is immediate (DELETE /budget_revision/attachment/delete/{id}, after a confirm); every other change is sent with Save.
 
    The host page (budget-revision-page.php) uses it through window.brvSupp:
      ready()     → promise, resolves once the lists are loaded
      reset()     → empties the panel (the form's reset event does it too)
-     fill(row)   → shows a saved request (the row read from /budget_revision/read/{id}, with its items) for Edit
-     payload()   → the body to save with: { request_type: 'SUPPLEMENTAL', fund_tracking_id, program_code, sub_program_code, project_name, location, items[], reason }
+     fill(row)   → shows a saved request (the row read from /budget_revision/read/{id}, with its projects[] and their supporting_documents[]) for Edit
+     payload()   → the body to save with: { request_type: 'SUPPLEMENTAL', fund_tracking_id, projects[], reason }; a project's new files are referenced by file_index
+     files()     → the File objects those file_index values point at (call after payload()); empty = a plain JSON save is enough, otherwise send multipart FormData
      validate()  → '' or the message of what is wrong (the server checks everything again)
 ══════════════════════════════════════════════════════════════════════════ */
 (function () {
@@ -1537,15 +1576,18 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     const amtRaw = s => String(s ?? '').replace(/,/g, '').trim();
     const amtText = v => (v === '' || v === null || v === undefined || isNaN(Number(v)) ? '' : Number(v).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
     const round2 = n => Math.round(n * 100) / 100;
+    const DOC_EXT = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif'];   // keep in sync with BudgetRevisionService::ATTACHMENT_ALLOWED_EXT
+    const DOC_MAX = 20 * 1024 * 1024;                                                       // … and ATTACHMENT_MAX_BYTES
 
-    const program = $('brv-sp-program'), sub = $('brv-sp-subprogram'), saro = $('brv-sp-saro'), card = $('brv-sp-saro-card');
-    const items = $('brv-sp-items'), total = $('brv-sp-total'), note = $('brv-sp-note'), hint = $('brv-sp-hint'), accounts = $('brv-sp-accounts');
+    const saro = $('brv-sp-saro'), saroCard = $('brv-sp-saro-card'), pblocks = $('brv-sp-pblocks');
+    const total = $('brv-sp-total'), grand = $('brv-sp-grand'), note = $('brv-sp-note'), hint = $('brv-sp-hint');
 
-    // the lists, and the accounts looked up both ways (the label the user sees ↔ the account id the request stores)
-    // extra: the SARO of a request opened for Edit when it is not on this year's list (an earlier year's, or deleted since) — kept apart so it never joins the list for the next request
-    const S = { programs: [], subs: [], saros: [], extra: null, ready: false, byLabel: new Map(), byId: new Map(), loading: null };
+    // the lists; extra: the SARO of a request opened for Edit when it is not on this year's list (an earlier year's, or deleted since) — kept apart so it never joins the list for the next request
+    const S = { programs: [], subs: [], saros: [], regions: [], funds: [], components: [], subComponents: [], extra: null, ready: false, loading: null };
     const NO_SARO_YET = `There is no SARO for FY ${CURRENT_YEAR} in Fund Tracking yet.`;
-    const acctLabel = a => `${a.account_code} — ${a.account_title}`;
+    let seq = 0, lastFiles = [];
+
+    function toast(msg, type) { if (typeof window.brv_toast === 'function') window.brv_toast(msg, type); }
 
     // The API wants the JWT PHPMaker puts on the page (ew.API_JWT_TOKEN), as the host page's own requests send it.
     function authHeaders() {
@@ -1560,64 +1602,51 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         return json.data ?? [];
     }
 
-    function registerAccount(a) {
-        const label = acctLabel(a);
-        S.byLabel.set(label, a);
-        S.byId.set(String(a.account_id), a);
-        return label;
+    /* ── the blocks and cards ── */
+    const pblockEls = () => Array.from(pblocks.querySelectorAll('.brv-sp-pblock'));
+    const cardsOf = pb => Array.from(pb.querySelectorAll('.brv-sp-card'));
+    const allCards = () => Array.from(pblocks.querySelectorAll('.brv-sp-card'));
+
+    function fillSelect(sel, placeholder, items, valueKey, labelFn, keep) {
+        sel.innerHTML = `<option value="">${esc(placeholder)}</option>` + items.map(i => `<option value="${esc(i[valueKey])}">${esc(labelFn(i))}</option>`).join('');
+        sel.value = items.some(i => String(i[valueKey]) === String(keep)) ? String(keep) : '';
+    }
+    const fillPrograms = (sel, keep = '') => fillSelect(sel, 'Select a program', S.programs, 'program_code', p => `${p.program_code} — ${p.program_name}`, keep);
+    function fillSubs(sel, programCode, keep = '') {
+        fillSelect(sel, '— None —', programCode ? S.subs.filter(s => s.program_code === programCode) : [], 'sub_program_code', s => `${s.sub_program_code} — ${s.sub_program_name}`, keep);
+    }
+    function fillCardLists(card, keep = {}) {
+        const v = sel => card.querySelector(sel).value;
+        fillSelect(card.querySelector('.brv-sp-region'), '— Select region —', S.regions, 'rc_id', rc => rc.rc_name, keep.rc_id ?? v('.brv-sp-region'));
+        fillSelect(card.querySelector('.brv-sp-fund'), '— Select type of fund —', S.funds, 'type_of_fund_id', f => f.name, keep.type_of_fund_id ?? v('.brv-sp-fund'));
+        fillSelect(card.querySelector('.brv-sp-comp'), '— None —', S.components, 'component_type_id', c => c.name, keep.component_id ?? v('.brv-sp-comp'));
+        fillSelect(card.querySelector('.brv-sp-subcomp'), '— None —', S.subComponents, 'sub_component_type_id', c => c.name, keep.sub_component_id ?? v('.brv-sp-subcomp'));
+    }
+    // the lists arrived after the blocks were drawn (the panel is drawn before the tab is first opened): fill what is on screen, keeping what was picked
+    function refillAll() {
+        pblockEls().forEach(pb => {
+            const ps = pb.querySelector('.brv-sp-program'), ss = pb.querySelector('.brv-sp-subprogram');
+            const p = ps.value, sub = ss.value;
+            fillPrograms(ps, p); fillSubs(ss, ps.value, sub);
+            cardsOf(pb).forEach(c => fillCardLists(c));
+        });
     }
 
-    async function load() {
-        hint.textContent = 'Loading programs, SAROs and accounts…';
-        try {
-            const [programs, subs, saros, accts] = await Promise.all([
-                getList(BASE + '/program/all'),
-                getList(BASE + '/sub_program/all'),
-                getList(BASE + '/fund_tracking/list?type=SARO&fiscal_year=' + CURRENT_YEAR + '&limit=1000'),
-                getList(BASE + '/chart_of_accounts/all?postable_only=1&for_budget_proposal=1'),
-            ]);
-            S.programs = programs; S.subs = subs; S.saros = saros;
-            program.innerHTML = '<option value="">Select a program</option>' + programs.map(p =>
-                `<option value="${esc(p.program_code)}">${esc(p.program_code)} — ${esc(p.program_name)}</option>`).join('');
-            fillSaros('');
-            accounts.innerHTML = '';
-            accts.forEach(a => { accounts.insertAdjacentHTML('beforeend', `<option value="${esc(registerAccount(a))}"></option>`); });
-            S.ready = true;
-            hint.textContent = saros.length ? '' : NO_SARO_YET;
-        } catch (e) {
-            S.loading = null;   // asked again the next time the tab is opened
-            hint.textContent = 'Could not load the lists: ' + e.message;
-            if (typeof window.brv_toast === 'function') window.brv_toast('Could not load the Supplemental form’s lists: ' + e.message, 'error');
-        }
-    }
-    function ensureLoaded() {
-        if (!S.loading) S.loading = load();
-        return S.loading;
-    }
-
-    /* ── program / sub-program / SARO ── */
-    function fillSubs(programCode, keep = '') {
-        const list = programCode ? S.subs.filter(s => s.program_code === programCode) : [];
-        sub.innerHTML = '<option value="">— None —</option>' + list.map(s =>
-            `<option value="${esc(s.sub_program_code)}">${esc(s.sub_program_code)} — ${esc(s.sub_program_name)}</option>`).join('');
-        sub.value = list.some(s => s.sub_program_code === keep) ? keep : '';
-    }
+    /* ── SARO: narrowed by the Programs / Sub-Programs picked below ── */
     const findSaro = id => S.saros.find(s => String(s.id) === String(id)) || (S.extra && String(S.extra.id) === String(id) ? S.extra : null);
     const selSaro = () => findSaro(saro.value);
     const saroOption = s => `<option value="${esc(s.id)}">${esc(s.saro_id)}${s.fiscal_year ? ' — FY ' + esc(s.fiscal_year) : ''}${Number(s.amount) > 0 ? ' — ' + peso(s.amount) : ''}</option>`;
-
-    // The Program and the Sub-Program narrow the SAROs. A SARO is tied to a program only through its sub-program (fims.fund_tracking.sub_program holds a sub-program
-    // code), so a picked Sub-Program keeps the SAROs of that sub-program, and a Program alone keeps those of any of its sub-programs. A SARO with no sub-program
-    // is only listed while neither is picked.
+    // A SARO is tied to a program only through its sub-program (fims.fund_tracking.sub_program holds a sub-program code). With several Program blocks it is listed when it
+    // fits ANY of them: a picked Sub-Program keeps the SAROs of that sub-program, a Program alone those of any of its sub-programs. A SARO with no sub-program is only
+    // listed while no Program is picked at all.
     function saroMatches(s) {
-        if (!sub.value && !program.value) return true;
+        const picked = pblockEls().map(pb => [pb.querySelector('.brv-sp-program').value, pb.querySelector('.brv-sp-subprogram').value]).filter(p => p[0]);
+        if (!picked.length) return true;
         const code = String(s.sub_program ?? '').trim();
-        if (sub.value) return code === sub.value;
         const sp = S.subs.find(x => x.sub_program_code === code);
-        return !!sp && sp.program_code === program.value;
+        return picked.some(([prog, sub]) => (sub ? code === sub : !!sp && sp.program_code === prog));
     }
-    // Rebuilds the SARO dropdown from this year's SAROs that fit the Program / Sub-Program; $keepId (a request's own SARO, when it is opened for Edit) is listed even when it does not fit.
-    // Returns how many SAROs are listed.
+    // Rebuilds the SARO dropdown from this year's SAROs that fit; $keepId (a request's own SARO, when it is opened for Edit) is listed even when it does not fit. Returns how many are listed.
     function fillSaros(keepId = '') {
         const list = S.saros.filter(saroMatches);
         const kept = keepId ? findSaro(keepId) : null;
@@ -1625,7 +1654,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         saro.innerHTML = '<option value="">Select a SARO</option>' + list.map(saroOption).join('');
         return list.length;
     }
-    // The Program / Sub-Program changed: narrow the SAROs. The SARO that was picked stays only if it still fits — otherwise it is cleared, with its card.
+    // A Program / Sub-Program changed: narrow the SAROs. The one that was picked stays only if it still fits — otherwise it is cleared, with its card.
     function refreshSaros() {
         const cur = selSaro();
         const keep = cur && saroMatches(cur) ? String(cur.id) : '';
@@ -1633,48 +1662,41 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         saro.value = keep;
         renderSaro();
         updateTotal();
-        if (S.ready && S.saros.length) hint.textContent = n === 0 ? `No SARO for FY ${CURRENT_YEAR} is tagged to this ${sub.value ? 'sub-program' : 'program'}.` : '';
+        if (S.ready && S.saros.length) hint.textContent = n === 0 ? 'No SARO for FY ' + CURRENT_YEAR + ' is tagged to the Program / Sub-Program picked.' : '';
     }
     // "2015-12-23" → "12-23-2015", as a SARO is written ("SARO NO. … dtd. 12-23-2015")
     const fmtDate = d => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || '')); return m ? `${m[2]}-${m[3]}-${m[1]}` : ''; };
-
     function renderSaro() {
         const s = selSaro();
-        card.hidden = !s;
+        saroCard.hidden = !s;
         if (!s) return;
         const dt = fmtDate(s.date);
-        card.innerHTML = `<div class="brv-sp-saro-top"><span class="nha-bdg nha-bdg-blue">SARO</span> <strong>SARO NO. ${esc(s.saro_id)}${dt ? ' dtd. ' + esc(dt) : ''}</strong></div>`
+        saroCard.innerHTML = `<div class="brv-sp-saro-top"><span class="nha-bdg nha-bdg-blue">SARO</span> <strong>SARO NO. ${esc(s.saro_id)}${dt ? ' dtd. ' + esc(dt) : ''}</strong></div>`
             + `<div class="brv-sp-saro-sub">${s.fiscal_year ? 'FY ' + esc(s.fiscal_year) + ' · ' : ''}Released through Fund Tracking</div>`
             + (Number(s.amount) > 0 ? `<div>SARO amount <strong>${peso(s.amount)}</strong></div>` : '');
     }
-
-    program.addEventListener('change', () => { fillSubs(program.value); refreshSaros(); });
-    sub.addEventListener('change', refreshSaros);
     saro.addEventListener('change', () => {
-        // a SARO that names a known sub-program tells the program too — filled in only while none is picked (the list then narrows to that program's SAROs, this one still in it)
+        // a SARO that names a known sub-program tells the program too — filled into the first Program block that has none yet
         const s = selSaro();
         const sp = s && s.sub_program ? S.subs.find(x => x.sub_program_code === String(s.sub_program).trim()) : null;
-        if (sp && !program.value) { program.value = sp.program_code; fillSubs(sp.program_code, sp.sub_program_code); refreshSaros(); return; }
+        const empty = sp ? pblockEls().find(pb => !pb.querySelector('.brv-sp-program').value) : null;
+        if (empty) {
+            const ps = empty.querySelector('.brv-sp-program'), ss = empty.querySelector('.brv-sp-subprogram');
+            ps.value = sp.program_code; fillSubs(ss, sp.program_code, sp.sub_program_code);
+            refreshSaros(); const keep = String(s.id); if (findSaro(keep)) { saro.value = keep; renderSaro(); }
+            return;
+        }
         renderSaro();
         updateTotal();
     });
 
-    /* ── line items ── */
-    const rows = () => Array.from(items.querySelectorAll('tr'));
-    function checkAccount(input) {
-        const label = input.value.trim(), a = S.byLabel.get(label);
-        input.dataset.id = a ? String(a.account_id) : '';
-        input.setCustomValidity(label !== '' && !a ? 'Pick an account from the list.' : '');
-    }
-    function itemsTotal() {
-        return round2(rows().reduce((sum, tr) => {
-            const n = Number(amtRaw(tr.querySelector('.brv-sp-amt').value));
-            return sum + (isNaN(n) ? 0 : n);
-        }, 0));
-    }
+    /* ── totals ── */
+    const cardAmount = c => { const n = Number(amtRaw(c.querySelector('.brv-sp-amount').value)); return isNaN(n) ? 0 : n; };
+    const itemsTotal = () => round2(allCards().reduce((sum, c) => sum + cardAmount(c), 0));
     function updateTotal() {
         const t = itemsTotal(), s = selSaro(), cap = s ? Number(s.amount) : 0;
         total.textContent = amtText(t) || '0.00';
+        grand.hidden = allCards().length < 2;   // with one project its own amount is the total
         if (s && cap > 0 && t > cap + 0.004) {
             note.hidden = false;
             note.textContent = `The total (${peso(t)}) is more than the SARO's amount (${peso(cap)}).`;
@@ -1683,45 +1705,269 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             note.textContent = '';
         }
     }
-    function addRow(prefill) {
-        const p = prefill || {};
-        const tr = document.createElement('tr');
-        tr.innerHTML = '<td><input type="text" class="brv-in brv-sp-acct" list="brv-sp-accounts" autocomplete="off" placeholder="Type to search…" aria-label="Account" required></td>'
-            + '<td><textarea class="brv-in brv-sp-part" rows="1" placeholder="Particulars" aria-label="Particulars" required></textarea></td>'
-            + '<td><input type="text" inputmode="decimal" class="brv-in brv-sp-amt" autocomplete="off" placeholder="0.00" aria-label="Amount" required></td>'
-            + '<td class="brv-sp-x"><button type="button" class="brv-sp-rm" title="Remove line item" aria-label="Remove line item">&times;</button></td>';
-        const acct = tr.querySelector('.brv-sp-acct'), amt = tr.querySelector('.brv-sp-amt');
-        if (p.label) acct.value = p.label;
-        if (p.particulars) tr.querySelector('.brv-sp-part').value = p.particulars;
-        if (p.amount !== undefined && p.amount !== '') amt.value = amtText(p.amount);
-        acct.addEventListener('input', () => checkAccount(acct));
-        acct.addEventListener('change', () => checkAccount(acct));
-        amt.addEventListener('input', () => { amt.value = amt.value.replace(/[^0-9.,]/g, ''); updateTotal(); });
-        amt.addEventListener('blur', () => { const r = amtRaw(amt.value); if (r !== '' && !isNaN(Number(r))) amt.value = amtText(r); updateTotal(); });
-        tr.querySelector('.brv-sp-rm').addEventListener('click', () => {
-            if (rows().length > 1) { tr.remove(); }
-            else { acct.value = ''; amt.value = ''; tr.querySelector('.brv-sp-part').value = ''; checkAccount(acct); }   // the last one is emptied, not removed
-            updateTotal();
+    // a lone Program block / a lone project card has nothing to be removed down to
+    function updateRemoveButtons() {
+        const blocks = pblockEls();
+        blocks.forEach(pb => {
+            pb.querySelector('.brv-sp-pblock-rm').hidden = blocks.length < 2;
+            const cards = cardsOf(pb);
+            cards.forEach(c => { c.querySelector('.brv-sp-card-rm').hidden = cards.length < 2; });
         });
-        items.appendChild(tr);
-        checkAccount(acct);
+    }
+
+    /* ── the Project field: type to search an existing project, or enter a new one ── */
+    const usedCodes = except => allCards().filter(c => c !== except && c._match).map(c => c._match.code);
+    function setMatch(card, p) {
+        card._match = { code: p.project_code, name: p.project_name, rc_id: p.rc_id || '', label: `${p.project_code} — ${p.project_name}` };
+        card.querySelector('.brv-sp-codeview').value = p.project_code;
+        const region = card.querySelector('.brv-sp-region');
+        region.value = S.regions.some(rc => String(rc.rc_id) === String(p.rc_id)) ? String(p.rc_id) : '';
+        region.disabled = true;   // an existing project's region is its own
+    }
+    function clearMatch(card) {
+        if (!card._match) return;
+        card._match = null;
+        card.querySelector('.brv-sp-codeview').value = '';
+        const region = card.querySelector('.brv-sp-region');
+        if (region.disabled) { region.value = ''; region.disabled = false; }
+    }
+    function onNameInput(card) {
+        const v = card.querySelector('.brv-sp-name').value.trim();
+        const hit = card._opts && card._opts.get(v);
+        if (hit && !usedCodes(card).includes(hit.project_code)) setMatch(card, hit);
+        else if (card._match && v !== card._match.label) clearMatch(card);
+        clearTimeout(card._timer);
+        card._timer = setTimeout(() => searchProjects(card), 250);
+    }
+    async function searchProjects(card) {
+        const pb = card.closest('.brv-sp-pblock');
+        if (!pb || !pb.querySelector('.brv-sp-program').value) { card.querySelector('.brv-sp-dl').innerHTML = ''; card._opts = new Map(); return; }
+        const v = card.querySelector('.brv-sp-name').value.trim();
+        const params = new URLSearchParams({ search: card._match ? '' : (v.includes(' — ') ? '' : v), program_code: pb.querySelector('.brv-sp-program').value, sub_program_code: pb.querySelector('.brv-sp-subprogram').value });
+        try {
+            const list = await getList(BASE + '/project/all?' + params);
+            const used = usedCodes(card);
+            card._opts = new Map(list.filter(p => !used.includes(p.project_code)).map(p => [`${p.project_code} — ${p.project_name}`, p]));
+            card.querySelector('.brv-sp-dl').innerHTML = Array.from(card._opts.keys()).slice(0, 12).map(l => `<option value="${esc(l)}"></option>`).join('');
+            const hit = card._opts.get(card.querySelector('.brv-sp-name').value.trim());
+            if (hit && !card._match) setMatch(card, hit);
+        } catch (e) { /* a failed search just offers no suggestions: the typed name is still a new project */ }
+    }
+
+    /* ── Supporting Documents ── */
+    function syncDocTable(card) {
+        const tbl = card.querySelector('.brv-sp-doctbl');
+        tbl.style.display = tbl.querySelector('tbody tr') ? '' : 'none';
+    }
+    // opts: { mode: 'upload'|'link', name?, attachmentId?, viewUrl?, link? }
+    function addDocRow(card, opts) {
+        const tr = document.createElement('tr');
+        tr.dataset.mode = opts.mode;
+        if (opts.attachmentId) tr.dataset.attachmentId = opts.attachmentId;
+        const open = opts.viewUrl ? `<a href="${esc(opts.viewUrl)}" target="_blank" rel="noopener" class="brv-sp-docopen">Open ↗</a>` : '';
+        const panel = opts.mode === 'link'
+            ? `<div class="brv-sp-docpanel"><input type="text" class="brv-in brv-sp-doclink" value="${esc(opts.link || '')}" placeholder="https://drive.google.com/…" aria-label="Link">${open}</div>`
+            : opts.attachmentId
+                ? `<div class="brv-sp-docpanel"><span class="brv-sp-docfile">${esc(opts.name || 'Saved file')}</span>${open}</div>`
+                : '<div class="brv-sp-docpanel"><input type="file" class="brv-sp-docinput" style="display:none" accept=".' + DOC_EXT.join(',.') + '">'
+                    + '<button type="button" class="brv-sp-docpick">Choose File</button><span class="brv-sp-docfile"></span></div>';
+        tr.innerHTML = `<td><input type="text" class="brv-in brv-sp-docname" value="${esc(opts.name || '')}" placeholder="Document name" aria-label="Document name"></td><td>${panel}</td>`
+            + '<td><button type="button" class="brv-sp-docrm" title="Remove document" aria-label="Remove document">&times;</button></td>';
+        card.querySelector('.brv-sp-doctbody').appendChild(tr);
+        syncDocTable(card);
+
+        const input = tr.querySelector('.brv-sp-docinput');
+        if (input) {
+            tr.querySelector('.brv-sp-docpick').addEventListener('click', () => input.click());
+            input.addEventListener('change', () => {
+                const f = input.files && input.files[0];
+                if (!f) return;
+                const ext = f.name.split('.').pop().toLowerCase();
+                if (!DOC_EXT.includes(ext)) { toast('File type not allowed. Accepted: ' + DOC_EXT.join(', '), 'error'); input.value = ''; return; }
+                if (f.size > DOC_MAX) { toast('File too large — max is ' + (DOC_MAX / 1024 / 1024) + ' MB.', 'error'); input.value = ''; return; }
+                tr._file = f;
+                const nm = tr.querySelector('.brv-sp-docname');
+                if (!nm.value.trim()) nm.value = f.name.replace(/\.[^.]+$/, '');
+                tr.querySelector('.brv-sp-docfile').textContent = f.name;
+                tr.querySelector('.brv-sp-docpick').textContent = 'Re-select';
+            });
+        }
+        tr.querySelector('.brv-sp-docrm').addEventListener('click', async () => {
+            const id = tr.dataset.attachmentId;
+            if (id) {
+                // a document that is already saved is removed at once, not with Save
+                if (!window.confirm('Delete this document now? This cannot be undone.')) return;
+                try {
+                    const res = await fetch(BASE + '/budget_revision/attachment/delete/' + id, { method: 'DELETE', credentials: 'same-origin', headers: authHeaders() });
+                    const json = await res.json().catch(() => null);
+                    if (!res.ok || !json || !json.success) throw new Error((json && json.message) || 'Failed to delete the document.');
+                    toast('Document deleted successfully.', 'success');
+                } catch (e) { toast(e.message, 'error'); return; }
+            }
+            tr.remove();
+            syncDocTable(card);
+        });
         return tr;
     }
-    $('brv-sp-add-item').addEventListener('click', () => { addRow().querySelector('.brv-sp-acct').focus(); });
+    // this card's supporting_documents for the body; each new file is pushed onto `files` and referenced by its running index (doc_file_N of the multipart upload)
+    function docsOf(card, files) {
+        const docs = [];
+        card.querySelectorAll('.brv-sp-doctbody tr').forEach(tr => {
+            const name = tr.querySelector('.brv-sp-docname').value.trim();
+            if (tr.dataset.attachmentId) docs.push({ attachment_id: Number(tr.dataset.attachmentId), document_name: name });
+            else if (tr.dataset.mode === 'upload' && tr._file) { docs.push({ file_index: files.length, document_name: name }); files.push(tr._file); }
+            else if (tr.dataset.mode === 'link') {
+                const link = tr.querySelector('.brv-sp-doclink').value.trim();
+                if (link) docs.push({ link, document_name: name });
+            }
+        });
+        return docs;
+    }
+
+    /* ── a project card ── prefill: { supplemental_project_id, project_code, project_name, rc_id, location, type_of_fund_id, component_id, sub_component_id, proposed_amount, supporting_documents } */
+    function addCard(pb, prefill) {
+        const p = prefill || {}, n = ++seq;
+        const card = document.createElement('div');
+        card.className = 'brv-sp-card';
+        card._pid = p.supplemental_project_id || null;
+        card._match = null; card._opts = new Map();
+        card.innerHTML =
+            '<div class="brv-sp-card-hd">'
+            + '<button type="button" class="brv-sp-toggle" title="Collapse" aria-label="Collapse project"><svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg></button>'
+            + `<div class="brv-sp-card-region"><label class="brv-lbl" for="brv-sp-rg-${n}">Region <span class="brv-req">*</span></label><select class="brv-in brv-sp-region" id="brv-sp-rg-${n}"><option value="">— Select region —</option></select></div>`
+            + `<div class="brv-sp-card-project"><label class="brv-lbl" for="brv-sp-nm-${n}">Project <span class="brv-req">*</span></label>`
+            +   `<input type="text" class="brv-in brv-sp-name" id="brv-sp-nm-${n}" list="brv-sp-dl-${n}" maxlength="255" autocomplete="off" placeholder="Type to search or add a new project…"><datalist class="brv-sp-dl" id="brv-sp-dl-${n}"></datalist></div>`
+            + `<div class="brv-sp-card-code" hidden><label class="brv-lbl" for="brv-sp-cd-${n}">Project Code</label><input type="text" class="brv-in brv-sp-codeview" id="brv-sp-cd-${n}" readonly placeholder="Generated on approval"></div>`
+            + `<div class="brv-sp-card-loc"><label class="brv-lbl" for="brv-sp-lc-${n}">Location</label><input type="text" class="brv-in brv-sp-loc" id="brv-sp-lc-${n}" maxlength="255" autocomplete="off" placeholder="e.g. Brgy. San Jose, Quezon City"></div>`
+            + '<button type="button" class="brv-sp-card-rm" title="Remove project" aria-label="Remove project">&times;</button>'
+            + '</div>'
+            + '<div class="brv-sp-card-body"><div class="brv-sp-row4">'
+            +   `<div><label class="brv-lbl" for="brv-sp-tf-${n}">Type of Fund <span class="brv-req">*</span></label><select class="brv-in brv-sp-fund" id="brv-sp-tf-${n}"><option value="">— Select type of fund —</option></select></div>`
+            +   `<div><label class="brv-lbl" for="brv-sp-cp-${n}">Component</label><select class="brv-in brv-sp-comp" id="brv-sp-cp-${n}"><option value="">— None —</option></select></div>`
+            +   `<div><label class="brv-lbl" for="brv-sp-sc-${n}">Sub-Component</label><select class="brv-in brv-sp-subcomp" id="brv-sp-sc-${n}"><option value="">— None —</option></select></div>`
+            +   `<div><label class="brv-lbl" for="brv-sp-am-${n}">Proposed Amount <span class="brv-req">*</span></label><div class="brv-sp-amtwrap"><span class="brv-sp-amtpre">₱</span><input type="text" inputmode="decimal" class="brv-in brv-sp-amount" id="brv-sp-am-${n}" autocomplete="off" placeholder="0.00"></div></div>`
+            + '</div>'
+            + '<div class="brv-sp-docs"><p class="brv-sp-docs-title">Supporting Documents</p><p class="brv-sp-docs-hint">Upload a file (≤20 MB — PDF, Word, Excel, or image) or paste a link per document.</p>'
+            +   '<table class="brv-sp-doctbl" style="display:none"><thead><tr><th style="width:35%">Document Name</th><th>Attachment</th><th style="width:34px"></th></tr></thead><tbody class="brv-sp-doctbody"></tbody></table>'
+            +   '<div class="brv-sp-docactions"><button type="button" class="brv-sp-ghost brv-sp-doc-upload">+ Upload File</button><button type="button" class="brv-sp-ghost brv-sp-doc-link">+ Paste Link</button></div></div>'
+            + '</div>';
+        pb.querySelector('.brv-sp-cards').appendChild(card);
+        fillCardLists(card, { rc_id: p.rc_id ?? '', type_of_fund_id: p.type_of_fund_id ?? '', component_id: p.component_id ?? '', sub_component_id: p.sub_component_id ?? '' });
+
+        const name = card.querySelector('.brv-sp-name'), amt = card.querySelector('.brv-sp-amount');
+        if (p.project_code) {
+            // an existing project was picked when the request was saved: its own name and region
+            const label = `${p.project_code} — ${p.project_name || ''}`;
+            name.value = label;
+            card._opts.set(label, { project_code: p.project_code, project_name: p.project_name || '', rc_id: p.rc_id || '' });
+            setMatch(card, { project_code: p.project_code, project_name: p.project_name || '', rc_id: p.rc_id || '' });
+        } else if (p.project_name) {
+            name.value = p.project_name;
+        }
+        card.querySelector('.brv-sp-loc').value = p.location || '';
+        if (p.proposed_amount !== undefined && p.proposed_amount !== null && p.proposed_amount !== '') amt.value = amtText(p.proposed_amount);
+
+        name.addEventListener('input', () => onNameInput(card));
+        name.addEventListener('focus', () => { if (!card._opts.size) searchProjects(card); });
+        amt.addEventListener('input', () => { amt.value = amt.value.replace(/[^0-9.,]/g, ''); updateTotal(); });
+        amt.addEventListener('blur', () => { const r = amtRaw(amt.value); if (r !== '' && !isNaN(Number(r))) amt.value = amtText(r); updateTotal(); });
+        card.querySelector('.brv-sp-toggle').addEventListener('click', () => {
+            const collapsed = card.classList.toggle('is-collapsed');
+            card.querySelector('.brv-sp-toggle').title = collapsed ? 'Expand' : 'Collapse';
+        });
+        card.querySelector('.brv-sp-card-rm').addEventListener('click', () => {
+            if (cardsOf(pb).length < 2) return;   // a Program keeps at least one project
+            card.remove(); updateRemoveButtons(); updateTotal();
+        });
+        card.querySelector('.brv-sp-doc-upload').addEventListener('click', () => addDocRow(card, { mode: 'upload' }));
+        card.querySelector('.brv-sp-doc-link').addEventListener('click', () => addDocRow(card, { mode: 'link' }));
+        (p.supporting_documents || []).forEach(d => addDocRow(card, {
+            mode: d.storage_key ? 'upload' : 'link', name: d.document_name, attachmentId: d.attachment_id, viewUrl: d.view_url, link: d.external_link || '',
+        }));
+        updateRemoveButtons();
+        updateTotal();
+        return card;
+    }
+
+    /* ── a Program block ── prefill: { program_code, sub_program_code, projects[] } */
+    function addPblock(prefill) {
+        const p = prefill || {}, n = ++seq;
+        const pb = document.createElement('div');
+        pb.className = 'brv-sp-pblock';
+        pb.innerHTML =
+            '<div class="brv-sp-pblock-hd"><div class="brv-sp-pblock-fields">'
+            + `<div class="brv-fld"><label class="brv-lbl" for="brv-sp-pg-${n}">Program <span class="brv-req">*</span></label><select class="brv-in brv-sp-program" id="brv-sp-pg-${n}"><option value="">Select a program</option></select></div>`
+            + `<div class="brv-fld"><label class="brv-lbl" for="brv-sp-sp-${n}">Sub-Program <span class="brv-optional">(optional)</span></label><select class="brv-in brv-sp-subprogram" id="brv-sp-sp-${n}"><option value="">— None —</option></select></div>`
+            + '</div><button type="button" class="brv-sp-pblock-rm" title="Remove program" aria-label="Remove program">&times;</button></div>'
+            + '<p class="brv-sp-subhd">Projects</p><div class="brv-sp-cards"></div>'
+            + '<button type="button" class="brv-sp-ghost brv-sp-add-project">+ Add Project</button>';
+        pblocks.appendChild(pb);
+
+        const ps = pb.querySelector('.brv-sp-program'), ss = pb.querySelector('.brv-sp-subprogram');
+        fillPrograms(ps, p.program_code || '');
+        fillSubs(ss, ps.value, p.sub_program_code || '');
+        // a different Program / Sub-Program: a picked existing project belongs to the old one, so it is let go; the SAROs are narrowed again
+        const projectsChanged = () => { cardsOf(pb).forEach(c => { if (c._match) { c.querySelector('.brv-sp-name').value = ''; clearMatch(c); } c._opts = new Map(); c.querySelector('.brv-sp-dl').innerHTML = ''; }); refreshSaros(); };
+        ps.addEventListener('change', () => { fillSubs(ss, ps.value); projectsChanged(); });
+        ss.addEventListener('change', projectsChanged);
+        pb.querySelector('.brv-sp-add-project').addEventListener('click', () => { const c = addCard(pb); c.querySelector('.brv-sp-name').focus(); });
+        pb.querySelector('.brv-sp-pblock-rm').addEventListener('click', () => {
+            if (pblockEls().length < 2) return;   // the request keeps at least one Program
+            pb.remove(); updateRemoveButtons(); refreshSaros();
+        });
+
+        const projects = p.projects && p.projects.length ? p.projects : [null];
+        projects.forEach(pr => addCard(pb, pr));
+        updateRemoveButtons();
+        return pb;
+    }
+    $('brv-sp-add-program').addEventListener('click', () => {
+        const pb = addPblock();
+        refreshSaros();
+        if (pb.scrollIntoView) pb.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        pb.querySelector('.brv-sp-program').focus();
+    });
+
+    /* ── loading the lists ── */
+    async function load() {
+        hint.textContent = 'Loading programs, SAROs, regions and funds…';
+        try {
+            const [programs, subs, saros, rcs, funds, comps, subComps] = await Promise.all([
+                getList(BASE + '/program/all'),
+                getList(BASE + '/sub_program/all'),
+                getList(BASE + '/fund_tracking/list?type=SARO&fiscal_year=' + CURRENT_YEAR + '&limit=1000'),
+                getList(BASE + '/responsibility-center/all'),
+                getList(BASE + '/type_of_fund/all'),
+                getList(BASE + '/component_type/all'),
+                getList(BASE + '/sub_component_type/all'),
+            ]);
+            S.programs = programs; S.subs = subs; S.saros = saros;
+            S.regions = rcs.filter(rc => rc.office_type === 'Regional');
+            S.funds = funds; S.components = comps; S.subComponents = subComps;
+            refillAll();
+            fillSaros('');
+            S.ready = true;
+            hint.textContent = saros.length ? '' : NO_SARO_YET;
+        } catch (e) {
+            S.loading = null;   // asked again the next time the tab is opened
+            hint.textContent = 'Could not load the lists: ' + e.message;
+            toast('Could not load the Supplemental form’s lists: ' + e.message, 'error');
+        }
+    }
+    function ensureLoaded() {
+        if (!S.loading) S.loading = load();
+        return S.loading;
+    }
 
     /* ── the host page's hooks ── */
     function reset() {
         S.extra = null;
-        program.value = '';
-        fillSubs('');
+        $('brv-sp-reason').value = '';
+        pblocks.innerHTML = '';
+        addPblock();
         if (S.ready) { fillSaros(''); hint.textContent = S.saros.length ? '' : NO_SARO_YET; }   // this year's whole list again (before the first load there is nothing to list)
         saro.value = '';
         renderSaro();
-        $('brv-sp-project').value = '';
-        $('brv-sp-location').value = '';
-        $('brv-sp-reason').value = '';
-        items.innerHTML = '';
-        addRow();
         updateTotal();
     }
 
@@ -1733,49 +1979,89 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             // a SARO that is not on this year's list (an earlier year's, or deleted since) still shows on the request that was filed against it
             S.extra = { id: row.supp_fund_tracking_id, saro_id: row.supp_saro_no || ('#' + savedSaro), fiscal_year: row.supp_fiscal_yr, amount: row.supp_saro_amount, date: row.supp_saro_date, sub_program: '' };
         }
-        program.value = row.supp_program_code || '';
-        fillSubs(program.value, row.supp_sub_program_code || '');
-        fillSaros(savedSaro);   // narrowed by that program / sub-program, but never without the request's own SARO
+        $('brv-sp-reason').value = row.reason || '';
+        pblocks.innerHTML = '';
+        // the projects come back flat, each with its Program: the Program blocks are rebuilt from them, in the order each Program first appears
+        const groups = new Map();
+        (row.projects || []).forEach(pr => {
+            const key = (pr.program_code || '') + '|' + (pr.sub_program_code || '');
+            if (!groups.has(key)) groups.set(key, { program_code: pr.program_code || '', sub_program_code: pr.sub_program_code || '', projects: [] });
+            groups.get(key).projects.push(pr);
+        });
+        if (groups.size) groups.forEach(g => addPblock(g)); else addPblock();
+        fillSaros(savedSaro);   // narrowed by those Programs / Sub-Programs, but never without the request's own SARO
         saro.value = savedSaro;
         renderSaro();
         if (S.ready && S.saros.length) hint.textContent = '';
-        $('brv-sp-project').value = row.supp_project_name || '';
-        $('brv-sp-location').value = row.supp_location || '';
-        $('brv-sp-reason').value = row.reason || '';
-        items.innerHTML = '';
-        (row.items || []).forEach(it => {
-            // an account that is no longer offered (inactive since) still shows on the item that was saved with it
-            const a = S.byId.get(String(it.account_id)) || { account_id: it.account_id, account_code: it.account_code || it.account_id, account_title: it.account_title || '' };
-            addRow({ label: registerAccount(a), particulars: it.particulars, amount: it.amount });
-        });
-        if (!items.children.length) addRow();
         updateTotal();
     }
 
     function payload() {
-        return {
-            request_type: 'SUPPLEMENTAL',
-            fund_tracking_id: saro.value,
-            program_code: program.value,
-            sub_program_code: sub.value,
-            project_name: $('brv-sp-project').value.trim(),
-            location: $('brv-sp-location').value.trim(),
-            items: rows().map(tr => ({
-                account_id: tr.querySelector('.brv-sp-acct').dataset.id || '',
-                particulars: tr.querySelector('.brv-sp-part').value.trim(),
-                amount: amtRaw(tr.querySelector('.brv-sp-amt').value),
-            })),
-            reason: $('brv-sp-reason').value.trim(),
-        };
+        const files = [];
+        let order = 0;
+        const projects = [];
+        pblockEls().forEach(pb => {
+            const program = pb.querySelector('.brv-sp-program').value, sub = pb.querySelector('.brv-sp-subprogram').value;
+            cardsOf(pb).forEach(c => {
+                order++;
+                const m = c._match;
+                projects.push({
+                    supplemental_project_id: c._pid || undefined,
+                    program_code: program,
+                    sub_program_code: sub,
+                    project_code: m ? m.code : '',
+                    project_name: m ? m.name : c.querySelector('.brv-sp-name').value.trim(),
+                    rc_id: c.querySelector('.brv-sp-region').value,
+                    location: c.querySelector('.brv-sp-loc').value.trim(),
+                    type_of_fund_id: c.querySelector('.brv-sp-fund').value,
+                    component_id: c.querySelector('.brv-sp-comp').value,
+                    sub_component_id: c.querySelector('.brv-sp-subcomp').value,
+                    proposed_amount: amtRaw(c.querySelector('.brv-sp-amount').value),
+                    supporting_documents: docsOf(c, files),
+                });
+            });
+        });
+        lastFiles = files;
+        return { request_type: 'SUPPLEMENTAL', fund_tracking_id: saro.value, projects, reason: $('brv-sp-reason').value.trim() };
     }
+    const getFiles = () => lastFiles;
 
     function validate() {
-        const list = rows();
-        if (!list.length) return 'Add at least one line item.';
-        for (let i = 0; i < list.length; i++) {
-            const n = i + 1, tr = list[i];
-            if (!tr.querySelector('.brv-sp-acct').dataset.id) return `Line item ${n}: select a chart of accounts entry from the list.`;
-            if (!(Number(amtRaw(tr.querySelector('.brv-sp-amt').value)) > 0)) return `Line item ${n}: the amount must be more than zero.`;
+        const blocks = pblockEls();
+        if (!blocks.length || !allCards().length) return 'Add at least one project.';
+        const manyBlocks = blocks.length > 1, manyCards = allCards().length > 1;
+        const names = new Map(), codes = new Map();
+        let n = 0;
+        for (let b = 0; b < blocks.length; b++) {
+            const pb = blocks[b];
+            const program = pb.querySelector('.brv-sp-program').value;
+            if (!program) return (manyBlocks ? `Program ${b + 1}: ` : '') + 'select a program.';
+            for (const c of cardsOf(pb)) {
+                n++;
+                const pre = manyCards ? `Project ${n}: ` : '';
+                const m = c._match, name = m ? m.name : c.querySelector('.brv-sp-name').value.trim();
+                if (!name) return pre + 'pick a project or enter the name of the new one.';
+                if (!m && !c.querySelector('.brv-sp-region').value) return pre + 'select the region.';
+                if (!c.querySelector('.brv-sp-fund').value) return pre + 'select the type of fund.';
+                if (!(Number(amtRaw(c.querySelector('.brv-sp-amount').value)) > 0)) return pre + 'the proposed amount must be more than zero.';
+                if (m) {
+                    if (codes.has(m.code)) return `Project ${n}: ${m.code} is already project ${codes.get(m.code)} of this request — a project can be in it once.`;
+                    codes.set(m.code, n);
+                }
+                const key = program + '|' + name.toLowerCase();
+                if (names.has(key)) return `Project ${n}: "${name}" is already project ${names.get(key)} of this request under the same program — a project can be in it once.`;
+                names.set(key, n);
+                const rows = Array.from(c.querySelectorAll('.brv-sp-doctbody tr'));
+                for (let i = 0; i < rows.length; i++) {
+                    const tr = rows[i];
+                    if (tr.dataset.attachmentId) continue;
+                    if (tr.dataset.mode === 'upload' && !tr._file) return `${pre}Document ${i + 1}: choose a file, or remove the row.`;
+                    if (tr.dataset.mode === 'link') {
+                        const l = tr.querySelector('.brv-sp-doclink').value.trim();
+                        if (l && !/^https?:\/\/\S+$/i.test(l)) return `${pre}Document ${i + 1}: the link must start with http:// or https://.`;
+                    }
+                }
+            }
         }
         const s = selSaro(), t = itemsTotal();
         if (s && Number(s.amount) > 0 && t > Number(s.amount) + 0.004) return `The total (${peso(t)}) is more than the SARO's amount (${peso(s.amount)}).`;
@@ -1789,7 +2075,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     $('brv-form').addEventListener('reset', () => setTimeout(reset, 0));
     reset();
 
-    window.brvSupp = { ready: ensureLoaded, reset, fill, payload, validate };
+    window.brvSupp = { ready: ensureLoaded, reset, fill, payload, files: getFiles, validate };
 })();
 </script>
 
