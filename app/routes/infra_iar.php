@@ -108,6 +108,164 @@ $app->post('/infra-iar/proforma-submit', function ($request, $response, $args) u
     }
 })->add($jwtMiddleware);
 
+// The cards of the Work In Process page for ONE category (?account= a WIP sub-ledger; empty = all): { ongoing, for_transfer, completed } (counts)
+$app->get('/infra-iar/wip-summary', function ($request, $response, $args) use ($InfraIarService) {
+    $params = $request->getQueryParams();
+
+    return $response->withJson($InfraIarService->wipSummary((string) ($params['account'] ?? '')));
+})->add($jwtMiddleware);
+
+// Merchandise Inventory page: the projects transferred to Completed Development for Sale (Land / Building) — one row per project.
+// ?account= a tab (1-04-01-010-01 | -02), ?book_id= (the transfer JEV's book), ?rc_id= (Regional Office/District Office)
+$app->get('/infra-iar/merchandise-inventory', function ($request, $response, $args) use ($InfraIarService) {
+    $params = $request->getQueryParams();
+
+    return $response->withJson($InfraIarService->merchandiseInventory(
+        isset($params['page']) ? (int) $params['page'] : 1,
+        isset($params['limit']) ? (int) $params['limit'] : 10,
+        (string) ($params['search'] ?? ''),
+        (string) ($params['account'] ?? ''),
+        (string) ($params['book_id'] ?? ''),
+        (string) ($params['rc_id'] ?? '')
+    ));
+})->add($jwtMiddleware);
+
+// The tabs of the Merchandise Inventory page
+$app->get('/infra-iar/mi-categories', function ($request, $response, $args) use ($InfraIarService) {
+    return $response->withJson($InfraIarService->miCategories());
+})->add($jwtMiddleware);
+
+// Values of the Merchandise Inventory page's Book and Region filter dropdowns
+$app->get('/infra-iar/mi-filter-options', function ($request, $response, $args) use ($InfraIarService) {
+    return $response->withJson($InfraIarService->miFilterOptions());
+})->add($jwtMiddleware);
+
+// Construction in Progress page: the records whose submitted pro-forma JEV carries a CIP account — like work-in-process, but ONE list (no ?account= tab)
+$app->get('/infra-iar/construction-in-progress', function ($request, $response, $args) use ($InfraIarService) {
+    $params = $request->getQueryParams();
+
+    return $response->withJson($InfraIarService->constructionInProgress(
+        isset($params['page']) ? (int) $params['page'] : 1,
+        isset($params['limit']) ? (int) $params['limit'] : 10,
+        (string) ($params['search'] ?? ''),
+        (string) ($params['account'] ?? ''),      // a tab: one CIP account (the record's stored category)
+        (string) ($params['book_id'] ?? ''),
+        (string) ($params['rc_id'] ?? ''),
+        (string) ($params['status'] ?? '')        // the card clicked, by PHYSICAL accomplishment: ongoing (under 100%) | transfer (90%+) | completed (100%)
+    ));
+})->add($jwtMiddleware);
+
+// The cards of the Construction in Progress page for ONE category (?account=; empty = all): { ongoing, for_transfer, completed } — by physical accomplishment
+$app->get('/infra-iar/cip-summary', function ($request, $response, $args) use ($InfraIarService) {
+    $params = $request->getQueryParams();
+
+    return $response->withJson($InfraIarService->cipSummary((string) ($params['account'] ?? '')));
+})->add($jwtMiddleware);
+
+// The tabs of the Construction in Progress page: the CIP categories
+$app->get('/infra-iar/cip-categories', function ($request, $response, $args) use ($InfraIarService) {
+    return $response->withJson($InfraIarService->cipCategories());
+})->add($jwtMiddleware);
+
+$app->get('/infra-iar/cip-filter-options', function ($request, $response, $args) use ($InfraIarService) {
+    return $response->withJson($InfraIarService->cipFilterOptions());
+})->add($jwtMiddleware);
+
+// Fixed Assets page: the projects transferred from Construction in Progress to Buildings / Leased Asset Improvements / Land / Other Structures / Other Land Improvements.
+// Same query string as /infra-iar/merchandise-inventory (?account= a tab, ?book_id=, ?rc_id=, ?search=).
+$app->get('/infra-iar/fixed-assets', function ($request, $response, $args) use ($InfraIarService) {
+    $params = $request->getQueryParams();
+
+    return $response->withJson($InfraIarService->fixedAssets(
+        isset($params['page']) ? (int) $params['page'] : 1,
+        isset($params['limit']) ? (int) $params['limit'] : 10,
+        (string) ($params['search'] ?? ''),
+        (string) ($params['account'] ?? ''),
+        (string) ($params['book_id'] ?? ''),
+        (string) ($params['rc_id'] ?? '')
+    ));
+})->add($jwtMiddleware);
+
+$app->get('/infra-iar/fa-categories', function ($request, $response, $args) use ($InfraIarService) {
+    return $response->withJson($InfraIarService->faCategories());
+})->add($jwtMiddleware);
+
+$app->get('/infra-iar/fa-filter-options', function ($request, $response, $args) use ($InfraIarService) {
+    return $response->withJson($InfraIarService->faFilterOptions());
+})->add($jwtMiddleware);
+
+// Property and Equipment for Distribution page: the projects transferred to 1-04-02-090-01 Land / 1-04-02-090-02 Building / Community Facilities.
+// Same query string as /infra-iar/merchandise-inventory (?account= a tab, ?book_id=, ?rc_id=, ?search=).
+$app->get('/infra-iar/property-distribution', function ($request, $response, $args) use ($InfraIarService) {
+    $params = $request->getQueryParams();
+
+    return $response->withJson($InfraIarService->propertyDistribution(
+        isset($params['page']) ? (int) $params['page'] : 1,
+        isset($params['limit']) ? (int) $params['limit'] : 10,
+        (string) ($params['search'] ?? ''),
+        (string) ($params['account'] ?? ''),
+        (string) ($params['book_id'] ?? ''),
+        (string) ($params['rc_id'] ?? '')
+    ));
+})->add($jwtMiddleware);
+
+$app->get('/infra-iar/ped-categories', function ($request, $response, $args) use ($InfraIarService) {
+    return $response->withJson($InfraIarService->pedCategories());
+})->add($jwtMiddleware);
+
+$app->get('/infra-iar/ped-filter-options', function ($request, $response, $args) use ($InfraIarService) {
+    return $response->withJson($InfraIarService->pedFilterOptions());
+})->add($jwtMiddleware);
+
+// Work-In-Process → Transfer to MI/PED: the data of the reclassification pro-forma (?id=) — the original JEV (book read-only), the old WIP account,
+// the amount, the four Debit accounts and whether the project reached 90% of completion (paid / revised contract cost)
+$app->get('/infra-iar/transfer-proforma', function ($request, $response, $args) use ($InfraIarService) {
+    $params = $request->getQueryParams();
+    $result = $InfraIarService->transferProforma((int) ($params['id'] ?? 0), ($params['kind'] ?? '') === 'fa' ? 'fa' : 'wip');   // ?kind=fa: Construction in Progress -> Fixed Assets
+
+    return $response->withJson($result, $result['success'] ? 200 : 404);
+})->add($jwtMiddleware);
+
+// Submit the transfer: Debit the chosen new account, Credit the old WIP account, as a standalone JEV sent for approval (same creation as proforma-submit).
+// body: { id, jev_date, debit_account, amount, particulars? } — the book comes from the original JEV, 409 when already transferred.
+$app->post('/infra-iar/transfer-submit', function ($request, $response, $args) use ($InfraIarService) {
+    try {
+        $body = $request->getParsedBody() ?: [];
+        $id   = (int) ($body['id'] ?? 0);
+        if ($id <= 0) {
+            return $response->withJson(['success' => false, 'message' => 'The infrastructure IAR is required.'], 400);
+        }
+        [$payload, $err] = $InfraIarService->prepareTransfer($id, $body, ($body['kind'] ?? '') === 'fa' ? 'fa' : 'wip');   // body.kind = 'fa': Transfer to Fixed Assets (Construction in Progress page)
+        if ($err) {
+            return $response->withJson(['success' => false, 'message' => $err[0]], $err[1]);
+        }
+        $account = $payload['_account'];
+        $amount  = $payload['_amount'];
+        $oldAcct = $payload['lines'][1]['account_code'];   // the Credit = the old WIP account
+        unset($payload['_account'], $payload['_amount']);
+        $uid     = (int) $request->getAttribute('user_id');
+        $voucher = new \PHPMaker2024\FIMS\Service\DisbursementVoucherService();
+        $result  = $voucher->createStandaloneJev($payload, $uid);
+        if (!empty($result['success'])) {
+            $jevId = (int) $result['data']['jev_id'];
+            $InfraIarService->linkTransfer($id, $jevId, (string) $result['data']['jev_no'], $account, $amount, $oldAcct);
+            $sub = $voucher->changeJevStatus($jevId, 'FOR_SECTION_CHIEF', $uid);   // DRAFT -> FOR_SECTION_CHIEF
+            if (!empty($sub['success'])) {
+                $result['data']['status'] = 'FOR_SECTION_CHIEF';
+                $result['message']        = 'Journal Entry Voucher ' . $result['data']['jev_no'] . ' created and submitted for approval.';
+            } else {
+                $result['message'] = 'Journal Entry Voucher ' . $result['data']['jev_no'] . ' was created as a draft, but could not be submitted for approval: ' . ($sub['message'] ?? 'unknown error');
+            }
+        }
+
+        return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));
+    } catch (\Exception $e) {
+        LogError('POST /infra-iar/transfer-submit ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($jwtMiddleware);
+
 // The SWA number the next record will get (shown read-only in the Add form; the number is assigned again when saving)
 $app->get('/infra-iar/next-number', function ($request, $response, $args) use ($InfraIarService) {
     return $response->withJson(['success' => true, 'data' => ['swa_number' => $InfraIarService->nextSwaNumber()]]);
@@ -121,8 +279,16 @@ $app->get('/infra-iar/work-in-process', function ($request, $response, $args) us
         isset($params['page']) ? (int) $params['page'] : 1,
         isset($params['limit']) ? (int) $params['limit'] : 10,
         (string) ($params['search'] ?? ''),
-        (string) ($params['account'] ?? '')       // a tab: one WIP sub-ledger (1-04-03-020-01 …)
+        (string) ($params['account'] ?? ''),      // a tab: one WIP sub-ledger (1-04-03-020-01 …)
+        (string) ($params['book_id'] ?? ''),      // filter: Book of Accounts
+        (string) ($params['rc_id'] ?? ''),        // filter: Region (Regional Office/District Office)
+        (string) ($params['status'] ?? '')        // the card clicked: ongoing (default) | transfer (90%+, not transferred) | completed (transferred, or 100% paid)
     ));
+})->add($jwtMiddleware);
+
+// Values of the Work in Process page's Book and Region filter dropdowns
+$app->get('/infra-iar/wip-filter-options', function ($request, $response, $args) use ($InfraIarService) {
+    return $response->withJson($InfraIarService->wipFilterOptions());
 })->add($jwtMiddleware);
 
 // The tabs of the Work in Process page: the WIP sub-ledgers

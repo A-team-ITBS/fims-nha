@@ -141,7 +141,8 @@ class InfraIarService
         } elseif ($ids) {   // several recorded RFAs (the list): no "can still be recorded" rules
             $where .= ' AND a.allocation_id IN (' . implode(',', array_map('intval', $ids)) . ')';
         } else {
-            $where .= " AND COALESCE(TRIM(a.po_number), '') = ''
+            // no PO — or a number in the PO field that is not a PO (a CONTRACT / other reference number): that is an Infrastructure RFA
+            $where .= " AND (COALESCE(TRIM(a.po_number), '') = '' OR NOT {$this->po->isPoSql()})
                         AND a.status_id = (SELECT st.id FROM fims.settings_status st WHERE st.name = 'Approved' AND st.status_for = 'budget_allocation' ORDER BY st.id LIMIT 1)
                         AND EXISTS (SELECT 1 FROM jsonb_array_elements({$lines}) ln(value)
                                      WHERE jsonb_typeof(ln.value) = 'object'
@@ -152,7 +153,7 @@ class InfraIarService
         }
         if ($search !== '') {
             $s      = $this->q('%' . $search . '%');
-            $where .= " AND (a.allocation_number ILIKE {$s} OR pr.project_name ILIKE {$s} OR v.vendor_name ILIKE {$s})";
+            $where .= " AND (a.allocation_number ILIKE {$s} OR a.po_number ILIKE {$s} OR pr.project_name ILIKE {$s} OR v.vendor_name ILIKE {$s})";   // the reference number is searchable too
         }
         $hasProposed = $this->hasColumn('budget_line_items', 'proposed_amount');
         $costSql     = $hasProposed ? 'SUM(bli.proposed_amount)' : 'NULL::numeric';
@@ -160,6 +161,7 @@ class InfraIarService
         // the line's Revision Amount: the signed net of its APPROVED Budget Revisions / Realignments (budget_line_items.adjustment, kept by the revision ledger's triggers)
         $adjSql      = $this->hasColumn('budget_line_items', 'adjustment') ? 'SUM(COALESCE(bli.adjustment, 0))' : 'NULL::numeric';
         $sql = "SELECT a.allocation_id, a.allocation_number AS rfa_number, a.fiscal_year, a.requesting_rc_id, rc.rc_name AS requesting_office,
+                       CASE WHEN COALESCE(TRIM(a.po_number), '') <> '' AND NOT {$this->po->isPoSql()} THEN TRIM(a.po_number) END AS reference_number,
                        a.vendor_id, v.vendor_name AS contractor,
                        blk.project_code, pr.project_name, COALESCE(NULLIF(blk.program_code, ''), pr.program_code) AS program_code, pg.program_name,
                        COALESCE(li.location, pl.location) AS location,
@@ -335,15 +337,15 @@ class InfraIarService
         if ($con !== null && mb_strlen($con) > 255) {
             return [null, 'Contract must be 255 characters or fewer.'];
         }
-        // Area in SQM / Units (total_land_area) and the TCT number: typed by the user, both optional
+        // Area in SQM / Units (total_land_area) is REQUIRED (the Merchandise Inventory's cost per sqm / unit is worked out from it); the TCT number is optional
         $areaRaw = str_replace(',', '', trim((string) ($body['total_land_area'] ?? '')));
-        $area    = null;
-        if ($areaRaw !== '') {
-            if (!is_numeric($areaRaw) || (float) $areaRaw < 0 || (float) $areaRaw >= 1e14) {
-                return [null, 'Area in SQM / Units must be a valid amount (0 or more).'];
-            }
-            $area = number_format((float) $areaRaw, 2, '.', '');
+        if ($areaRaw === '') {
+            return [null, 'Area in SQM / Units is required.'];
         }
+        if (!is_numeric($areaRaw) || (float) $areaRaw <= 0 || (float) $areaRaw >= 1e14) {
+            return [null, 'Area in SQM / Units must be a valid amount greater than 0.'];
+        }
+        $area = number_format((float) $areaRaw, 2, '.', '');
         $tct = $this->nullable($body['tct_number'] ?? null);
         if ($tct !== null && mb_strlen($tct) > 100) {
             return [null, 'TCT number must be 100 characters or fewer.'];
@@ -354,13 +356,20 @@ class InfraIarService
         }
         $start = $this->nullable($body['date_started'] ?? null);
         $end   = $this->nullable($body['completion_date_revised'] ?? null);
-        if ($start !== null && !$this->validDate($start)) {
+        // both dates are REQUIRED (the contract duration is worked out from them)
+        if ($start === null) {
+            return [null, 'Date started is required.'];
+        }
+        if ($end === null) {
+            return [null, 'Completion date (revised) is required.'];
+        }
+        if (!$this->validDate($start)) {
             return [null, 'Date started must be a valid date.'];
         }
-        if ($end !== null && !$this->validDate($end)) {
+        if (!$this->validDate($end)) {
             return [null, 'Completion date (revised) must be a valid date.'];
         }
-        if ($start !== null && $end !== null && $end < $start) {
+        if ($end < $start) {
             return [null, 'The completion date (revised) cannot be before the date started.'];
         }
         $out += [
@@ -416,7 +425,7 @@ class InfraIarService
 
     private const COLS = "s.swa_id, s.swa_number, s.allocation_id, a.allocation_number AS rfa_number, a.vendor_id, s.contract,
                           TO_CHAR(s.date_started, 'YYYY-MM-DD') AS date_started, TO_CHAR(s.completion_date_revised, 'YYYY-MM-DD') AS completion_date_revised,
-                          s.contract_duration, s.total_land_area, s.tct_number, s.category, s.line_transaction, rc.rc_name AS requesting_office";
+                          s.contract_duration, s.total_land_area, s.tct_number, s.category, s.line_transaction, s.transfer_line, rc.rc_name AS requesting_office";
 
     /**
      * The RFA number, project, program, contractor and location are NOT kept on the record (the columns were dropped): they are read live from the RFA / project / program /
@@ -461,6 +470,20 @@ class InfraIarService
         $r['accomplishment'] = self::overallPct($items);
         $r['jev_id']         = !empty($tx['jev_id']) ? (int) $tx['jev_id'] : null;
         $r['jev_no']         = !empty($tx['jev_no']) ? (string) $tx['jev_no'] : null;
+        // the transfer to MI/PED (Work-In-Process page): transfer_line = [ { jev_id, jev_no, jev_date, amount, from_account_code, lines[{account_code, debit, credit}] } ], set once its reclassification JEV was submitted
+        $tl = $this->txOf($r['transfer_line'] ?? null);
+        $r['transfer_jev_id']  = !empty($tl['jev_id']) ? (int) $tl['jev_id'] : null;
+        $r['transfer_jev_no']  = !empty($tl['jev_no']) ? (string) $tl['jev_no'] : null;
+        $r['transfer_date']    = $tl['jev_date'] ?? null;
+        $r['transfer_amount']  = $tl['amount'] ?? null;
+        $r['transfer_from']    = $tl['from_account_code'] ?? null;   // the old WIP account the project was transferred from
+        $r['transfer_account'] = null;
+        foreach ($tl['lines'] ?? [] as $ln) {
+            if ((float) ($ln['debit'] ?? 0) > 0) {
+                $r['transfer_account'] = (string) $ln['account_code'];   // the account the project was transferred to (the Debit)
+            }
+        }
+        unset($r['transfer_line']);
         // r['category'] is the stored column: the title of the record's one CIP / WIP account entry, set when the pro-forma JEV is submitted (linkJev)
         unset($r['line_transaction']);
 
@@ -558,17 +581,109 @@ class InfraIarService
      * Work-in-Process account (1-04-03-020, or one of its sub-ledgers). One row per project (one record per RFA): the JEV's book, the office, project, location, contractor, contract,
      * the three contract costs (read live) and the physical accomplishment (the items' % added up).
      */
-    public function workInProcess(int $page = 1, int $limit = 10, string $search = '', string $account = ''): array
+    public function workInProcess(int $page = 1, int $limit = 10, string $search = '', string $account = '', string $bookId = '', string $rcId = '', string $status = ''): array
+    {
+        return $this->jevProjects([self::WIP_ACCOUNT], $page, $limit, $search, $account, $bookId, $rcId, $status);
+    }
+
+    /**
+     * Construction in Progress page: the records whose submitted pro-forma JEV carries a CIP account (1-06-99-010 / -020 / -030 or a sub-ledger) — the same row shape,
+     * billing figures and filters as the Work in Process page, but ONE list (no category tabs).
+     */
+    public function constructionInProgress(int $page = 1, int $limit = 10, string $search = '', string $account = '', string $bookId = '', string $rcId = '', string $status = ''): array
+    {
+        // $account = a tab (the stored category's account); $status = the card clicked — on this page the cards go by the PHYSICAL accomplishment, not by payments
+        return $this->jevProjects(self::CIP_BASES, $page, $limit, $search, $account, $bookId, $rcId, $status, 'physical');
+    }
+
+    /**
+     * The cards of the Construction in Progress page for ONE category ($account = a CIP account; empty = all), by PHYSICAL accomplishment (the work items' % added up):
+     *   ongoing      — projects under 100% (still being built);
+     *   for_transfer — projects at 90% or more;
+     *   completed    — projects at 100%.
+     */
+    public function cipSummary(string $account = ''): array
     {
         try {
-            $code = $this->q(self::WIP_ACCOUNT);
-            $like = $this->q(self::WIP_ACCOUNT . '-%');
+            $all = $this->constructionInProgress(1, 100000);
+            if (empty($all['success'])) {
+                return $all;
+            }
+            $ongoing = $forTransfer = $completed = 0;
+            foreach ($all['data'] as $r) {
+                $moved = !empty($r['transfer_jev_id']);   // transferred to Fixed Assets: its category is now the new account
+                $cat   = $moved ? (string) ($r['transfer_from'] ?? '') : trim(explode(' - ', (string) ($r['category'] ?? ''), 2)[0]);   // the CIP category it belongs to
+                if ($account !== '' && $cat !== $account && !str_starts_with($cat, $account . '-')) {
+                    continue;
+                }
+                $pct = (float) $r['accomplishment'];
+                if (!$moved && $pct < 100.0) {
+                    $ongoing++;
+                }
+                if (!$moved && $pct >= self::TRANSFER_MIN_PCT) {
+                    $forTransfer++;
+                }
+                if ($moved || $pct >= 100.0) {
+                    $completed++;
+                }
+            }
+
+            return ['success' => true, 'data' => ['ongoing' => $ongoing, 'for_transfer' => $forTransfer, 'completed' => $completed]];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * The tabs of the Construction in Progress page: all seven CIP accounts — 1-06-99-010, 1-06-99-020 (Infrastructure Assets), its sub-ledgers 1-06-99-020-01…-04 and 1-06-99-030.
+     * Nothing is posted to 1-06-99-020 itself (it has sub-ledgers), so its tab is the GROUP: it lists the projects of all four of its sub-ledgers.
+     */
+    public function cipCategories(): array
+    {
+        try {
+            $codes = \PHPMaker2024\FIMS\Service\PoDrService::INFRA_CATEGORIES['CIP'];
+            $in    = implode(',', array_map(fn ($c) => $this->q($c), $codes));
+            $rows  = App\ExecuteRows("SELECT account_code, account_title FROM fims.chart_of_accounts WHERE account_code IN ({$in}) ORDER BY account_code", 'DB') ?: [];
+
+            return ['success' => true, 'data' => $rows];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /** The CIP GL accounts (and, through the '-%' match, their sub-ledgers). */
+    public const CIP_BASES = ['1-06-99-010', '1-06-99-020', '1-06-99-030'];
+
+    /** Shared by the Work in Process and Construction in Progress pages: the projects whose submitted JEV debits one of $bases (or a sub-ledger of it). */
+    private function jevProjects(array $bases, int $page, int $limit, string $search, string $account, string $bookId, string $rcId, string $status = '', string $basis = 'payment'): array
+    {
+        try {
+            // $status = the card clicked on the Work in Process page, scoped to the tab ($account):
+            //   '' / 'ongoing' — the projects still in the category (not transferred);
+            //   'transfer'     — of those, the ones at 90% or more (they need to be transferred);
+            //   'completed'    — the projects that were transferred FROM the category (their category is now the new account) or are already 100% paid.
+            // The percentages come from the RFA's cost, so 'transfer' and 'completed' are filtered (and paged) here, not in SQL.
+            // $basis 'payment' (Work in Process): the percentage is Amount Paid / revised cost; 'physical' (Construction in Progress): the work items' % added up.
+            $physical = $basis === 'physical';
+            $status   = in_array($status, $physical ? ['ongoing', 'transfer', 'completed'] : ['transfer', 'completed'], true) ? $status : '';
+            $acct = implode(' OR ', array_map(fn ($b) => 'l.account_code = ' . $this->q($b) . ' OR l.account_code LIKE ' . $this->q($b . '-%'), $bases));
             $join = "JOIN fims.journal_entry_vouchers j ON j.jev_id = NULLIF(s.line_transaction -> 0 ->> 'jev_id', '')::int
                      LEFT JOIN fims.books bk ON bk.book_id = j.book_id
                      LEFT JOIN fims.settings_status js ON js.id = j.status_id";
-            $where = "EXISTS (SELECT 1 FROM fims.journal_entry_voucher_lines l WHERE l.jev_id = j.jev_id AND (l.account_code = {$code} OR l.account_code LIKE {$like}))";
+            $where = "EXISTS (SELECT 1 FROM fims.journal_entry_voucher_lines l WHERE l.jev_id = j.jev_id AND ({$acct}))";
             if ($account !== '') {   // a tab of the page: the projects whose stored category (set when the JEV was submitted, "code - title") is this WIP sub-ledger
-                $where .= ' AND s.category LIKE ' . $this->q($account . ' - %');
+                // the account itself, or (for a control account such as 1-06-99-020) any of its sub-ledgers
+                $cat = 's.category LIKE ' . $this->q($account . ' - %') . ' OR s.category LIKE ' . $this->q($account . '-%');
+                if ($status === 'completed') {   // a transferred project's category is the NEW account: it still belongs to the category it was transferred from
+                    $cat .= " OR s.transfer_line -> 0 ->> 'from_account_code' = " . $this->q($account) . " OR s.transfer_line -> 0 ->> 'from_account_code' LIKE " . $this->q($account . '-%');
+                }
+                $where .= " AND ({$cat})";
+            }
+            if (ctype_digit(trim($bookId))) {      // filter: Book of Accounts (the JEV's book)
+                $where .= ' AND j.book_id = ' . (int) $bookId;
+            }
+            if (trim($rcId) !== '') {              // filter: Region (the RFA's Regional Office/District Office)
+                $where .= ' AND a.requesting_rc_id = ' . $this->q(trim($rcId));
             }
             if ($search !== '') {
                 $s      = $this->q('%' . $search . '%');
@@ -579,19 +694,322 @@ class InfraIarService
             $offset = ($page - 1) * $limit;
             $total  = (int) App\ExecuteScalar("SELECT COUNT(*) {$this->from()} {$join} WHERE {$where}", 'DB');
             $rows   = App\ExecuteRows(
-                'SELECT ' . self::COLS . ", j.jev_date, bk.name AS book_name, js.name AS jev_status {$this->from()} {$join} WHERE {$where} ORDER BY s.swa_id DESC LIMIT {$limit} OFFSET {$offset}",
+                'SELECT ' . self::COLS . ", j.jev_date, bk.name AS book_name, js.name AS jev_status,
+                        COALESCE((SELECT SUM(dv.gross_amount) FROM fims.disbursement_vouchers dv
+                                   JOIN fims.settings_status ds ON ds.id = dv.status_id
+                                  WHERE dv.dv_id = a.dv_id AND ds.name = 'RELEASED'), 0) AS amount_paid
+                 {$this->from()} {$join} WHERE {$where} ORDER BY s.swa_id DESC " . ($status === '' ? "LIMIT {$limit} OFFSET {$offset}" : ''),
                 'DB'
             ) ?: [];
 
+            // Billing figures from the project's Disbursement Voucher (the RFA's dv_id): Amount Paid = the DV's gross amount once it is RELEASED (paid);
+            // Percentage of Completion = amount paid / revised contract cost; Unbilled Amount = what is left of the revised contract cost (never below 0)
+            $data = array_map(function ($r) {
+                $r      = $this->shape($r);
+                $paid   = round((float) ($r['amount_paid'] ?? 0), 2);
+                $cost   = round((float) ($r['contract_cost'] ?? 0), 2);
+                $r['amount_paid']          = $paid;
+                $r['percent_completion']   = $cost > 0 ? round($paid / $cost * 100, 2) : 0.0;
+                $r['unbilled_amount']      = max(0.0, round($cost - $paid, 2));
+
+                return $r;
+            }, $this->live($rows));
+
+            if ($status !== '') {
+                $data = array_values(array_filter($data, function ($r) use ($status, $physical) {
+                    if ($physical) {   // Construction in Progress: by the physical accomplishment
+                        $p = (float) $r['accomplishment'];
+
+                        $mv = !empty($r['transfer_jev_id']);
+
+                        return $status === 'ongoing' ? (!$mv && $p < 100.0) : ($status === 'transfer' ? (!$mv && $p >= self::TRANSFER_MIN_PCT) : ($mv || $p >= 100.0));
+                    }
+                    $moved = !empty($r['transfer_jev_id']);
+                    $pct   = (float) $r['percent_completion'];
+
+                    return $status === 'transfer' ? (!$moved && $pct >= self::TRANSFER_MIN_PCT) : ($moved || $pct >= 100.0);
+                }));
+                $total = count($data);
+                $data  = array_slice($data, $offset, $limit);
+            }
+
             return [
                 'success'    => true,
-                'data'       => array_map(fn($r) => $this->shape($r), $this->live($rows)),
+                'data'       => $data,
                 'pagination' => ['total' => $total, 'per_page' => $limit, 'current_page' => $page, 'last_page' => (int) ceil($total / $limit)],
             ];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
+    /**
+     * The cards of the Work in Process page, for ONE category ($account = a WIP sub-ledger such as 1-04-03-020-01; empty = all of them):
+     *   ongoing      — projects of the category still in work in process (not transferred yet);
+     *   for_transfer — of those, the ones whose Percentage of Completion reached 90% (they need to be transferred);
+     *   completed    — projects of the category that were transferred (a transferred project keeps counting under the WIP category it came from),
+     *                  or whose payment is already 100% even if not transferred yet.
+     */
+    public function wipSummary(string $account = ""): array
+    {
+        try {
+            $all = $this->workInProcess(1, 100000);
+            if (empty($all["success"])) {
+                return $all;
+            }
+            $ongoing = $forTransfer = $completed = 0;
+            foreach ($all["data"] as $r) {
+                $moved = !empty($r["transfer_jev_id"]);
+                // the WIP category the project belongs to: where it was transferred FROM, else its own category (account code before " - ")
+                $cat = $moved ? (string) ($r["transfer_from"] ?? "") : trim(explode(" - ", (string) ($r["category"] ?? ""), 2)[0]);
+                if ($account !== "" && $cat !== $account) {
+                    continue;
+                }
+                $pct = (float) $r["percent_completion"];
+                if (!$moved) {
+                    $ongoing++;
+                    if ($pct >= self::TRANSFER_MIN_PCT) {
+                        $forTransfer++;
+                    }
+                }
+                if ($moved || $pct >= 100.0) {
+                    $completed++;
+                }
+            }
+
+            return ['success' => true, 'data' => ['ongoing' => $ongoing, 'for_transfer' => $forTransfer, 'completed' => $completed]];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /* ─────────────────────── Merchandise Inventory page (transferred projects) ─────────────────────── */
+
+    /** The tabs of the Merchandise Inventory page: the Completed Development for Sale accounts a WIP project is transferred to. */
+    public const MI_ACCOUNTS = ['1-04-01-010-01', '1-04-01-010-02'];
+
+    /** The tabs of the Property and Equipment for Distribution page: the accounts a WIP project can also be transferred to (Land / Building and Community Facilities). */
+    public const PED_ACCOUNTS = ['1-04-02-090-01', '1-04-02-090-02'];
+
+    /** The tabs: [{ account_code, account_title }] (titles read live from the chart of accounts). */
+    public function miCategories(): array { return $this->transferTabs(self::MI_ACCOUNTS); }
+
+    private function transferTabs(array $accounts): array
+    {
+        try {
+            $in   = implode(',', array_map(fn ($c) => $this->q($c), $accounts));
+            $rows = App\ExecuteRows("SELECT account_code, account_title FROM fims.chart_of_accounts WHERE account_code IN ({$in}) ORDER BY account_code", 'DB') ?: [];
+
+            return ['success' => true, 'data' => $rows];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /** The tabs of the Property and Equipment for Distribution page: 1-04-02-090-01 Land, 1-04-02-090-02 Building / Community Facilities (chart titles). */
+    public function pedCategories(): array
+    {
+        return $this->transferTabs(self::PED_ACCOUNTS);
+    }
+
+    /**
+     * The tabs of the Fixed Assets page: the accounts a CIP project is transferred to (Construction in Progress -> Transfer to Fixed Assets) —
+     * 1-06-04-010 Buildings, 1-06-09-020 Leased Asset Improvements, 1-06-01-010 Land, 1-06-04-990-03 Other Structures - Properties Held for Rent Building,
+     * 1-06-02-990-02 Other Land Improvements. (The Investment Property accounts 1-05-01-010 / -020 are also offered by the transfer window but have no tab here.)
+     */
+    public const FA_TAB_ACCOUNTS = ['1-06-04-010', '1-06-09-020', '1-06-01-010', '1-06-04-990-03', '1-06-02-990-02'];
+
+    /** The tabs of the Fixed Assets page (titles read live from the chart of accounts, in the order above). */
+    public function faCategories(): array
+    {
+        $r = $this->transferTabs(self::FA_TAB_ACCOUNTS);
+        if (!empty($r['success'])) {
+            $order = array_flip(self::FA_TAB_ACCOUNTS);
+            usort($r['data'], fn ($a, $b) => ($order[$a['account_code']] ?? 99) <=> ($order[$b['account_code']] ?? 99));
+        }
+
+        return $r;
+    }
+
+    /**
+     * Useful life in MONTHS of each fixed-asset account (the notes of the Fixed Assets page): buildings 360 months, land improvements 120 months;
+     * Land is not depreciated (0). 1-06-09-020 Leased Asset Improvements (Buildings and Other Structures) and 1-06-04-990-03 Other Structures - Properties Held for Rent
+     * Building are buildings (360); 1-06-02-990-02 Other Land Improvements is a land improvement (120).
+     */
+    public const FA_LIFE_MONTHS = ['1-06-04-010' => 360, '1-06-09-020' => 360, '1-06-04-990-03' => 360, '1-06-02-990-02' => 120, '1-06-01-010' => 0];
+
+    /**
+     * Fixed Assets page: the projects transferred from CIP to those accounts, with the register columns:
+     *   acquisition_cost      = the amount transferred;      date_acquired = the project's Completion Date (Revised);
+     *   useful_life_years     = FA_LIFE_MONTHS / 12 (null for Land, which is not depreciated);
+     *   salvage_value         = 10% of the cost (the .9 in the formula keeps 10%);
+     *   monthly_depreciation  = acquisition cost x .9 / life months;
+     *   months_used           = whole months from the date acquired to today (0 before it, never more than the life);
+     *   accum_depreciation    = monthly depreciation x months used;
+     *   book_value            = acquisition cost - accumulated depreciation  (total_book_balance = the acquisition cost, the balance recorded before depreciation).
+     */
+    public function fixedAssets(int $page = 1, int $limit = 10, string $search = '', string $account = '', string $bookId = '', string $rcId = ''): array
+    {
+        $r = $this->transferList(self::FA_TAB_ACCOUNTS, $page, $limit, $search, $account, $bookId, $rcId);
+        if (empty($r['success'])) {
+            return $r;
+        }
+        $today = new \DateTime('today');
+        $r['data'] = array_map(function ($x) use ($today) {
+            $cost   = round((float) ($x['total_amount'] ?? 0), 2);
+            $months = (int) (self::FA_LIFE_MONTHS[(string) ($x['transfer_account'] ?? '')] ?? 0);
+            $acq    = !empty($x['completion_date_revised']) ? \DateTime::createFromFormat('Y-m-d', (string) $x['completion_date_revised']) : false;
+            $used   = 0;
+            if ($acq && $acq <= $today) {
+                $diff = $acq->diff($today);
+                $used = $diff->y * 12 + $diff->m;
+            }
+            $monthly = $months > 0 ? round($cost * 0.9 / $months, 2) : 0.0;
+            $used    = $months > 0 ? min($used, $months) : 0;
+            $accum   = round($monthly * $used, 2);
+            $x['acquisition_cost']     = $cost;
+            $x['total_book_balance']   = $cost;
+            $x['date_acquired']        = $x['completion_date_revised'] ?? null;
+            $x['useful_life_years']    = $months > 0 ? $months / 12 : null;
+            $x['salvage_value']        = $months > 0 ? round($cost * 0.1, 2) : null;
+            $x['monthly_depreciation'] = $monthly;
+            $x['months_used']          = $used;
+            $x['accum_depreciation']   = $accum;
+            $x['book_value']           = round($cost - $accum, 2);
+
+            return $x;
+        }, $r['data']);
+
+        return $r;
+    }
+
+    public function faFilterOptions(): array
+    {
+        return $this->transferFilters(self::FA_TAB_ACCOUNTS);
+    }
+
+    /** Property and Equipment for Distribution page: the projects transferred to those accounts — same columns and filters as the Merchandise Inventory page. */
+    public function propertyDistribution(int $page = 1, int $limit = 10, string $search = '', string $account = '', string $bookId = '', string $rcId = ''): array
+    {
+        return $this->transferList(self::PED_ACCOUNTS, $page, $limit, $search, $account, $bookId, $rcId);
+    }
+
+    /** Join of the transferred projects: the record's transfer JEV (transfer_line) gives the book. */
+    private function miJoin(): string
+    {
+        return "JOIN fims.journal_entry_vouchers tj ON tj.jev_id = NULLIF(s.transfer_line -> 0 ->> 'jev_id', '')::int
+                LEFT JOIN fims.books bk ON bk.book_id = tj.book_id";
+    }
+
+    /**
+     * Merchandise Inventory page: the projects that were TRANSFERRED (transfer_line set) to Completed Development for Sale — Land / Building (the record's
+     * category is now that account). One row per project: book (of the transfer JEV), office, project code / name (read live), Area / Units, Total Amount (the
+     * amount that was transferred) and Cost Per Sqm / Unit (total amount / area; empty when there is no area).
+     * $account = a tab (1-04-01-010-01 / -02), $bookId / $rcId = the filters.
+     */
+    public function merchandiseInventory(int $page = 1, int $limit = 10, string $search = '', string $account = '', string $bookId = '', string $rcId = ''): array
+    {
+        return $this->transferList(self::MI_ACCOUNTS, $page, $limit, $search, $account, $bookId, $rcId);
+    }
+
+    private function transferList(array $accounts, int $page, int $limit, string $search, string $account, string $bookId, string $rcId): array
+    {
+        try {
+            $codes = in_array($account, $accounts, true) ? [$account] : $accounts;
+            $cat   = implode(' OR ', array_map(fn ($c) => 's.category LIKE ' . $this->q($c . ' - %'), $codes));
+            $where = "s.transfer_line IS NOT NULL AND ({$cat})";
+            if (ctype_digit(trim($bookId))) {
+                $where .= ' AND tj.book_id = ' . (int) $bookId;
+            }
+            if (trim($rcId) !== '') {
+                $where .= ' AND a.requesting_rc_id = ' . $this->q(trim($rcId));
+            }
+            if ($search !== '') {
+                $s      = $this->q('%' . $search . '%');
+                $where .= " AND ({$this->searchWhere($s)} OR bk.name ILIKE {$s} OR tj.jev_no ILIKE {$s})";
+            }
+            $limit  = max(1, $limit);
+            $page   = max(1, $page);
+            $offset = ($page - 1) * $limit;
+            $join   = $this->miJoin();
+            $total  = (int) App\ExecuteScalar("SELECT COUNT(*) {$this->from()} {$join} WHERE {$where}", 'DB');
+            $rows   = App\ExecuteRows('SELECT ' . self::COLS . ", bk.name AS book_name {$this->from()} {$join} WHERE {$where} ORDER BY s.swa_id DESC LIMIT {$limit} OFFSET {$offset}", 'DB') ?: [];
+            $data   = array_map(function ($r) {
+                $r      = $this->shape($r);
+                $amount = round((float) ($r['transfer_amount'] ?? 0), 2);
+                $area   = $r['total_land_area'] !== null && $r['total_land_area'] !== '' ? (float) $r['total_land_area'] : 0.0;
+                $r['total_amount']  = $amount;
+                $r['cost_per_unit'] = $area > 0 ? round($amount / $area, 2) : null;
+
+                return $r;
+            }, $this->live($rows));
+
+            return [
+                'success'    => true,
+                'data'       => $data,
+                'pagination' => ['total' => $total, 'per_page' => $limit, 'current_page' => $page, 'last_page' => (int) ceil($total / $limit)],
+            ];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /** The Merchandise Inventory page's two filter dropdowns, from the transferred projects: { books: [{value, label}], regions: [{value, label}] }. */
+    public function miFilterOptions(): array { return $this->transferFilters(self::MI_ACCOUNTS); }
+
+    /** Same for the Property and Equipment for Distribution page. */
+    public function pedFilterOptions(): array { return $this->transferFilters(self::PED_ACCOUNTS); }
+
+    private function transferFilters(array $accounts): array
+    {
+        try {
+            $cat = '(' . implode(' OR ', array_map(fn ($c) => 's.category LIKE ' . $this->q($c . ' - %'), $accounts)) . ')';
+            $from = "FROM {$this->t} s JOIN fims.budget_allocation a ON a.allocation_id = s.allocation_id {$this->miJoin()}";
+            $books = App\ExecuteRows(
+                "SELECT DISTINCT tj.book_id::text AS value, bk.name AS label {$from} WHERE s.transfer_line IS NOT NULL AND {$cat} AND tj.book_id IS NOT NULL AND COALESCE(bk.name, '') <> '' ORDER BY label",
+                'DB'
+            ) ?: [];
+            $regions = App\ExecuteRows(
+                "SELECT DISTINCT a.requesting_rc_id AS value, COALESCE(rc.rc_name, a.requesting_rc_id) AS label {$from} LEFT JOIN fims.responsibility_code rc ON rc.rc_id = a.requesting_rc_id
+                  WHERE s.transfer_line IS NOT NULL AND {$cat} AND COALESCE(a.requesting_rc_id, '') <> '' ORDER BY label",
+                'DB'
+            ) ?: [];
+
+            return ['success' => true, 'data' => ['books' => $books, 'regions' => $regions]];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /** The Work in Process page's two filter dropdowns, from the records it lists: { books: [{value: book_id, label}], regions: [{value: rc_id, label}] }. */
+    public function wipFilterOptions(): array { return $this->jevFilters([self::WIP_ACCOUNT]); }
+
+    /** The Construction in Progress page's Book / Region dropdowns. */
+    public function cipFilterOptions(): array { return $this->jevFilters(self::CIP_BASES); }
+
+    private function jevFilters(array $bases): array
+    {
+        try {
+            $acct = implode(' OR ', array_map(fn ($b) => 'l.account_code = ' . $this->q($b) . ' OR l.account_code LIKE ' . $this->q($b . '-%'), $bases));
+            $from = "FROM {$this->t} s JOIN fims.budget_allocation a ON a.allocation_id = s.allocation_id
+                     JOIN fims.journal_entry_vouchers j ON j.jev_id = NULLIF(s.line_transaction -> 0 ->> 'jev_id', '')::int
+                    WHERE EXISTS (SELECT 1 FROM fims.journal_entry_voucher_lines l WHERE l.jev_id = j.jev_id AND ({$acct}))";
+            $books = App\ExecuteRows(
+                "SELECT DISTINCT x.value, x.label FROM (SELECT j.book_id::text AS value, (SELECT bk.name FROM fims.books bk WHERE bk.book_id = j.book_id) AS label {$from}) x
+                  WHERE x.value IS NOT NULL AND COALESCE(x.label, '') <> '' ORDER BY x.label",
+                'DB'
+            ) ?: [];
+            $regions = App\ExecuteRows(
+                "SELECT DISTINCT x.value, x.label FROM (SELECT a.requesting_rc_id AS value, COALESCE((SELECT rc.rc_name FROM fims.responsibility_code rc WHERE rc.rc_id = a.requesting_rc_id), a.requesting_rc_id) AS label {$from}) x
+                  WHERE COALESCE(x.value, '') <> '' ORDER BY x.label",
+                'DB'
+            ) ?: [];
+
+            return ['success' => true, 'data' => ['books' => $books, 'regions' => $regions]];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
     /** The tabs of the Work in Process page: the WIP sub-ledgers (1-04-03-020-01 … -05) — [{ account_code, account_title }], by code. */
     public function wipCategories(): array
     {
@@ -779,7 +1197,7 @@ class InfraIarService
                 . ', date_started = ' . $this->sqlOrNull($d['date_started']) . ', completion_date_revised = ' . $this->sqlOrNull($d['completion_date_revised'])
                 . ', contract_duration = ' . $this->sqlOrNull($d['contract_duration'])
                 . ', total_land_area = ' . ($d['total_land_area'] === null ? 'NULL' : $d['total_land_area']) . ', tct_number = ' . $this->sqlOrNull($d['tct_number'])
-                . ', line_transaction = ' . $this->jsonSql([['items' => $d['items'], 'lines' => $tx['lines'] ?? [], 'jev_id' => $tx['jev_id'] ?? null, 'jev_no' => $tx['jev_no'] ?? null]])
+                . ', line_transaction = ' . $this->jsonSql([array_merge($tx, ['items' => $d['items'], 'lines' => $tx['lines'] ?? [], 'jev_id' => $tx['jev_id'] ?? null, 'jev_no' => $tx['jev_no'] ?? null])])
                 . ", updated_by = {$by}, updated_at = CURRENT_TIMESTAMP WHERE swa_id = " . (int) $id,
                 'DB'
             );
@@ -834,7 +1252,7 @@ class InfraIarService
             $items[] = ['description' => $desc, 'cost' => $cost, 'accomplishment_pct' => $pct];
             $by      = $userId ? (int) $userId : 'NULL';
             App\Execute(
-                "UPDATE {$this->t} SET line_transaction = " . $this->jsonSql([['items' => $items, 'lines' => $tx['lines'] ?? [], 'jev_id' => $tx['jev_id'] ?? null, 'jev_no' => $tx['jev_no'] ?? null]])
+                "UPDATE {$this->t} SET line_transaction = " . $this->jsonSql([array_merge($tx, ['items' => $items, 'lines' => $tx['lines'] ?? [], 'jev_id' => $tx['jev_id'] ?? null, 'jev_no' => $tx['jev_no'] ?? null])])
                 . ", updated_by = {$by}, updated_at = CURRENT_TIMESTAMP WHERE swa_id = " . (int) $id,
                 'DB'
             );
@@ -889,6 +1307,177 @@ class InfraIarService
         $tx = $r ? $this->txOf($r[0]['line_transaction']) : [];
 
         return !empty($tx['jev_id']) ? ['jev_id' => (int) $tx['jev_id'], 'jev_no' => (string) ($tx['jev_no'] ?? '')] : null;
+    }
+
+    /* ─────────────────────── transfer to MI/PED (Work-In-Process page) ─────────────────────── */
+
+    /** The accounts a completed project can be transferred to (the Debit of the reclassification entry). */
+    public const TRANSFER_ACCOUNTS = ['1-04-01-010-01', '1-04-01-010-02', '1-04-02-090-01', '1-04-02-090-02'];
+
+    /**
+     * The accounts a completed CIP project can be transferred to — Transfer to Fixed Assets (the Debit; the old CIP account is Credited):
+     * 1-06-04-010 Buildings, 1-06-09-020 Leased Asset Improvements, 1-06-01-010 Land, 1-06-04-990-03 Other Structures - Properties Held for Rent Building,
+     * 1-06-02-990-02 Other Land Improvements - Housing & Community Dev't Administrative Site, 1-05-01-010 / -020 Investment Property, Land / Buildings.
+     */
+    public const FA_ACCOUNTS = ['1-06-04-010', '1-06-09-020', '1-06-01-010', '1-06-04-990-03', '1-06-02-990-02', '1-05-01-010', '1-05-01-020'];
+
+    /** The Percentage of Completion (payment) from which a project can be transferred. */
+    public const TRANSFER_MIN_PCT = 90.0;
+
+    /** What the project's Disbursement Voucher paid: the RFA's DV gross amount once it is RELEASED (same figure as the Work-In-Process page). */
+    private function paidFor(int $allocationId): float
+    {
+        return round((float) App\ExecuteScalar(
+            "SELECT COALESCE(SUM(dv.gross_amount), 0) FROM fims.budget_allocation a
+               JOIN fims.disbursement_vouchers dv ON dv.dv_id = a.dv_id
+               JOIN fims.settings_status ds ON ds.id = dv.status_id
+              WHERE a.allocation_id = " . (int) $allocationId . " AND ds.name = 'RELEASED'",
+            'DB'
+        ), 2);
+    }
+
+    /**
+     * Everything the transfer pro-forma needs, read-only except what the user chooses: the ORIGINAL entry (the record's submitted JEV: its book, lines),
+     * the old WIP account (the record's category), the amount (the WIP debit of the original JEV), the four possible Debit accounts, the percentage of
+     * completion and whether the project is eligible (>= 90%); or the submitted transfer JEV.
+     */
+    public function transferProforma(int $id, string $kind = 'wip'): array
+    {
+        try {
+            $fa = $kind === 'fa';   // 'fa' = Construction in Progress -> Transfer to Fixed Assets (physical accomplishment; Credit the CIP account); 'wip' = Work in Process -> MI/PED (payments)
+            $f = $this->fetchById($id);
+            if (empty($f['success'])) {
+                return ['success' => false, 'message' => 'Infrastructure IAR not found.'];
+            }
+            $r = $f['data'];
+            if (empty($r['jev_id'])) {
+                return ['success' => false, 'message' => 'The pro-forma JEV of this record was not submitted yet.'];
+            }
+            $oldCode = (string) ($r['transfer_from'] ?? '') !== '' ? (string) $r['transfer_from'] : trim(explode(' - ', (string) ($r['category'] ?? ''), 2)[0]);   // a transferred project's category is already the NEW account
+            if ($oldCode === '') {
+                return ['success' => false, 'message' => 'This record has no ' . ($fa ? 'CIP' : 'WIP') . ' category yet.'];
+            }
+            $jev = App\ExecuteRows(
+                "SELECT j.jev_id, j.jev_no, j.jev_date, j.book_id, (SELECT bk.name FROM fims.books bk WHERE bk.book_id = j.book_id) AS book_name FROM fims.journal_entry_vouchers j WHERE j.jev_id = " . (int) $r['jev_id'],
+                'DB'
+            );
+            if (!$jev) {
+                return ['success' => false, 'message' => 'The original Journal Entry Voucher was not found.'];
+            }
+            $lines = App\ExecuteRows(
+                "SELECT l.account_code, (SELECT c.account_title FROM fims.chart_of_accounts c WHERE c.account_code = l.account_code) AS account_title, l.debit, l.credit, l.rc_id
+                   FROM fims.journal_entry_voucher_lines l WHERE l.jev_id = " . (int) $r['jev_id'] . ' ORDER BY l.line_number',
+                'DB'
+            ) ?: [];
+            $amount = 0.0;
+            foreach ($lines as $l) {
+                foreach ($fa ? self::CIP_BASES : [self::WIP_ACCOUNT] as $b) {
+                    if ((string) $l['account_code'] === $b || str_starts_with((string) $l['account_code'], $b . '-')) {
+                        $amount += (float) $l['debit'];
+                        break;
+                    }
+                }
+            }
+            $paid = $this->paidFor((int) $r['allocation_id']);
+            $cost = round((float) $r['contract_cost'], 2);
+            $pct  = $fa ? round((float) $r['accomplishment'], 2) : ($cost > 0 ? round($paid / $cost * 100, 2) : 0.0);   // Fixed Assets: the physical accomplishment; MI/PED: payments
+            $targets = $fa ? self::FA_ACCOUNTS : self::TRANSFER_ACCOUNTS;
+            $in   = implode(',', array_map(fn($c) => $this->q($c), array_merge([$oldCode], $targets)));
+            $titles = [];
+            foreach (App\ExecuteRows("SELECT account_code, account_title FROM fims.chart_of_accounts WHERE account_code IN ({$in})", 'DB') ?: [] as $t) {
+                $titles[$t['account_code']] = $t['account_title'];
+            }
+            // 1-04-02-090-01 / -02 are shown with their group's name: "Property and Equipment for Distribution - Land" / "… - Building / Community Facilities"
+            $grp = (string) App\ExecuteScalar("SELECT account_title FROM fims.chart_of_accounts WHERE account_code = '1-04-02-090'", 'DB');
+            if ($grp !== '') {
+                foreach (['1-04-02-090-01', '1-04-02-090-02'] as $c) {
+                    if (isset($titles[$c]) && !str_starts_with($titles[$c], $grp)) {
+                        $titles[$c] = $grp . ' - ' . $titles[$c];
+                    }
+                }
+            }
+
+            return ['success' => true, 'data' => [
+                'id' => (int) $id, 'swa_number' => $r['swa_number'], 'rfa_number' => $r['rfa_number'], 'project_name' => $r['project_name'], 'location' => $r['location'],
+                'requesting_office' => $r['requesting_office'] ?? null,
+                'book_id' => (int) $jev[0]['book_id'], 'book_name' => $jev[0]['book_name'],
+                'original' => ['jev_id' => (int) $jev[0]['jev_id'], 'jev_no' => $jev[0]['jev_no'], 'jev_date' => $jev[0]['jev_date'], 'lines' => $lines],
+                'old_account' => ['account_code' => $oldCode, 'account_title' => $titles[$oldCode] ?? ''],
+                'amount' => round($amount, 2),
+                'debit_accounts' => array_map(fn($c) => ['account_code' => $c, 'account_title' => $titles[$c] ?? ''], $targets), 'kind' => $fa ? 'fa' : 'wip', 'basis' => $fa ? 'physical' : 'payment',
+                'amount_paid' => $paid, 'percent_completion' => $pct, 'min_percent' => self::TRANSFER_MIN_PCT,
+                'eligible' => $pct >= self::TRANSFER_MIN_PCT,
+                'transfer' => $r['transfer_jev_id'] ? ['jev_id' => $r['transfer_jev_id'], 'jev_no' => $r['transfer_jev_no'], 'account_code' => $r['transfer_account'], 'amount' => $r['transfer_amount'], 'jev_date' => $r['transfer_date']] : null,
+                'rc_id' => $lines[0]['rc_id'] ?? null,
+            ]];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Validates a transfer and builds the JEV payload: Debit the chosen new account, Credit the old WIP account, for the amount; the book is the ORIGINAL
+     * JEV's (never taken from the client). Returns [payload, null] or [null, [message, httpCode]].
+     */
+    public function prepareTransfer(int $id, array $body, string $kind = 'wip'): array
+    {
+        $fa = $kind === 'fa';
+        $p  = $this->transferProforma($id, $kind);
+        if (empty($p['success'])) {
+            return [null, [$p['message'], 404]];
+        }
+        $d = $p['data'];
+        if ($d['transfer']) {
+            return [null, ["This project was already transferred as Journal Entry Voucher {$d['transfer']['jev_no']}.", 409]];
+        }
+        if (!$d['eligible']) {
+            return [null, [($fa ? 'The Physical Accomplishment is ' : 'The Percentage of Completion is ') . number_format($d['percent_completion'], 2) . '%; the transfer needs ' . number_format(self::TRANSFER_MIN_PCT, 0) . '% or more.', 400]];
+        }
+        $debit = trim((string) ($body['debit_account'] ?? ''));
+        if (!in_array($debit, $fa ? self::FA_ACCOUNTS : self::TRANSFER_ACCOUNTS, true)) {
+            return [null, ['Choose the account to transfer to (the Debit).', 400]];
+        }
+        $amount = $this->num($body['amount'] ?? null);
+        if ($amount === null || (float) $amount <= 0) {
+            return [null, ['Enter an amount greater than 0.', 400]];
+        }
+        if ($d['amount'] > 0 && round((float) $amount, 2) > $d['amount']) {
+            return [null, ['The amount (' . number_format((float) $amount, 2) . ') may not exceed the project\'s ' . ($fa ? 'construction in progress' : 'work in process') . ' (' . number_format($d['amount'], 2) . ').', 400]];
+        }
+        $rc = $d['rc_id'] ?: '';
+
+        return [[
+            'jev_date' => trim((string) ($body['jev_date'] ?? '')) ?: date('Y-m-d'),   // no date box: today, like the IAR pro-formas
+            'book_id' => $d['book_id'],
+            'particulars' => trim((string) ($body['particulars'] ?? '')),
+            'lines' => [
+                ['account_code' => $debit, 'rc_id' => $rc, 'debit' => (float) $amount, 'credit' => 0],
+                ['account_code' => $d['old_account']['account_code'], 'rc_id' => $rc, 'debit' => 0, 'credit' => (float) $amount],
+            ],
+            '_account' => $debit, '_amount' => $amount,
+        ], null];
+    }
+
+    /**
+     * Records the transfer in the transfer_line column (same shape idea as line_transaction: one element; the account titles are read live, not stored):
+     * [ { jev_id, jev_no, jev_date, amount, from_account_code, lines: [ {account_code, debit, credit} … ] } ] — the transfer cannot be submitted twice —
+     * and moves the CATEGORY from the old account to the new one ("account code - title" of the account the project was transferred to).
+     */
+    public function linkTransfer(int $id, int $jevId, string $jevNo, string $account, string $amount, string $oldAccount = ''): void
+    {
+        $t = [[
+            'jev_id' => $jevId, 'jev_no' => $jevNo, 'jev_date' => date('Y-m-d'), 'amount' => $amount, 'from_account_code' => $oldAccount,
+            'lines' => [
+                ['account_code' => $account, 'debit' => $amount, 'credit' => '0.00'],
+                ['account_code' => $oldAccount, 'debit' => '0.00', 'credit' => $amount],
+            ],
+        ]];
+        $title = (string) App\ExecuteScalar('SELECT account_title FROM fims.chart_of_accounts WHERE account_code = ' . $this->q($account), 'DB');
+        $grp   = (string) App\ExecuteScalar("SELECT account_title FROM fims.chart_of_accounts WHERE account_code = '1-04-02-090'", 'DB');
+        if ($grp !== '' && str_starts_with($account, '1-04-02-090-') && !str_starts_with($title, $grp)) {
+            $title = $grp . ' - ' . $title;   // the same name the transfer window shows
+        }
+        App\Execute("UPDATE {$this->t} SET transfer_line = " . $this->jsonSql($t) . ', category = ' . $this->q($account . ' - ' . $title) . ' WHERE swa_id = ' . (int) $id, 'DB');
     }
 
     /** Records the JEV its pro-forma was submitted as: the pro-forma cannot be submitted twice. */

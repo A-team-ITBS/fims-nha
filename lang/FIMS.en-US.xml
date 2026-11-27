@@ -1,4 +1,4 @@
-<ew-language date="2026/11/26" id="en-US" author="e.World Technology Limited">
+<ew-language date="2026/11/27" id="en-US" author="e.World Technology Limited">
   <project>
     <phrase id="bodytitle" value="NHA - FIMS" />
     <phrase id="footertext" value="&amp;copy;2026 ITBS Corporation. All rights reserved." />
@@ -76,6 +76,9 @@
     </menu>
     <menu id="869">
       <phrase id="menutext" value="Fixed Assets" />
+    </menu>
+    <menu id="976">
+      <phrase id="menutext" value="Investment Property" />
     </menu>
     <menu id="755">
       <phrase id="menutext" value="Monitoring" />
@@ -1897,6 +1900,9 @@
     </table>
     <table id="admin_fee_rates_page">
       <phrase id="tblcaption" value="Administration Fee Rate" />
+    </table>
+    <table id="investment_property_page">
+      <phrase id="tblcaption" value="Investment Property" />
     </table>
   </project>
 </ew-language>

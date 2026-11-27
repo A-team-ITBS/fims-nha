@@ -55,7 +55,11 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
     #gl-root thead.gl-head-light th { background: transparent !important; color: var(--afims-text-muted, #62657E) !important; font-size:var(--fs-xs); letter-spacing: .04em; text-transform: uppercase; border-bottom: 1px solid var(--afims-border, #E2E4ED); }
     #gl-root .gl-link { color: var(--afims-primary-text); text-decoration: none; cursor: pointer; font-weight: 500; font-size: var(--fs-sm); }
     #gl-sl-overlay .nha-tbl td, #gl-sl-overlay .nha-tbl th { white-space: nowrap; }
-    #gl-sl-overlay .nha-tbl td:nth-child(4) { white-space: normal; min-width: 220px; }
+    /* Particulars wraps and may shrink (was min-width 220px): with the long JEV / DV numbers and peso amounts the table got wider than
+       the modal once the rows loaded, and the last column — Balance — was pushed out of view to the right. */
+    #gl-sl-overlay .nha-tbl td:nth-child(4) { white-space: normal; min-width: 120px; }
+    /* ...and on a narrow window the JEV No. / DV Number of a transaction row (the cells after the date cell) may wrap too, so Balance stays in view */
+    #gl-sl-overlay .nha-tbl td.nha-td-date + td, #gl-sl-overlay .nha-tbl td.nha-td-date + td + td { white-space: normal; word-break: break-word; }
     #gl-root .gl-amt { color: inherit; text-decoration: none; cursor: pointer; }
     #gl-root .gl-amt:hover { color: var(--afims-primary-text); text-decoration: underline; }
     #gl-root .gl-link .gl-link-icon { margin-left: 6px; vertical-align: -1px; }
@@ -66,8 +70,9 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
     html.afims-dark[data-bs-theme="dark"] #gl-root .gl-k-gl .gl-lbl, html.afims-dark[data-bs-theme="dark"] #gl-root .gl-link { color: #8FB4FF; }
     #gl-root .gl-sl-modal-sub { font-size:var(--fs-sm); color: rgba(255,255,255,.8); margin-top: 2px; font-weight: 400; }
     #gl-root .gl-sl-toggle { display: inline-block; width: 12px; margin-right: 2px; color: var(--afims-text-muted, #62657E); }
-    /* Balance column hidden (header + every row, tree and popups). To bring it back, delete or comment out this one rule. */
-    #gl-root .gl-bal-col { display: none; }
+    /* Balance column hidden on the page's own table (GL list / one account's ledger) only — the preview modals (#gl-sl-overlay: SL list,
+       All transactions) show it. The page table is a direct child of #gl-root; the modals' tables are nested in the overlay. To show it on the page too, delete this rule. */
+    #gl-root > .nha-table-wrap .gl-bal-col { display: none; }
     #gl-printall[disabled] { opacity: .7; cursor: progress; }
     #gl-printall-menu .gl-printall-opt { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: 6px; padding: 8px 10px; cursor: pointer; color: var(--afims-text, #1e293b); font: inherit; font-size:var(--fs-base); }
     #gl-printall-menu .gl-printall-opt:hover { background: var(--afims-surface-subtle, #F4F7FA); }
@@ -693,7 +698,7 @@ function gl_nodeRow(n, popup) {
         ${!popup ? '' : `<td colspan="4" class="gl-lbl"><span class="gl-sl-toggle">${expandable ? '&#9656;' : ''}</span><span class="nha-mono gl-code">${n.direct ? '' : gl_esc(n.account_code)}</span> ${n.direct ? 'Direct postings to ' + gl_esc(n.account_code) : gl_esc(n.account_title)}</td>`}
         <td class="text-end nha-mono u-tabular-nums u-text-sm">${blank ? '' : amt(Number(n.total_debit) ? gl_peso(n.total_debit) : '-', Number(n.total_debit))}</td>
         <td class="text-end nha-mono u-tabular-nums u-text-sm">${blank ? '' : amt(Number(n.total_credit) ? gl_peso(n.total_credit) : '-', Number(n.total_credit))}</td>
-        <td class="text-end nha-mono u-tabular-nums u-text-sm gl-bal-col${abnormal && !blank ? ' gl-abnormal' : ''}">${blank ? '' : amt((bal === 0 ? '-' : gl_peso(Math.abs(bal))) + side, bal !== 0)}</td>
+        <td class="text-end nha-mono u-tabular-nums u-text-sm gl-bal-col${abnormal && !blank ? ' gl-abnormal' : ''}">${blank ? '' : amt(bal === 0 ? (popup ? gl_peso(0) + gl_balSide(0, n.debit_normal) : '-') : gl_peso(Math.abs(bal)) + side, bal !== 0)}</td>
     </tr>`;
 }
 

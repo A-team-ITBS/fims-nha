@@ -1208,9 +1208,10 @@ $cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], ar
 						placeholder="Enter the purchase request number">
 				</div>
 				<div class="form-group" id="po_number_group" style="display:none;">
-					<label for="po_number" class="form-label">Purchase Order Number <span class="input-hint" style="display:inline;">(Optional)</span></label>
+					<label for="po_number" class="form-label">Purchase Order Number / Contract or Reference Number <span class="input-hint" style="display:inline;">(Optional)</span></label>
 					<input type="text" id="po_number" class="form-input" maxlength="50" autocomplete="off"
-						placeholder="Enter the purchase order number">
+						placeholder="Enter the purchase order number, or the contract / other reference number">
+					<span class="input-hint" style="display:block;">A number that is not a PO (a contract or other reference number) makes the RFA an Infrastructure record in the IAR module.</span>
 				</div>
 
 				<!-- Vendor Code / Type / Address: read-only details of whichever vendor is picked above. -->
