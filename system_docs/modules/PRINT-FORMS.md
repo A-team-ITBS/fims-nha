@@ -353,11 +353,17 @@ Regional Offices, "(Regional/ /District Manager)", Part II by the Finance Unit).
 (`payee_name`, trailing "(CODE)" dropped), date, description lines
 (`particulars`, amount on the last line), Certified Correct signatory
 (`cert_correct_name/_title/_office`). Part II — A. Program/Project Reference
-(a–g: `project_name`, `total_estimated_cost`, `total_funds_available`,
-`total_funded_to_date`, `balance` = b − c, `payments_outstanding`,
-`this_request` = amount, `total_payments` = e + f), B. Allotment Reference
-(h–j: `total_contract_cost` = amount, `adjustment_additive/_deductive`,
-`total_allotment` = amount), C. Funding Source (`funding_source`: subsidy,
+(a–g, worked out by `RfaPrintService::model()` from the COB lines the RFA draws on —
+the payload's `cob_line_item_ids`, any number — read through
+`CobService::figuresForLines()`: the COB's current balance (Remaining Balance), its
+Account Payable and its Disbursement, **summed over every COB line**:
+**a** = COB balance + Account Payable, **b** = RFA amount + Account Payable,
+**c** = a − b, **d** = not filled up (blank), e = `payments_outstanding`,
+f = `this_request` (= amount), **g** = total disbursement of the COB / SARO for the
+year; `project_name` prints on the a row. With no COB line to read, a, b, c and g
+print blank; a negative c prints with its minus sign), B. Allotment Reference
+(**h** and **j** = the RFA amount, `adjustment_additive/_deductive` for i),
+C. Funding Source (`funding_source`: subsidy,
 equity, corporate_receipts checkboxes; SARO / OR no. + date; agency name),
 Certified Funds Available (`certified_funds_name`, title default "Chief
 Corporate Accountant"), Recommending Approval / Approved. Amounts print in
@@ -372,9 +378,10 @@ prints `approved_name`, else a blank line. (Labels "(Finance Unit Head)" /
 "RFA Form No. <variant>" (e.g. "RFA Form No. 2a") bold at the top right; a bold
 "Request for Fund Allotment" line under DESCRIPTION/NATURE OF REQUEST; the
 particulars print bold, the first line prefixed "Re:". RECOMMENDING APPROVAL
-(over "(Finance Unit Head)") prints `recommending_name` only — never the FMD
-Department Manager. Everything else as the FMD form (pick the regional
-`form_variant`, 2a–2d).
+(over "(Finance Unit Head)") prints `recommending_name`, else the current FMD
+Department Manager — the same as the FMD form, and as the regional CBA is signed
+by the FMD Department Manager when nobody is named. Everything else as the FMD
+form (pick the regional `form_variant`, 2a–2d).
 
 In the PDF, ₱ ☐ ☒ ● use DejaVu Sans (not in Helvetica).
 
