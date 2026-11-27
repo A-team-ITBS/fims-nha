@@ -502,7 +502,10 @@ function vr_mayTransition(dv, target) {
         const isHolder = holderRc !== null && VR_RC_ID === holderRc;
         return isCreator || isHolder;
     }
-    if (holderRc === null) return true; // DRAFT -> FOR_FMD_REVIEW: Originating submits, open to anyone.
+    if (holderRc === null) {
+        // DRAFT -> FOR_FMD_REVIEW: Originating submits, open to anyone — except the monthly Remittance DV (DRAFT -> FOR_ACCOUNTING), which only Accounting staff (RC 012) submit.
+        return !(dv.dv_remit && target === 'FOR_ACCOUNTING' && VR_RC_ID !== '012');
+    }
     if (VR_RC_ID !== holderRc) return false;
     // Separation of duties inside Accounting — whoever already acted on an earlier Accounting step of this
     // voucher can't take the next one (mirrors DisbursementVoucherService::authorizeTransition()).
@@ -519,7 +522,8 @@ function vr_renderActions(dv) {
     const btn = (label, status, cls) => `<button type="button" class="nha-btn ${cls}" style="margin-left:8px;" onclick="vr_changeStatus('${status}')">${label}</button>`;
     let html = '';
     if (allowed.includes('FOR_FMD_REVIEW')) html += btn('Submit to FMD', 'FOR_FMD_REVIEW', 'nha-btn-primary');
-    if (allowed.includes('FOR_ACCOUNTING')) html += btn('FMD Approve', 'FOR_ACCOUNTING', 'nha-btn-primary');
+    // DRAFT → FOR_ACCOUNTING is only offered for the monthly Remittance DV, which has no FMD step; from FOR_FMD_REVIEW it is FMD's approval
+    if (allowed.includes('FOR_ACCOUNTING')) html += dv.status === 'DRAFT' ? btn('Submit to Accounting', 'FOR_ACCOUNTING', 'nha-btn-primary') : btn('FMD Approve', 'FOR_ACCOUNTING', 'nha-btn-primary');
     if (allowed.includes('FOR_DIVISION_MANAGER'))   html += btn('Forward to Division Manager', 'FOR_DIVISION_MANAGER', 'nha-btn-primary');
     if (allowed.includes('FOR_DEPARTMENT_MANAGER')) html += btn('Forward to Department Manager', 'FOR_DEPARTMENT_MANAGER', 'nha-btn-primary');
     if (allowed.includes('FOR_TREASURY'))   html += btn('Approve &amp; Forward to Treasury', 'FOR_TREASURY', 'nha-btn-primary');
@@ -1424,7 +1428,8 @@ function vje_renderAcctTitle(tr) {
 }
 
 /**
- * A Remittance DV from the Remittance List (dv.dv_remit): the vendor and the voucher-by-voucher schedule of what it pays. '' for any other DV.
+ * The monthly Remittance DV from the Remittance List (dv.dv_remit): what it pays per tax and the voucher-by-voucher schedule behind it, every vendor
+ * of the month together (the vendor is named once at the top only when the whole month came from one vendor). '' for any other DV.
  */
 function vr_remitScheduleHtml(dv) {
     const d = dv.dv_remit;
@@ -1437,7 +1442,7 @@ function vr_remitScheduleHtml(dv) {
         g.total += Number(s.amount || 0);
         g.lines.push(s);
     });
-    // A Remittance DV is for one vendor: its name is shown once at the top (per voucher only if they ever differ)
+    // Every vendor of the month is in the one DV: each voucher names its vendor (shown once at the top only when they are all the same one)
     const oneVendor = groups.length > 0 && groups.every(g => g.vendor === groups[0].vendor);
     const border = '1px solid var(--afims-border,#E4ECF2)';
     const th = 'padding:9px 14px;font-size:var(--fs-xs);font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--afims-text-muted,#62657E);background:var(--afims-surface-subtle,#F4F7FA);border-bottom:' + border + ';';
@@ -1448,10 +1453,13 @@ function vr_remitScheduleHtml(dv) {
                 <span><span style="font-size:var(--fs-xs);font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--afims-text-muted,#62657E);">DV No.</span> <strong class="nha-mono" style="font-size:14px;">${vr_esc(g.dv_no)}</strong></span>
                 <span><span style="font-size:var(--fs-xs);font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--afims-text-muted,#62657E);">Date</span> <strong style="font-size:14px;">${vr_fmtDate(g.dv_date)}</strong></span>
                 ${oneVendor ? '' : `<span style="font-weight:600;">${vr_esc(g.vendor)}</span>`}
+                ${g.lines.some(s => s.atc_code && !/^WV/i.test(String(s.atc_code)))
+                    // the payee's BIR 2307 belongs to this SOURCE voucher (the remittance DV pays BIR, so it has none of its own): same preview as the voucher's own BIR 2307 button
+                    ? `<a href="#" class="no-print" style="font-size:var(--fs-sm);font-weight:600;" title="Print the BIR 2307 (Certificate of Creditable Tax Withheld at Source) for this payee" onclick="event.preventDefault();prp_open({dv_id:${Number(g.dv_id)}},{type:'BIR2307'})">BIR 2307</a>` : ''}
             </div>
             <div style="overflow-x:auto;border:${border};border-radius:8px;"><table style="width:100%;border-collapse:collapse;">
-                <thead><tr><th style="${th}text-align:left;">ATC</th><th style="${th}text-align:right;">Rate</th><th style="${th}text-align:right;">Tax Base</th><th style="${th}text-align:right;">Withheld</th></tr></thead>
-                <tbody>${g.lines.map(s => `<tr><td style="${td}" class="nha-mono">${vr_esc(s.atc_code || d.type_name)}</td><td style="${td}${num}">${s.rate === null || s.rate === undefined ? '' : vr_esc(Number(s.rate) + '%')}</td><td style="${td}${num}">${vr_peso(s.base)}</td><td style="${td}${num}">${vr_peso(s.amount)}</td></tr>`).join('')}
+                <thead><tr><th style="${th}text-align:left;">Tax / ATC</th><th style="${th}text-align:right;">Rate</th><th style="${th}text-align:right;">Tax Base</th><th style="${th}text-align:right;">Withheld</th></tr></thead>
+                <tbody>${g.lines.map(s => `<tr><td style="${td}" class="nha-mono">${vr_esc(s.atc_code || s.type_name)}</td><td style="${td}${num}">${s.rate === null || s.rate === undefined ? '' : vr_esc(Number(s.rate) + '%')}</td><td style="${td}${num}">${vr_peso(s.base)}</td><td style="${td}${num}">${vr_peso(s.amount)}</td></tr>`).join('')}
                 <tr><td colspan="3" style="${td}border-bottom:0;font-weight:700;">Total</td><td style="${td}${num}border-bottom:0;font-weight:700;">${vr_peso(g.total)}</td></tr></tbody>
             </table></div>
         </div>`).join('');
@@ -1460,7 +1468,8 @@ function vr_remitScheduleHtml(dv) {
             <div style="font-size:var(--fs-xs);font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--afims-text-muted,#62657E);margin-bottom:4px;">Vendor</div>
             <div style="font-size:var(--fs-2xl);font-weight:700;line-height:1.25;color:var(--afims-heading,#000E3E);">${vr_esc(groups[0].vendor)}</div>
         </div>` : ''}
-        <p class="vr-card-title" style="margin:14px 0 0;">Vouchers paid — ${Number(d.vouchers) || 0} DV(s), ${(d.schedule || []).length} ATC line(s)</p>
+        <p class="vr-card-title" style="margin:${oneVendor ? '14px' : '0'} 0 0;">${vr_esc(d.period_label || '')} — ${(d.taxes || []).map(t => `${vr_esc(t.type_name)} <strong>${vr_peso(t.amount)}</strong>`).join(' · ')}</p>
+        <p class="vr-card-title" style="margin:14px 0 0;">Vouchers paid — ${Number(d.vouchers) || 0} DV(s), ${(d.schedule || []).length} line(s)</p>
         ${sched}
     </div>`;
 }

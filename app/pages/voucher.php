@@ -17,8 +17,7 @@ $_vl_view = (int) ($_GET['dv'] ?? 0);
 $_vl_payroll = (int) ($_GET['payroll'] ?? 0); // Payroll Management "Create DV": payroll_period_id to open a new DV for
 $_vl_po = preg_match('/^[A-Za-z0-9 _\-\/.]{1,100}$/', (string) ($_GET['po'] ?? '')) ? (string) $_GET['po'] : ''; // Delivery Acceptance notification (GSD): the PO to open a new DV for — see vf_openForPo()
 $_vl_remittance = (int) ($_GET['remittance'] ?? 0); // Deductions & Remittances "Create Remittance DV": payroll_remittance_id
-$_vl_remit_period = preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', (string) ($_GET['remit_period'] ?? '')) ? (string) $_GET['remit_period'] : ''; // Remittance List "Remit": the month (YYYY-MM) whose withheld EWT / VAT / Penalty Tax to pay to BIR
-$_vl_remit_type = preg_match('/^[A-Za-z_]{1,20}$/', (string) ($_GET['remit_type'] ?? '')) ? strtoupper((string) $_GET['remit_type']) : ''; // EWT | VAT | PENALTY_TAX
+$_vl_remit_period = preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', (string) ($_GET['remit_period'] ?? '')) ? (string) $_GET['remit_period'] : ''; // Remittance List "Create DV": the month (YYYY-MM) whose withheld taxes (EWT + VAT + Penalty Tax, all vendors) to pay to BIR in one DV
 ?>
 
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
@@ -157,8 +156,7 @@ const VL_VIEW = <?= (int) $_vl_view ?>; // dv_id to open in the view modal on lo
 const VL_PAYROLL = <?= (int) $_vl_payroll ?>; // imported payroll month to open a new DV for on load (0 = none) — see vf_openForPayroll()
 const VL_PO = <?= json_encode($_vl_po) ?>; // PO number to open a new DV for on load ("" = none) — see vf_openForPo()
 const VL_REMITTANCE =<?= (int) $_vl_remittance ?>; // payroll remittance to open a new remittance DV for on load (0 = none) — see vf_openForRemittance()
-const VL_REMIT_PERIOD = <?= json_encode($_vl_remit_period) ?>; // month (YYYY-MM) whose withheld tax to remit to BIR on load ("" = none) — see vf_openForDvRemit()
-const VL_REMIT_TYPE = <?= json_encode($_vl_remit_type) ?>; // EWT | VAT | PENALTY_TAX
+const VL_REMIT_PERIOD = <?= json_encode($_vl_remit_period) ?>; // month (YYYY-MM) whose withheld taxes to remit to BIR on load ("" = none) — see vf_openForDvRemit()
 
 const VL_PAGE_SIZE = 15;
 let vl_page = 1;
@@ -188,9 +186,9 @@ async function vl_boot() {
     } else if (VL_REMITTANCE > 0) {
         history.replaceState(null, '', location.pathname);
         vf_openForRemittance(VL_REMITTANCE);
-    } else if (VL_REMIT_PERIOD && VL_REMIT_TYPE) {
+    } else if (VL_REMIT_PERIOD) {
         history.replaceState(null, '', location.pathname); // a refresh after saving must not open another remittance DV
-        vf_openForDvRemit(VL_REMIT_PERIOD, VL_REMIT_TYPE);
+        vf_openForDvRemit(VL_REMIT_PERIOD);
     }
 }
 

@@ -413,7 +413,6 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                                 <div><label>Address</label><span id="vf-vc-address">—</span></div>
                                 <div><label>TIN</label><span id="vf-vc-tin">—</span></div>
                             </div>
-                            <div id="vf-remit-vendor-box" class="vf-a-full" style="display:none;"></div>
 
                             <!-- RFA multi-select + SARO -->
                             <div class="vf-a-full" id="vf-rfa-col">
@@ -605,7 +604,7 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
             <div class="nha-modal-foot">
                 <button type="button" class="nha-btn nha-btn-ghost" onclick="vf_close()">Cancel</button>
                 <button type="button" class="nha-btn nha-btn-outline" id="vf-btn-draft"  onclick="vf_save('DRAFT')">Save as Draft</button>
-                <button type="button" class="nha-btn nha-btn-primary" id="vf-btn-submit" onclick="vf_save('FOR_FMD_REVIEW')">Save &amp; Submit to FMD</button>
+                <button type="button" class="nha-btn nha-btn-primary" id="vf-btn-submit" onclick="vf_submit()">Save &amp; Submit to FMD</button>
             </div>
 
         </div>
@@ -638,8 +637,7 @@ let vf_selectedRfaIds = [];  // allocation_id values picked in the RFA multi-sel
 let vf_payrollPeriodId = null; // imported payroll month (payroll_period_id) this DV pays — picked in the Vendor dropdown's Payroll group — or null
 let vf_payrollGovShare = 0;    // that month's government share: in its JEV (not in Amount / deductions / net) and drawn from its RFA
 let vf_remittanceId = null;    // payroll remittance this DV pays — the month's agencies (GSIS / BIR / …), one DV per month — Voucher?remittance={id} — or null (no RFA needed)
-let vf_dvRemitVendors = [];   // the vendors the month's open withholding came from (new Remittance DV only) — the select under the claimant
-let vf_dvRemit = null;       // {period, type}: a month's EWT / Withholding VAT / Penalty Tax this DV pays to BIR — Remittance List "Remit" → Voucher?remit_period=YYYY-MM&remit_type={type} — or null (no RFA needed)
+let vf_dvRemit = null;       // {period}: the month whose withheld taxes (EWT + Withholding VAT + Penalty Tax, every vendor) this one DV pays to BIR — Remittance List "Create DV" → Voucher?remit_period=YYYY-MM — or null (no RFA needed, no FMD step)
 let vf_payrollMonths = [];     // imported payroll months a DV can be prepared from (GET payroll-management/available)
 let vf_attachments = [];     // staged Supporting Documents: { document_name, link, size, uploading }
 let vf_attDirty = false;     // true once the attachments list has changed since open — avoids re-registering an unchanged batch on every save
@@ -683,7 +681,8 @@ async function vf_getJson(path) {
 }
 
 /* ── Open / close ──────────────────────────────────────────── */
-async function vf_open(id = 0) {
+/* opts.noRfa: this DV needs no RFA (the monthly Remittance DV — the vouchers it pays were obligated already), so the RFA list is not even requested. */
+async function vf_open(id = 0, opts = {}) {
     vf_id = Number(id) || 0;
     vf_reset();
     $vf('vf-modal-title').textContent = vf_id ? 'Edit Disbursement Voucher' : 'New Disbursement Voucher';
@@ -707,9 +706,9 @@ async function vf_open(id = 0) {
         // the form still opens with whatever did load, and the user sees the full picture.
         const results = await Promise.allSettled([
             vf_refReady, vf_booksReady, vf_dedTypesReady, vf_coaReady, vf_atcReady, vf_rcReady, vf_slReady,
-            vf_loadVendors(), vf_loadRfaOptions(), vf_loadSaroOptions(), vf_loadPayrollMonths(),
+            vf_loadVendors(), opts.noRfa ? Promise.resolve() : vf_loadRfaOptions(), vf_loadSaroOptions(), vf_loadPayrollMonths(),
         ]);
-        const loadErrors = results.filter(r => r.status === 'rejected').map(r => r.reason?.message || String(r.reason));
+        let loadErrors = results.filter(r => r.status === 'rejected').map(r => r.reason?.message || String(r.reason));
         vf_renderPayrollOptions(); // after vf_loadVendors() rebuilt the Vendor dropdown
 
         if (vf_id) {
@@ -721,6 +720,8 @@ async function vf_open(id = 0) {
         } else {
             vf_refreshDvNumber();
         }
+        // A DV that takes no RFA (a Remittance DV opened for editing — only known once it was loaded) has nothing to report about the RFA list
+        if (vf_dvRemit || vf_remittanceId) loadErrors = loadErrors.filter(m => !String(m).startsWith('Failed to load RFAs'));
         // Defensive: if the RFA search box picked up an autofocus while vf_loadExisting() was still
         // in flight, its dropdown may have rendered before vf_selectedRfaIds was populated — close it
         // now so a stale, unfiltered list isn't left showing an RFA the chips below already cover.
@@ -765,7 +766,6 @@ function vf_reset() {
     vf_payrollGovShare = 0;
     vf_remittanceId = null;
     vf_dvRemit = null;
-    vf_dvRemitVendors = [];
     vf_renderRemitSchedule(null);
     vf_renderDedTypeButtons();
     $vf('vf-rfa-search').disabled = false;
@@ -2301,27 +2301,22 @@ async function vf_openForRemittance(remittanceId) {
 }
 
 /**
- * Remittance List's "Remit" (Voucher?remit_period=YYYY-MM&remit_type={EWT|VAT|PENALTY_TAX}): a new DV paying to BIR what the month's released
- * vouchers withheld — GET remittance-list/dv-data/{period}/{type}: claimant = BIR, the particulars ("Remittance of Expanded Withholding Taxes
- * withheld for the month of …" + the rate breakdown), account, amount (= the month's total) and the entry (Dr Due to BIR / VAT Payable, Cr Cash
- * in Bank). No RFA: the vouchers already obligated it. The rate rows and the voucher-by-voucher schedule are listed under the claimant.
+ * Remittance List's "Create DV" (Voucher?remit_period=YYYY-MM): the ONE new DV paying to BIR everything the month's released vouchers withheld —
+ * every tax (Withholding Tax, Withholding VAT, Penalty Tax) of every vendor, nothing to pick. GET remittance-list/dv-data/{period}: claimant = BIR,
+ * the particulars ("Remittance of … withheld for the month of …" + the breakdown by tax and rate), account, amount (= the month's total) and the
+ * entry (Dr Due to BIR / VAT Payable, Cr Cash in Bank). No RFA: the vouchers already obligated it. No FMD step either — "Save & Submit to
+ * Accounting". The rate rows and the voucher-by-voucher schedule are listed under the claimant.
  */
-async function vf_openForDvRemit(period, type) {
-    await vf_open(0);
-    await vf_loadDvRemit(period, type, '');
+async function vf_openForDvRemit(period) {
+    await vf_open(0, { noRfa: true });   // no RFA on this DV, so none is loaded
+    await vf_loadDvRemit(period);
 }
 
-/** The vendor select of a new Remittance DV: refills the form for another vendor of the month (one vendor per DV). */
-function vf_remitVendorChanged(idx) {
-    const v = vf_dvRemitVendors[Number(idx)];
-    if (v && vf_dvRemit) vf_loadDvRemit(vf_dvRemit.period, vf_dvRemit.type, v.vendor);
-}
-
-/** Fills the (already open) new-DV form with a month's remittance for one vendor ('' = the vendor with the most withheld). */
-async function vf_loadDvRemit(period, type, vendor) {
+/** Fills the (already open) new-DV form with a month's remittance — all of its taxes and vendors. */
+async function vf_loadDvRemit(period) {
     window.PagePreloader?.show();
     try {
-        const res = await vf_authFetch(VF_API + '/' + 'remittance-list/dv-data/' + encodeURIComponent(period) + '/' + encodeURIComponent(type) + (vendor ? '?vendor=' + encodeURIComponent(vendor) : ''));
+        const res = await vf_authFetch(VF_API + '/' + 'remittance-list/dv-data/' + encodeURIComponent(period));
         if (res.status === 401) throw new Error(VF_SESSION_EXPIRED_MSG);
         const json = await res.json().catch(() => ({}));
         if (!res.ok || !json.success) throw new Error(json.message || 'HTTP ' + res.status);
@@ -2339,56 +2334,40 @@ function vf_dvRemitView(d) {
     return {
         ...d,
         dvRemit: true,
-        label: `${d.type_name} — ${d.period_label}`,
-        card_type: `Remittance to BIR — ${d.type_name}`,
-        card_detail: `For the month of ${d.period_label}${d.remit_vendor ? ' · ' + d.remit_vendor : ''} · ${n} voucher${n === 1 ? '' : 's'} · Total ${vf_peso(d.gross_amount)}`,
+        label: `Withheld taxes — ${d.period_label}`,
+        card_type: 'Remittance to BIR — withheld taxes',
+        card_detail: `For the month of ${d.period_label} · ${n} voucher${n === 1 ? '' : 's'} · Total ${vf_peso(d.gross_amount)}`,
         card_ref: 'Pays what the released vouchers of the month withheld — no RFA needed on this DV',
-        option_label: `Remittance to BIR — ${d.type_name}, ${d.period_label}`,
+        option_label: `Remittance to BIR — withheld taxes, ${d.period_label}`,
         rfa_note: `(not needed — remitting what the ${d.period_label} vouchers withheld)`,
         rfa_placeholder: 'Not needed for a remittance of withheld tax',
     };
 }
 
 function vf_applyDvRemit(d) {
-    vf_dvRemit = { period: d.remit_period, type: d.remit_type, vendor: d.remit_vendor || '' };
-    vf_dvRemitVendors = d.vendors || [];
+    vf_dvRemit = { period: d.remit_period };
     vf_fillRemittance(vf_dvRemitView(d));
     vf_renderRemitSchedule(d);
     $vf('vf-particulars').rows = Math.min(10, Math.max(3, String(d.particulars || '').split('\n').length));
 }
 
 /**
- * Under the claimant of a monthly remittance DV: the paper form's rate rows (1% … 15% Withholding Tax, each with the Contractors/Suppliers — the
- * vendors — it was withheld from and their amounts) and the voucher-by-voucher schedule behind them. null hides it.
+ * Under the claimant of the monthly remittance DV: the paper form's rate rows (1% … 15% Withholding Tax, then Withholding VAT, Penalty Tax — each with
+ * the Contractors/Suppliers — the vendors — it was withheld from and their amounts) and the voucher-by-voucher schedule behind them. There is no
+ * vendor to pick: every vendor's withholding of the month is in the one DV. null hides it.
  */
 function vf_renderRemitSchedule(d) {
     const box = $vf('vf-remit-sched');
-    const vbox = $vf('vf-remit-vendor-box');
     if (!box) return;
     if (!d) {
         box.style.display = 'none'; box.innerHTML = '';
-        if (vbox) { vbox.style.display = 'none'; vbox.innerHTML = ''; }
         return;
     }
-    const oneVendor = !!d.remit_vendor;   // a DV pays one vendor, so naming that vendor on every row would only repeat it
-    // the vendor lives in section A (who this DV is for): pick it on a new DV, read-only once saved
-    if (vbox) {
-        if ((d.vendors || []).length) {
-            const cur = Math.max(0, vf_dvRemitVendors.findIndex(v => v.vendor === d.remit_vendor));
-            vbox.innerHTML = `<div class="nha-fg"><label>Vendor the tax was withheld from <span class="nha-req">*</span></label>
-                <select id="vf-remit-vendor" onchange="vf_remitVendorChanged(this.value)">${vf_dvRemitVendors.map((v, i) =>
-                    `<option value="${i}"${i === cur ? ' selected' : ''}>${vf_esc(v.vendor)} — ${vf_peso(v.amount)} (${Number(v.vouchers) || 0} voucher${Number(v.vouchers) === 1 ? '' : 's'})</option>`).join('')}</select>
-                <span class="vf-hint">One vendor per remittance DV. The other vendors stay ready to remit.</span></div>`;
-        } else if (d.remit_vendor) {
-            vbox.innerHTML = `<div class="nha-fg"><label>Vendor the tax was withheld from</label><div style="padding:8px 0;font-weight:600;">${vf_esc(d.remit_vendor)}</div></div>`;
-        } else {
-            vbox.innerHTML = '';
-        }
-        vbox.style.display = vbox.innerHTML ? '' : 'none';
-    }
+    // naming the vendor on every row would only repeat it when the whole month came from one vendor
+    const oneVendor = new Set((d.schedule || []).map(sc => sc.claimant_name || '—')).size <= 1;
 
     const money = v => Number(v || 0) > 0 ? vf_peso(v) : '-';
-    // 1) the amount: one row per rate that has something (empty rates are left out), the vendors only when they are not all the same one
+    // 1) the amount: one row per tax and rate that has something (empty rates are left out), the vendors only when they are not all the same one
     const rows = (d.breakdown || []).filter(b => Number(b.amount) > 0).map(b => `<tr class="rate"><td>${vf_esc(b.label)}</td>${oneVendor ? '' : '<td></td>'}<td class="r">${money(b.amount)}</td></tr>` +
         (oneVendor ? '' : (b.vendors || []).map(v => `<tr class="ven"><td></td><td>${vf_esc(v.vendor)}</td><td class="r">${vf_peso(v.amount)}</td></tr>`).join(''))).join('');
     // 2) the accounting entry the DV posts (Dr the liability, Cr Cash in Bank) — section D is Accounting's, so it is only shown here, folded
@@ -2404,18 +2383,32 @@ function vf_renderRemitSchedule(d) {
         g.total += Number(sc.amount || 0);
         g.lines.push(sc);
     });
-    const sched = groups.map(g => `<tr class="dv"><td class="m">${vf_esc(g.dv_no)}</td><td>${vf_esc(String(g.dv_date || '').slice(0, 10))}</td>${oneVendor ? '' : `<td>${vf_esc(g.vendor)}</td>`}<td></td><td></td><td class="r">${vf_peso(g.total)}</td></tr>` +
-        g.lines.map(sc => `<tr class="atc"><td class="m">↳ ${vf_esc(sc.atc_code || d.type_name)}</td><td></td>${oneVendor ? '' : '<td></td>'}<td class="r">${sc.rate === null || sc.rate === undefined ? '' : vf_esc(Number(sc.rate) + '%')}</td><td class="r">${vf_peso(sc.base)}</td><td class="r">${vf_peso(sc.amount)}</td></tr>`).join('')).join('');
+    // the payee's BIR 2307 belongs to the SOURCE voucher the tax was withheld from (this DV pays BIR, so it has none of its own): offered for a voucher with a
+    // creditable ATC line only (WV… withholding VAT is not on a 2307) — same preview as the voucher's own BIR 2307 button
+    const cert = g => g.lines.some(sc => sc.atc_code && !/^WV/i.test(String(sc.atc_code)))
+        ? ` <a href="#" style="margin-left:8px;font-weight:600;" title="Print the BIR 2307 (Certificate of Creditable Tax Withheld at Source) for this payee" onclick="event.preventDefault();vf_print2307(${Number(g.dv_id)})">BIR 2307</a>` : '';
+    const sched = groups.map(g => `<tr class="dv"><td class="m">${vf_esc(g.dv_no)}${cert(g)}</td><td>${vf_esc(String(g.dv_date || '').slice(0, 10))}</td>${oneVendor ? '' : `<td>${vf_esc(g.vendor)}</td>`}<td></td><td></td><td class="r">${vf_peso(g.total)}</td></tr>` +
+        g.lines.map(sc => `<tr class="atc"><td class="m">↳ ${vf_esc(sc.atc_code || sc.type_name)}</td><td></td>${oneVendor ? '' : '<td></td>'}<td class="r">${sc.rate === null || sc.rate === undefined ? '' : vf_esc(Number(sc.rate) + '%')}</td><td class="r">${vf_peso(sc.base)}</td><td class="r">${vf_peso(sc.amount)}</td></tr>`).join('')).join('');
     const nv = Number(d.vouchers) || 0, nl = (d.schedule || []).length;
 
-    box.innerHTML = `<div class="vf-remit-total"><span>Total to remit — ${vf_esc(d.type_name)}, ${vf_esc(d.period_label)}</span><strong>${vf_peso(d.gross_amount)}</strong></div>
-        <table class="vf-rs-tbl"><thead><tr><th>Rate</th>${oneVendor ? '' : '<th>Contractors/Suppliers</th>'}<th class="r">Amount</th></tr></thead><tbody>${rows}</tbody></table>
+    // the per-tax totals under the grand total ("Withholding Tax ₱… · Withholding VAT ₱…")
+    const taxLine = (d.taxes || []).length > 1
+        ? `<div class="vf-hint" style="margin:-6px 0 10px;">${(d.taxes || []).map(t => `${vf_esc(t.type_name)} <strong>${vf_peso(t.amount)}</strong>`).join(' · ')}</div>` : '';
+
+    box.innerHTML = `<div class="vf-remit-total"><span>Total to remit — ${vf_esc(d.type_name)}, ${vf_esc(d.period_label)}</span><strong>${vf_peso(d.gross_amount)}</strong></div>${taxLine}
+        <table class="vf-rs-tbl"><thead><tr><th>Tax / Rate</th>${oneVendor ? '' : '<th>Contractors/Suppliers</th>'}<th class="r">Amount</th></tr></thead><tbody>${rows}</tbody></table>
         <details><summary>Vouchers included — ${nv} voucher${nv === 1 ? '' : 's'}, ${nl} line${nl === 1 ? '' : 's'}</summary>
-        <div style="overflow-x:auto;"><table class="vf-rs-tbl"><thead><tr><th>DV No. / ATC</th><th>Date</th>${oneVendor ? '' : '<th>Vendor</th>'}<th class="r">Rate</th><th class="r">Tax Base</th><th class="r">Withheld</th></tr></thead><tbody>${sched}</tbody></table></div></details>
+        <div style="overflow-x:auto;"><table class="vf-rs-tbl"><thead><tr><th>DV No. / Tax</th><th>Date</th>${oneVendor ? '' : '<th>Vendor</th>'}<th class="r">Rate</th><th class="r">Tax Base</th><th class="r">Withheld</th></tr></thead><tbody>${sched}</tbody></table></div></details>
         <details><summary>Accounting entry — Dr ${vf_esc(names('debit'))} / Cr ${vf_esc(names('credit'))}</summary>
         <div style="overflow-x:auto;"><table class="vf-rs-tbl"><thead><tr><th>Account code</th><th>Account title</th><th class="r">Debit</th><th class="r">Credit</th></tr></thead><tbody>${ent}</tbody></table></div></details>`;
     box.classList.add('vf-remit-main');
     box.style.display = '';
+}
+
+/** Opens the BIR 2307 preview of a source voucher the remittance DV pays (readone/print-preview-readone.php, included with the view modal on the same page). */
+function vf_print2307(dvId) {
+    if (typeof prp_open !== 'function') { vf_showErrors(['The print preview is not available on this page.']); return; }
+    prp_open({ dv_id: Number(dvId) }, { type: 'BIR2307' });
 }
 
 function vf_applyRemittance(d) {
@@ -2476,6 +2469,7 @@ function vf_markRemittanceFields(d) {
     // (the vendor card, the second Status cell, the empty RFA breakdown box and the Gross / Less / Net table — the amount is shown once, in section B)
     $vf('vf-claimant-grid').classList.toggle('vf-remit-on', !!d);
     const dr = !!(d && d.dvRemit);
+    $vf('vf-btn-submit').textContent = dr ? 'Save & Submit to Accounting' : 'Save & Submit to FMD';   // the monthly Remittance DV has no FMD step
     $vf('vf-claimant-title').textContent = d ? 'Claimant' : 'Claimant & RFA';
     $vf('vf-doc-status-td').style.display = dr ? 'none' : '';
     
@@ -2577,10 +2571,9 @@ async function vf_loadExisting() {
         vf_showRemittanceCard({ ...dv.remittance, claimant_name: dv.claimant_name });
         vf_markRemittanceFields(dv.remittance);
     }
-    // A Remittance DV for a month's withheld EWT / VAT / Penalty Tax (Remittance List): keeps its month and tax, no RFA
+    // The monthly Remittance DV (Remittance List) for the month's withheld taxes: keeps its month, no RFA, no FMD step
     if (dv.dv_remit) {
-        vf_dvRemit = { period: dv.dv_remit.remit_period, type: dv.dv_remit.remit_type, vendor: dv.dv_remit.remit_vendor || '' };
-        vf_dvRemitVendors = [];
+        vf_dvRemit = { period: dv.dv_remit.remit_period };
         $vf('vf-rfa-search').disabled = true;
         const view = vf_dvRemitView({ ...dv.dv_remit, claimant_name: dv.claimant_name });
         vf_showRemittanceCard(view);
@@ -2733,6 +2726,11 @@ async function vf_checkPoIar() {
 }
 
 /* ── Save ──────────────────────────────────────────────────── */
+/** "Save & Submit": to FMD, except the monthly Remittance DV, which has no FMD step and goes straight to Accounting. */
+function vf_submit() {
+    return vf_save(vf_dvRemit ? 'FOR_ACCOUNTING' : 'FOR_FMD_REVIEW');
+}
+
 async function vf_save(status) {
     if (vf_saving) return;
     vf_showErrors([]);
@@ -2771,8 +2769,6 @@ async function vf_save(status) {
         payroll_period_id  : vf_payrollPeriodId,
         payroll_remittance_id : vf_remittanceId,
         remit_period          : vf_dvRemit ? vf_dvRemit.period : null,
-        remit_type            : vf_dvRemit ? vf_dvRemit.type : null,
-        remit_vendor          : vf_dvRemit ? (vf_dvRemit.vendor || null) : null,
         status,
     };
 
