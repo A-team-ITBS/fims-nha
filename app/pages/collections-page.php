@@ -33,98 +33,64 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css')
         </div>
     </div>
 
-    <div class="fims-tabs-underline mb-3" id="colTabNav">
-        <button class="fims-tab-underline active" data-col-tab="collections">Collections</button>
-        <button class="fims-tab-underline" data-col-tab="deposits">Deposits</button>
-    </div>
-
-    <!-- "Collections" tab — every Collection line flattened across every
-         report (CollectionsService::getCollectionsList()), by GL account.
-         Read-only — a saved report can no longer be edited, only registered
-         fresh (see openReportModal()'s own comment). -->
-    <div id="colTabCollections">
-        <div class="fims-stat-grid" id="colCollectionsStats" style="grid-template-columns:repeat(2,1fr)">
-            <div class="fims-stat-card fims-card-blue">
-                <div class="fims-stat-top"><span class="fims-stat-label">Collection Lines</span><span class="fims-stat-icon"><i class="fas fa-file-alt"></i></span></div>
-                <div class="fims-stat-value" data-kpi="total">0</div>
-            </div>
-            <div class="fims-stat-card fims-card-green">
-                <div class="fims-stat-top"><span class="fims-stat-label">Total Collections</span><span class="fims-stat-icon"><i class="fas fa-hand-holding-usd"></i></span></div>
-                <div class="fims-stat-value" data-kpi="total_amount">₱0.00</div>
-            </div>
+    <!-- Collections and Deposits merged into one list (CollectionsService::
+         getCollectionsList() + getDepositsList(), fetched together and
+         combined client-side — see loadCollectionsAndDeposits()) since they're
+         both just "lines off a Collection Report", read-only the same way,
+         and a Collecting Office cares about both together, not as separate
+         screens. Type + Detail columns carry what used to be two different
+         table shapes (GL Account for a Collection line, Bank Account +
+         Period Covered + Swept for a Deposit line). -->
+    <div class="fims-stat-grid" id="colStats" style="grid-template-columns:repeat(4,1fr)">
+        <div class="fims-stat-card fims-card-blue">
+            <div class="fims-stat-top"><span class="fims-stat-label">Collection Lines</span><span class="fims-stat-icon"><i class="fas fa-file-alt"></i></span></div>
+            <div class="fims-stat-value" data-kpi="collections_total">0</div>
         </div>
-        <div class="fims-table-panel">
-            <div class="fims-panel-header">
-                <div class="fims-panel-title" id="colCollectionsSubtitle">Collections (0)</div>
-                <div style="display:flex;gap:8px;align-items:center;">
-                    <input type="text" class="fims-input fims-input-sm" id="colCollectionsSearch" placeholder="Search Collecting Office, Region, or GL Account…" style="max-width:300px;">
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="colRegisterCollectionBtn">
-                        <i class="fas fa-plus mr-1"></i>Register Collection
-                    </button>
-                </div>
-            </div>
-            <div class="fims-table-wrap">
-                <table class="fims-table" id="colCollectionsTable">
-                    <thead>
-                        <tr>
-                            <th style="width:36px">#</th>
-                            <th>Date</th>
-                            <th>Region / Office</th>
-                            <th>Collecting Office</th>
-                            <th>GL Account</th>
-                            <th class="text-right">Amount</th>
-                            <th class="text-center" style="width:80px">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="colCollectionsBody"><tr class="fims-empty"><td colspan="7">Loading…</td></tr></tbody>
-                </table>
-            </div>
+        <div class="fims-stat-card fims-card-green">
+            <div class="fims-stat-top"><span class="fims-stat-label">Total Collections</span><span class="fims-stat-icon"><i class="fas fa-hand-holding-usd"></i></span></div>
+            <div class="fims-stat-value" data-kpi="collections_amount">₱0.00</div>
+        </div>
+        <div class="fims-stat-card fims-card-blue">
+            <div class="fims-stat-top"><span class="fims-stat-label">Deposit Lines</span><span class="fims-stat-icon"><i class="fas fa-file-alt"></i></span></div>
+            <div class="fims-stat-value" data-kpi="deposits_total">0</div>
+        </div>
+        <div class="fims-stat-card fims-card-amber">
+            <div class="fims-stat-top"><span class="fims-stat-label">Total Deposits</span><span class="fims-stat-icon"><i class="fas fa-university"></i></span></div>
+            <div class="fims-stat-value" data-kpi="deposits_amount">₱0.00</div>
         </div>
     </div>
-
-    <!-- "Deposits" tab — every Deposit line flattened across every report
-         (CollectionsService::getDepositsList()), including is_swept (Fund
-         Sweeping's own per-deposit tracking — see
-         app/pages/fund-sweeping-page.php). -->
-    <div id="colTabDeposits" style="display:none;">
-        <div class="fims-stat-grid" id="colDepositsStats" style="grid-template-columns:repeat(2,1fr)">
-            <div class="fims-stat-card fims-card-blue">
-                <div class="fims-stat-top"><span class="fims-stat-label">Deposit Lines</span><span class="fims-stat-icon"><i class="fas fa-file-alt"></i></span></div>
-                <div class="fims-stat-value" data-kpi="total">0</div>
-            </div>
-            <div class="fims-stat-card fims-card-amber">
-                <div class="fims-stat-top"><span class="fims-stat-label">Total Deposits</span><span class="fims-stat-icon"><i class="fas fa-university"></i></span></div>
-                <div class="fims-stat-value" data-kpi="total_amount">₱0.00</div>
+    <div class="fims-table-panel">
+        <div class="fims-panel-header">
+            <div class="fims-panel-title" id="colSubtitle">Collections &amp; Deposits (0)</div>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <select class="fims-select fims-input-sm" id="colTypeFilter" style="width:140px;">
+                    <option value="">All Types</option>
+                    <option value="collection">Collections</option>
+                    <option value="deposit">Deposits</option>
+                </select>
+                <input type="text" class="fims-input fims-input-sm" id="colSearch" placeholder="Search Collecting Office, Region, GL Account, or Bank…" style="max-width:300px;">
+                <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="colRegisterBtn">
+                    <i class="fas fa-plus mr-1"></i>Register Collection / Deposit
+                </button>
             </div>
         </div>
-        <div class="fims-table-panel">
-            <div class="fims-panel-header">
-                <div class="fims-panel-title" id="colDepositsSubtitle">Deposits (0)</div>
-                <div style="display:flex;gap:8px;align-items:center;">
-                    <input type="text" class="fims-input fims-input-sm" id="colDepositsSearch" placeholder="Search Collecting Office, Region, or Bank…" style="max-width:300px;">
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="colRegisterDepositBtn">
-                        <i class="fas fa-plus mr-1"></i>Register Deposit
-                    </button>
-                </div>
-            </div>
-            <div class="fims-table-wrap">
-                <table class="fims-table" id="colDepositsTable">
-                    <thead>
-                        <tr>
-                            <th style="width:36px">#</th>
-                            <th>Date</th>
-                            <th>Region / Office</th>
-                            <th>Collecting Office</th>
-                            <th>Bank Account</th>
-                            <th>Period Covered</th>
-                            <th class="text-right">Amount</th>
-                            <th class="text-center">Swept</th>
-                            <th class="text-center" style="width:80px">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="colDepositsBody"><tr class="fims-empty"><td colspan="9">Loading…</td></tr></tbody>
-                </table>
-            </div>
+        <div class="fims-table-wrap">
+            <table class="fims-table" id="colTable">
+                <thead>
+                    <tr>
+                        <th style="width:36px">#</th>
+                        <th>Date</th>
+                        <th>Region / Office</th>
+                        <th>Collecting Office</th>
+                        <th style="width:90px">Type</th>
+                        <th>Detail</th>
+                        <th class="text-right">Amount</th>
+                        <th class="text-center" style="width:80px">Swept</th>
+                        <th class="text-center" style="width:80px">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="colTableBody"><tr class="fims-empty"><td colspan="9">Loading…</td></tr></tbody>
+            </table>
         </div>
     </div>
 
@@ -135,7 +101,7 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css')
         <div class="fims-modal-dialog u-modal-2xl">
             <div class="fims-modal-content" style="max-height:92vh;">
                 <div class="fims-modal-header">
-                    <div><div class="fims-modal-title" id="colModalTitle">Register Collection Report</div></div>
+                    <div><div class="fims-modal-title">Register Collection &amp; Deposit</div></div>
                     <button class="fims-modal-close" data-close="m-col-report">&times;</button>
                 </div>
                 <div class="fims-modal-body">
@@ -174,11 +140,12 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css')
                          same itemized-table convention as bank-management-page.php's
                          Restricted Funds editor (field-rf-table there). Independent
                          total from the Deposit section below — see
-                         CollectionsService's docblock. Hidden entirely in
-                         'deposits'-mode registration (see colSetFormMode()) — a
-                         section with no rows in it just submits an empty array,
-                         so hiding it is all that's needed to make that side
-                         optional on save, no extra client-side bookkeeping. -->
+                         CollectionsService's docblock. Always shown alongside Deposit
+                         now (one combined Register action, not two) — left with no
+                         rows in it, it just submits an empty array, which is all
+                         CollectionsService::store() needs to make this side optional
+                         (it only requires AT LEAST ONE of the two sections to have a
+                         line, not both). -->
                     <div id="col-lines-section">
                         <div class="fims-form-section-title" style="margin-top:14px;">Collection(s)</div>
                         <div style="overflow-x:auto;">
@@ -194,8 +161,9 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css')
                     </div>
 
                     <!-- "Deposit" — Bank + Period Covered (From/To) + Amount, dynamic
-                         rows. Hidden entirely in 'collections'-mode registration —
-                         same reasoning as col-lines-section above. -->
+                         rows. Always shown alongside Collection(s) now — same
+                         "optional, not hidden-to-become-optional" reasoning as
+                         col-lines-section above. -->
                     <div id="col-deposits-section">
                         <div style="display:grid;grid-template-columns:1fr 380px;gap:16px;align-items:start;">
                             <div style="min-width:0;">
@@ -383,10 +351,44 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css')
         });
     });
 
-    let glAccounts = [];
+    let glAccounts = [];       // curated whitelist (CollectionsService::COLLECTION_ACCOUNT_CODES) — the default
+    let glAccountsAll = null;  // full postable COA, lazy-loaded only once "Show other accounts" is first checked
+    let colShowAllAccounts = false;
     let bankAccounts = [];
     let regions = [];
     let collectingOfficers = [];
+
+    // Resolves an already-picked account_id regardless of which list is
+    // currently active for searching — once the full list has been loaded
+    // it's a superset of the curated one, so a row picked while "Show other
+    // accounts" was on still displays correctly even after unchecking it.
+    function colResolveAccount(id) {
+        return (glAccountsAll || glAccounts).find(a => String(a.account_id) === String(id));
+    }
+    // What the type-to-filter combobox searches/lists — the curated
+    // whitelist by default, the full COA once "Show other accounts" (a row
+    // in the dropdown itself, not a separate control — see
+    // wireColLineCoaSearch()'s renderDropdown()) has been picked at least
+    // once this session.
+    function colAccountSearchPool() {
+        return (colShowAllAccounts && glAccountsAll) ? glAccountsAll : glAccounts;
+    }
+    // Lazy-loads the full postable COA on first need, cached afterward —
+    // shared by every row's dropdown (picking it in one row switches the
+    // pool for all of them, same as the old page-level checkbox did).
+    function colLoadAllGlAccounts() {
+        if (glAccountsAll) return Promise.resolve(glAccountsAll);
+        return fetch(API + '/lookup/gl-accounts?all=1', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                glAccountsAll = (json && json.success && Array.isArray(json.data)) ? json.data : [];
+                return glAccountsAll;
+            })
+            .catch(function () {
+                toast('Could not load the full account list.', true);
+                return glAccounts;
+            });
+    }
 
     // ── "Collection(s)" dynamic rows (Account Code + Amount) ──
     // The Account Code picker is a type-to-filter combobox, not a plain
@@ -405,7 +407,7 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css')
     }
     function renderColLineRow(coaAccountId, amount) {
         const tr = document.createElement('tr');
-        const account = glAccounts.find(a => String(a.account_id) === String(coaAccountId || ''));
+        const account = colResolveAccount(coaAccountId);
         tr.innerHTML =
             '<td>' +
                 '<input type="hidden" class="col-line-coa" value="' + (coaAccountId || '') + '">' +
@@ -465,12 +467,30 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css')
         }
         function renderDropdown(query) {
             const q = query.trim().toLowerCase();
-            const matches = (q ? glAccounts.filter(a =>
+            const showingAll = colShowAllAccounts && glAccountsAll;
+            const pool = colAccountSearchPool();
+            const matches = (q ? pool.filter(a =>
                 a.account_code.toLowerCase().includes(q) || a.account_title.toLowerCase().includes(q) ||
                 (a.parent_code || '').toLowerCase().includes(q) || (a.parent_title || '').toLowerCase().includes(q)
-            ) : glAccounts).slice(0, 50);
+            ) : pool).slice(0, 50);
+
+            // Last item in the list, not a separate control — a toggle, not a
+            // one-way action: picking "Show other accounts" loads the full COA
+            // (once, cached) and switches the shared pool every row's dropdown
+            // searches against; "Back to default accounts" switches back to
+            // the curated list without forgetting glAccountsAll (no re-fetch
+            // needed to switch forward again later). Either way, re-renders
+            // this same dropdown still filtered by whatever's currently typed.
+            const showOtherHtml = showingAll
+                ? '<div class="col-line-coa-show-other" style="padding:7px 12px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--afims-primary-text,#0035A9);">' +
+                    '<i class="fas fa-rotate-left mr-1"></i>Back to default accounts' +
+                  '</div>'
+                : '<div class="col-line-coa-show-other" style="padding:7px 12px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--afims-primary-text,#0035A9);">' +
+                    '<i class="fas fa-ellipsis-h mr-1"></i>Show other accounts' +
+                  '</div>';
+
             if (!matches.length) {
-                dropdown.innerHTML = '<div style="padding:8px 12px;font-size:12px;color:var(--fims-text-subtle);">No matching accounts</div>';
+                dropdown.innerHTML = '<div style="padding:8px 12px;font-size:12px;color:var(--fims-text-subtle);">No matching accounts</div>' + showOtherHtml;
             } else {
                 // SL code (this account's own code) leads, bold, on its own
                 // line; the GL parent it rolls up to sits beneath it, small
@@ -481,15 +501,32 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css')
                         '<div><strong>' + escapeHtml(a.account_code) + '</strong> — ' + escapeHtml(a.account_title) + '</div>' +
                         (a.parent_code ? '<div style="font-size:11px;color:var(--fims-text-subtle,#99A1B3);margin-top:1px;">GL: ' + escapeHtml(a.parent_code) + ' — ' + escapeHtml(a.parent_title) + '</div>' : '') +
                     '</div>'
-                ).join('');
+                ).join('') + showOtherHtml;
                 dropdown.querySelectorAll('.col-line-coa-item').forEach(function (item) {
                     item.addEventListener('mouseover', () => item.style.background = '#F4F7FA');
                     item.addEventListener('mouseout', () => item.style.background = 'transparent');
                     item.addEventListener('click', function () {
-                        const account = glAccounts.find(a => String(a.account_id) === this.dataset.id);
+                        const account = colResolveAccount(this.dataset.id);
                         hidden.value = this.dataset.id;
                         search.value = colLineLabel(account);
                         dropdown.style.display = 'none';
+                    });
+                });
+            }
+            const showOtherEl = dropdown.querySelector('.col-line-coa-show-other');
+            if (showOtherEl) {
+                showOtherEl.addEventListener('mouseover', () => showOtherEl.style.background = '#F4F7FA');
+                showOtherEl.addEventListener('mouseout', () => showOtherEl.style.background = 'transparent');
+                showOtherEl.addEventListener('click', function () {
+                    if (showingAll) {
+                        colShowAllAccounts = false;
+                        renderDropdown(search.value);
+                        return;
+                    }
+                    showOtherEl.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Loading…';
+                    colLoadAllGlAccounts().then(function () {
+                        colShowAllAccounts = true;
+                        renderDropdown(search.value);
                     });
                 });
             }
@@ -929,109 +966,25 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css')
         recalcColDepositsTotal();
     }
 
-    // ── Top-level tabs ── (same fims-tabs-underline convention as
-    // app/pages/fidelity-bond-page.php's #fbTabNav) — Collections tab loads
-    // immediately on boot; Deposits is lazy-loaded on first switch.
-    const colLoaded = { collections: false, deposits: false };
-    document.querySelectorAll('#colTabNav [data-col-tab]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            document.querySelectorAll('#colTabNav .fims-tab-underline').forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-            const tab = this.dataset.colTab;
-            document.getElementById('colTabCollections').style.display = tab === 'collections' ? '' : 'none';
-            document.getElementById('colTabDeposits').style.display = tab === 'deposits' ? '' : 'none';
-            if (tab === 'collections' && !colLoaded.collections) { colLoaded.collections = true; loadCollectionsList(); }
-            if (tab === 'deposits' && !colLoaded.deposits) { colLoaded.deposits = true; loadDepositsList(); }
-        });
-    });
-    // Both the Register/Edit modal's Save and Delete reload whichever of
-    // these two lists has already been loaded, so switching back to a tab
-    // visited earlier in this session shows the fresh data without an
-    // extra round-trip for a tab that was never opened.
-    function refreshColLists() {
-        if (colLoaded.collections) loadCollectionsList();
-        if (colLoaded.deposits) loadDepositsList();
-    }
+    // ── Collections & Deposits — merged into one list/table. Both fetched
+    // together on load/search (CollectionsService::getCollectionsList() +
+    // getDepositsList()); colCollectionGroups/colDepositRows are cached so
+    // the Type filter can re-render instantly without a round-trip.
+    //
+    // No Deposited/Not Deposited status on a Collection row — a Deposit
+    // isn't recorded against the same collection_report_id as the
+    // Collection(s) it covers ("Register Deposit" always creates its own
+    // separate Collection Report row — see CollectionsService's own
+    // docblock), so there's no reliable way to tell which specific report a
+    // given deposit actually settled. An earlier attempt inferred it by
+    // matching region-level totals oldest-first, but that's a guess dressed
+    // up as a fact — it can (and did) mislabel a report as "Fully
+    // Deposited" just because the totals happened to add up, not because
+    // that money actually went there.
+    let colCollectionGroups = [];
+    let colDepositRows = [];
 
-    // ── Collections tab ──
-    // No Deposited/Not Deposited status here — a Deposit isn't recorded
-    // against the same collection_report_id as the Collection(s) it covers
-    // ("Register Deposit" always creates its own separate Collection Report
-    // row — see CollectionsService's own docblock), so there's no reliable
-    // way to tell which specific report a given deposit actually settled.
-    // An earlier attempt inferred it by matching region-level totals
-    // oldest-first, but that's a guess dressed up as a fact — it can (and
-    // did) mislabel a report as "Fully Deposited" just because the totals
-    // happened to add up, not because that money actually went there.
-    function loadCollectionsList() {
-        const tbody = document.getElementById('colCollectionsBody');
-        tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">Loading…</td></tr>';
-        const q = document.getElementById('colCollectionsSearch').value.trim();
-        fetch(API + '/collections-list?search=' + encodeURIComponent(q), { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const rows = (json && json.data) ? json.data : [];
-                let total = 0;
-                rows.forEach(function (r) { total += parseFloat(r.amount) || 0; });
-                document.querySelector('#colCollectionsStats [data-kpi="total"]').textContent = rows.length;
-                document.querySelector('#colCollectionsStats [data-kpi="total_amount"]').textContent = fmtPeso(total);
-
-                // Each API row is one GL line; group them back by their parent
-                // Collection Report so one Register Collection submission reads
-                // as one row (with its GL lines stacked inside), instead of
-                // repeating the Date/Region/Office/Actions once per line.
-                const groupsById = {};
-                const groupOrder = [];
-                rows.forEach(function (r) {
-                    const key = r.collection_report_id;
-                    if (!groupsById[key]) {
-                        groupsById[key] = { report_date: r.report_date, rc_code: r.rc_code, rc_name: r.rc_name, collecting_office: r.collecting_office, collection_report_id: r.collection_report_id, lines: [], amount: 0 };
-                        groupOrder.push(key);
-                    }
-                    groupsById[key].lines.push(r);
-                    groupsById[key].amount += parseFloat(r.amount) || 0;
-                });
-                const groups = groupOrder.map(function (k) { return groupsById[k]; });
-
-                document.getElementById('colCollectionsSubtitle').textContent = 'Collections (' + groups.length + ')';
-
-                if (!groups.length) {
-                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">No records.</td></tr>';
-                    return;
-                }
-                tbody.innerHTML = groups.map(function (g, i) {
-                    const regionLabel = g.rc_code ? escapeHtml(g.rc_code + ' — ' + g.rc_name) : '—';
-                    const glLabel = g.lines.map(function (l) {
-                        return l.account_code ? escapeHtml(l.account_code + ' — ' + (l.account_title || '')) : '—';
-                    }).join('<br>');
-                    const amountLabel = g.lines.length > 1
-                        ? g.lines.map(function (l) { return fmtPeso(l.amount); }).join('<br>') + '<br><strong>' + fmtPeso(g.amount) + '</strong>'
-                        : fmtPeso(g.amount);
-                    return '<tr>' +
-                        '<td>' + (i + 1) + '</td>' +
-                        '<td>' + escapeHtml(g.report_date || '—') + '</td>' +
-                        '<td>' + regionLabel + '</td>' +
-                        '<td>' + escapeHtml(g.collecting_office || '—') + '</td>' +
-                        '<td>' + glLabel + '</td>' +
-                        '<td class="text-right">' + amountLabel + '</td>' +
-                        '<td class="text-center">' +
-                            '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-jev="' + g.collection_report_id + '" title="Create Collection JEV (Dr Cash-Collecting Officers / Cr Collection lines)"><i class="fas fa-file-invoice-dollar"></i></button>' +
-                        '</td>' +
-                        '</tr>';
-                }).join('');
-                tbody.querySelectorAll('[data-jev]').forEach(function (btn) {
-                    btn.addEventListener('click', function () { openJevModal(this.dataset.jev, 'collection'); });
-                });
-            })
-            .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">Could not reach the server.</td></tr>'; });
-    }
-    document.getElementById('colCollectionsSearch').addEventListener('input', function () {
-        clearTimeout(window._colCollectionsSearchTimer);
-        window._colCollectionsSearchTimer = setTimeout(loadCollectionsList, 300);
-    });
-
-    // ── Deposits tab ──
-    // is_swept is per-deposit now (not the parent report's aggregate), so
+    // is_swept is per-deposit (not the parent report's aggregate), so
     // there's no "Partially Swept" state here the way the old combined
     // report list needed — just Swept/Not Swept per row.
     function depositSweptBadge(isSwept) {
@@ -1040,52 +993,122 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css')
             : '<span class="fims-badge fims-badge-gray">Not Swept</span>';
     }
 
-    function loadDepositsList() {
-        const tbody = document.getElementById('colDepositsBody');
+    function loadCollectionsAndDeposits() {
+        const tbody = document.getElementById('colTableBody');
         tbody.innerHTML = '<tr class="fims-empty"><td colspan="9">Loading…</td></tr>';
-        const q = document.getElementById('colDepositsSearch').value.trim();
-        fetch(API + '/deposits-list?search=' + encodeURIComponent(q), { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const rows = (json && json.data) ? json.data : [];
-                document.getElementById('colDepositsSubtitle').textContent = 'Deposits (' + rows.length + ')';
-                let total = 0;
-                rows.forEach(function (r) { total += parseFloat(r.amount) || 0; });
-                document.querySelector('#colDepositsStats [data-kpi="total"]').textContent = rows.length;
-                document.querySelector('#colDepositsStats [data-kpi="total_amount"]').textContent = fmtPeso(total);
+        const q = document.getElementById('colSearch').value.trim();
+        Promise.all([
+            fetch(API + '/collections-list?search=' + encodeURIComponent(q), { headers: authHeaders() }).then(r => r.json()),
+            fetch(API + '/deposits-list?search=' + encodeURIComponent(q), { headers: authHeaders() }).then(r => r.json()),
+        ])
+            .then(function (results) {
+                const collectionLines = (results[0] && results[0].data) ? results[0].data : [];
+                colDepositRows = (results[1] && results[1].data) ? results[1].data : [];
 
-                if (!rows.length) {
-                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="9">No records.</td></tr>';
-                    return;
-                }
-                tbody.innerHTML = rows.map(function (r, i) {
-                    const regionLabel = r.rc_code ? escapeHtml(r.rc_code + ' — ' + r.rc_name) : '—';
-                    const bankLabel = r.account_name ? escapeHtml(r.account_name + (r.bank_name ? ' (' + r.bank_name + ')' : '')) : '—';
-                    const period = (r.period_from || r.period_to) ? escapeHtml((r.period_from || '—') + ' to ' + (r.period_to || '—')) : '—';
-                    return '<tr>' +
-                        '<td>' + (i + 1) + '</td>' +
-                        '<td>' + escapeHtml(r.report_date || '—') + '</td>' +
-                        '<td>' + regionLabel + '</td>' +
-                        '<td>' + escapeHtml(r.collecting_office || '—') + '</td>' +
-                        '<td>' + bankLabel + '</td>' +
-                        '<td>' + period + '</td>' +
-                        '<td class="text-right">' + fmtPeso(r.amount) + '</td>' +
-                        '<td class="text-center">' + depositSweptBadge(r.is_swept) + '</td>' +
-                        '<td class="text-center">' +
-                            '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-jev="' + r.collection_report_id + '" title="Create Deposit JEV (Dr bank GL accounts / Cr Cash-Collecting Officers)"><i class="fas fa-university"></i></button>' +
-                        '</td>' +
-                        '</tr>';
-                }).join('');
-                tbody.querySelectorAll('[data-jev]').forEach(function (btn) {
-                    btn.addEventListener('click', function () { openJevModal(this.dataset.jev, 'deposit'); });
+                // Each Collection API row is one GL line; group them back by their
+                // parent Collection Report so one Register Collection submission
+                // reads as one row (with its GL lines stacked inside), instead of
+                // repeating the Date/Region/Office once per line.
+                const groupsById = {};
+                const groupOrder = [];
+                collectionLines.forEach(function (r) {
+                    const key = r.collection_report_id;
+                    if (!groupsById[key]) {
+                        groupsById[key] = { report_date: r.report_date, rc_code: r.rc_code, rc_name: r.rc_name, collecting_office: r.collecting_office, collection_report_id: r.collection_report_id, lines: [], amount: 0 };
+                        groupOrder.push(key);
+                    }
+                    groupsById[key].lines.push(r);
+                    groupsById[key].amount += parseFloat(r.amount) || 0;
                 });
+                colCollectionGroups = groupOrder.map(function (k) { return groupsById[k]; });
+
+                renderColTable();
             })
             .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="9">Could not reach the server.</td></tr>'; });
     }
-    document.getElementById('colDepositsSearch').addEventListener('input', function () {
-        clearTimeout(window._colDepositsSearchTimer);
-        window._colDepositsSearchTimer = setTimeout(loadDepositsList, 300);
+
+    function renderColTable() {
+        const tbody = document.getElementById('colTableBody');
+        const typeFilter = document.getElementById('colTypeFilter').value;
+
+        let collectionsAmount = 0;
+        colCollectionGroups.forEach(function (g) { collectionsAmount += g.amount; });
+        let depositsAmount = 0;
+        colDepositRows.forEach(function (r) { depositsAmount += parseFloat(r.amount) || 0; });
+        document.querySelector('#colStats [data-kpi="collections_total"]').textContent = colCollectionGroups.length;
+        document.querySelector('#colStats [data-kpi="collections_amount"]').textContent = fmtPeso(collectionsAmount);
+        document.querySelector('#colStats [data-kpi="deposits_total"]').textContent = colDepositRows.length;
+        document.querySelector('#colStats [data-kpi="deposits_amount"]').textContent = fmtPeso(depositsAmount);
+
+        const combined = [];
+        if (typeFilter !== 'deposit') colCollectionGroups.forEach(function (g) { combined.push(Object.assign({ _type: 'collection' }, g)); });
+        if (typeFilter !== 'collection') colDepositRows.forEach(function (r) { combined.push(Object.assign({ _type: 'deposit' }, r)); });
+        combined.sort(function (a, b) { return (b.report_date || '').localeCompare(a.report_date || ''); });
+
+        document.getElementById('colSubtitle').textContent = 'Collections & Deposits (' + combined.length + ')';
+
+        if (!combined.length) {
+            tbody.innerHTML = '<tr class="fims-empty"><td colspan="9">No records.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = combined.map(function (row, i) {
+            const regionLabel = row.rc_code ? escapeHtml(row.rc_code + ' — ' + row.rc_name) : '—';
+
+            if (row._type === 'collection') {
+                const glLabel = row.lines.map(function (l) {
+                    return l.account_code ? escapeHtml(l.account_code + ' — ' + (l.account_title || '')) : '—';
+                }).join('<br>');
+                const amountLabel = row.lines.length > 1
+                    ? row.lines.map(function (l) { return fmtPeso(l.amount); }).join('<br>') + '<br><strong>' + fmtPeso(row.amount) + '</strong>'
+                    : fmtPeso(row.amount);
+                return '<tr>' +
+                    '<td>' + (i + 1) + '</td>' +
+                    '<td>' + escapeHtml(row.report_date || '—') + '</td>' +
+                    '<td>' + regionLabel + '</td>' +
+                    '<td>' + escapeHtml(row.collecting_office || '—') + '</td>' +
+                    '<td><span class="fims-badge fims-badge-green">Collection</span></td>' +
+                    '<td>' + glLabel + '</td>' +
+                    '<td class="text-right">' + amountLabel + '</td>' +
+                    '<td class="text-center">—</td>' +
+                    '<td class="text-center">' +
+                        '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-jev="' + row.collection_report_id + '" data-jev-type="collection" title="Create Collection JEV (Dr Cash-Collecting Officers / Cr Collection lines)"><i class="fas fa-file-invoice-dollar"></i></button>' +
+                    '</td>' +
+                    '</tr>';
+            }
+
+            const bankLabel = row.account_name ? escapeHtml(row.account_name + (row.bank_name ? ' (' + row.bank_name + ')' : '')) : '—';
+            const period = (row.period_from || row.period_to) ? escapeHtml((row.period_from || '—') + ' to ' + (row.period_to || '—')) : '—';
+            return '<tr>' +
+                '<td>' + (i + 1) + '</td>' +
+                '<td>' + escapeHtml(row.report_date || '—') + '</td>' +
+                '<td>' + regionLabel + '</td>' +
+                '<td>' + escapeHtml(row.collecting_office || '—') + '</td>' +
+                '<td><span class="fims-badge fims-badge-amber">Deposit</span></td>' +
+                '<td>' + bankLabel + '<br><span style="font-size:11px;color:var(--fims-text-muted,#6B7280);">' + period + '</span></td>' +
+                '<td class="text-right">' + fmtPeso(row.amount) + '</td>' +
+                '<td class="text-center">' + depositSweptBadge(row.is_swept) + '</td>' +
+                '<td class="text-center">' +
+                    '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-jev="' + row.collection_report_id + '" data-jev-type="deposit" title="Create Deposit JEV (Dr bank GL accounts / Cr Cash-Collecting Officers)"><i class="fas fa-university"></i></button>' +
+                '</td>' +
+                '</tr>';
+        }).join('');
+
+        tbody.querySelectorAll('[data-jev]').forEach(function (btn) {
+            btn.addEventListener('click', function () { openJevModal(this.dataset.jev, this.dataset.jevType); });
+        });
+    }
+
+    document.getElementById('colSearch').addEventListener('input', function () {
+        clearTimeout(window._colSearchTimer);
+        window._colSearchTimer = setTimeout(loadCollectionsAndDeposits, 300);
     });
+    document.getElementById('colTypeFilter').addEventListener('change', renderColTable);
+
+    // Register/Edit modal's Save and Delete both call this to refresh the list.
+    function refreshColLists() {
+        loadCollectionsAndDeposits();
+    }
 
     // ── Register / Edit modal ──
     function clearReportModal() {
@@ -1094,6 +1117,7 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css')
         document.getElementById('col_collecting_officer_id').innerHTML = '<option value="">— Select Region first —</option>';
         document.getElementById('col_collecting_office').value = '';
         document.getElementById('col_report_date').value = '';
+        colShowAllAccounts = false;
         colLoadCollectedForRegion('');
         // Each row's Account Code / Bank dropdown lives on <body> (see
         // wireColLineCoaSearch()'s comment), not inside col-lines-body /
@@ -1106,32 +1130,20 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css')
         recalcColDepositsTotal();
     }
 
-    // Registering from the Collections tab only shows/requires the
-    // Collection(s) section; from the Deposits tab, only Deposit. A section
-    // that's hidden is also never given a default blank row, so it submits
-    // as an empty array — CollectionsService::store() only requires AT LEAST
-    // ONE of the two sections to have a line, not both (see its own comment).
-    function colSetFormMode(mode) {
-        document.getElementById('col-lines-section').style.display = mode === 'deposits' ? 'none' : '';
-        document.getElementById('col-deposits-section').style.display = mode === 'collections' ? 'none' : '';
-    }
-
     // Register-only — a saved Collection/Deposit report can no longer be reopened for editing (no
     // UI entry point calls this with an id anymore), so there's nothing left to correct a mistake
-    // except registering a new report. mode is 'collections' or 'deposits' (see colSetFormMode()).
-    window.openReportModal = function (mode) {
+    // except registering a new report. One combined Register action now (not a separate
+    // Collection-only/Deposit-only mode) — both sections always show; either can still be left
+    // empty, since CollectionsService::store() only requires AT LEAST ONE of the two sections to
+    // have a line, not both (see its own comment).
+    window.openReportModal = function () {
         clearReportModal();
-        mode = mode || 'full';
-        colSetFormMode(mode);
-        document.getElementById('colModalTitle').textContent =
-            mode === 'collections' ? 'Register Collection' : mode === 'deposits' ? 'Register Deposit' : 'Register Collection Report';
-        if (mode !== 'deposits') addColLineRow('', 0);
-        if (mode !== 'collections') addColDepositRow('', '', '', 0);
+        addColLineRow('', 0);
+        addColDepositRow('', '', '', 0);
         openModal('m-col-report');
     };
 
-    document.getElementById('colRegisterCollectionBtn').addEventListener('click', function () { openReportModal('collections'); });
-    document.getElementById('colRegisterDepositBtn').addEventListener('click', function () { openReportModal('deposits'); });
+    document.getElementById('colRegisterBtn').addEventListener('click', openReportModal);
 
     document.getElementById('colSaveBtn').addEventListener('click', function () {
         const id = document.getElementById('col_report_id').value;
@@ -1142,10 +1154,9 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css')
         const lines = getColLines();
         const deposits = getColDeposits();
         const hasSweptDeposit = document.querySelector('#col-deposits-body tr[data-swept="1"]') !== null;
-        // A dedicated Register Collection / Register Deposit form only has
-        // its own section to fill — see colSetFormMode() — so only requires
-        // ONE of the two sections to have a line, matching the server-side
-        // relaxation in CollectionsService::store()/update().
+        // Either section can be left empty — only requires ONE of the two to
+        // have a line, matching the server-side relaxation in
+        // CollectionsService::store()/update().
         if (!lines.length && !deposits.length && !hasSweptDeposit) {
             toast('At least one Collection line or Deposit line is required.', true);
             return;
@@ -1282,6 +1293,6 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css')
             .catch(function () { toast('Could not reach the server.', true); btn.disabled = false; });
     });
 
-    loadLookups().then(function () { colLoaded.collections = true; loadCollectionsList(); });
+    loadLookups().then(function () { loadCollectionsAndDeposits(); });
 })();
 </script>

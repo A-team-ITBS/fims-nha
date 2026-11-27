@@ -56,17 +56,6 @@ $app->get("/bank-management/fund-sweep/deposits", function ($request, $response)
     return $response->withHeader('Content-Type', 'application/json')->write($service->getFundSweepDepositBreakdown($p['bank_account_id'] ?? 0));
 });
 
-$app->get("/bank-management/fund-sweep/settings", function ($request, $response) {
-    $service = new Service\BankManagementService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->getFundSweepSettings());
-});
-
-$app->post("/bank-management/fund-sweep/settings", function ($request, $response) {
-    $data = $request->getParsedBody();
-    $service = new Service\BankManagementService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->updateFundSweepSettings((array) $data));
-});
-
 $app->post("/bank-management/store", function ($request, $response) {
     $data = $request->getParsedBody();
     $service = new Service\BankManagementService();
