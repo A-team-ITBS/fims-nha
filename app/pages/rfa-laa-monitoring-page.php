@@ -7,7 +7,7 @@ namespace PHPMaker2024\FIMS;
  * Revised Amount.
  *
  * One tree table over the Approved budget requests that STARTS AT THE PROJECT: every project is a top-level row (no Program / Sub-Program /
- * Originating Unit rows above it — where a project sits is a muted line under its name) and its children are the RFAs / LAAs, then the voucher of an
+ * Region rows above it — where a project sits is a muted line under its name) and its children are the RFAs / LAAs, then the voucher of an
  * RFA — with the columns
  *   Revised Amount · RFA / LAA Amount · Disbursement · Unallocated Amount · Account Payable
  * (CobService works the figures out per budget line; see its header comment for each definition). The Revised Amount is the same figure as the COB
@@ -19,7 +19,8 @@ namespace PHPMaker2024\FIMS;
  * Disbursement is what the disbursement vouchers connected to the RFAs / LAAs have disbursed (each voucher's gross_amount, a cancelled or rejected one
  * not counted), and it is part of every total — the project rows, the TOTAL and the cards. Account Payable is the RFA / LAA Amount less the Disbursement.
  *
- * The server still answers with its Program > Sub-Program > Originating Unit > Project tree (layout_by=program, so every filter and the totals work as
+ * The server still answers with its Program > Sub-Program > Region > Project tree (the Region is the one attached to the project, fims.project.rc_id — else the
+ * office that filed the request; layout_by=program, so every filter and the totals work as
  * before); the page lifts the projects out of it, in that same order, so a program's projects stay together.
  *
  * CO and COE: the tree is asked for with split_coe=1, so it comes in two halves and the page keeps them apart as two rows, each with its own figures.
@@ -268,7 +269,7 @@ $_rlm_showNote = false;
             </table>
         </div>
         <?php if ($_rlm_showNote) { ?>
-        <p class="rlm-note">Each row is a project of an <strong>Approved</strong> budget request; under the project's name is where it sits (program › sub-program › originating unit). <strong>Revised Amount</strong> is the approved budget (as FMD suggested it) net of its revisions and realignments (a decrease lowers it) — the same figure as on the COB page.
+        <p class="rlm-note">Each row is a project of an <strong>Approved</strong> budget request; under the project's name is where it sits (program › sub-program › region). <strong>Revised Amount</strong> is the approved budget (as FMD suggested it) net of its revisions and realignments (a decrease lowers it) — the same figure as on the COB page.
             <strong>RFA / LAA Amount</strong> is what approved RFAs and issued LAAs have drawn from the CBAs' reservations, and <strong>Unallocated Amount</strong> is the remaining balance: the
             Revised Amount less CBA Requested (what the CBAs hold, which already includes those draws) — the same figure as the COB page's Remaining Balance. <strong>Disbursement</strong> is the gross amount of the disbursement vouchers connected to the RFAs and LAAs (a cancelled or rejected voucher is not counted) and is included in every total, and <strong>Account Payable</strong> is the RFA / LAA Amount less it. Open a project to see
             <?php if ($_rlm_showRevisions) { ?>the approved <strong>revisions and realignments</strong> recorded against it (one row each, its signed amount in the Revised Amount column, − in red and + in green — a realignment has an <strong>out</strong> row and an <strong>in</strong> row, both under the project when they are in the same one) and <?php } ?>the RFAs and LAAs drawn against it, and an RFA or LAA that has a disbursement voucher connected (a "1 DV" tag) to see it. A dash means zero; brackets mean negative.
@@ -291,7 +292,7 @@ include __DIR__.'/readone/cob-readone.php';
    RFA / LAA MONITORING   prefix: rlm_   (read-only)
    The COB page's roll-up with its own five amount columns. Backed by CobService → app/routes/cob.php:
      GET /cob/filters   the filter drop-downs        GET /cob/summary   the KPI cards
-     GET /cob/rollup?layout_by=program   the tree (Program > Sub-Program > Originating Unit > Project)
+     GET /cob/rollup?layout_by=program   the tree (Program > Sub-Program > Region > Project)
    and, for the View modal, GET /cob/read/{id} (readone/cob-readone.php → window.cobModal).
    The table STARTS AT THE PROJECT: rlm_projectsOf() lifts the projects out of that tree (same order, so a program's projects stay together) and they are
    the rows under CO; the levels above them survive only as the muted line under a project's name. The tree is asked for with split_coe=1, so it has two
@@ -599,7 +600,7 @@ function rlm_nodeLabel(n) {
     if (n.type === 'project' || n.type === 'request') {
         // line 1: the project name (a COE request: its reference number) and its supporting documents
         if (n.attachment_count > 0) html += ` <span class="rlm-clip" title="${n.attachment_count} supporting document${n.attachment_count === 1 ? '' : 's'}">${RLM_CLIP}${n.attachment_count}</span>`;
-        // line 2 (muted): the fiscal year, then where the project sits — the levels this table no longer has rows for (program › sub-program › originating unit)
+        // line 2 (muted): the fiscal year, then where the project sits — the levels this table no longer has rows for (program › sub-program › region)
         const where = (n.trail || []).map(t => (t.type === 'program' || t.type === 'subprogram') && t.code ? `${t.code} — ${t.label}` : t.label).filter(Boolean).join(' › ');
         const fy = n.fiscal_yr ? `<span class="nha-bdg nha-bdg-gray nha-bdg-xs">FY ${rlm_esc(n.fiscal_yr)}</span>` : '';
         if (fy || where) html += `<span class="rlm-sub">${fy}${where ? `<span class="rlm-where">${rlm_esc(where)}</span>` : ''}</span>`;
@@ -630,7 +631,7 @@ function rlm_treeRow(n, depth, path, hasKids, open) {
         <td class="no-print">${view}</td></tr>`;
 }
 
-// The server answers Program > Sub-Program > Originating Unit > Project. This table starts at the project, so the projects are lifted out — in the tree's
+// The server answers Program > Sub-Program > Region > Project. This table starts at the project, so the projects are lifted out — in the tree's
 // own order — each carrying the nodes it sat under (`trail`) for its muted "where" line. A project's children (its RFAs / LAAs) come along untouched.
 // A COE request (the leaf of the COE half — it has no project) is lifted the same way.
 function rlm_projectsOf(nodes, trail = []) {
@@ -641,7 +642,7 @@ function rlm_projectsOf(nodes, trail = []) {
     }
     return out;
 }
-// With split_coe the server answers two roots: CO (Program > Sub-Program > Originating Unit > Project) and COE (PS / MOOE > Originating Unit > Request). Under each
+// With split_coe the server answers two roots: CO (Program > Sub-Program > Region > Project) and COE (PS / MOOE > Originating Unit > Request). Under each
 // root the leaves are lifted out as above; in the COE half the PS / MOOE rows stay, each holding its requests (their office on the muted line).
 function rlm_regroup(roots) {
     return roots.map(root => ({

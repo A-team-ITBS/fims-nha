@@ -20,26 +20,27 @@ $_jel_voucherView = 'Voucher';
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <style>
+    #jel-root :is(.nha-mono, .nha-amt, .u-font-mono, .fims-mono, .amt-cell) { font-family: var(--font-body); font-variant-numeric: tabular-nums; } /* plain zero, no dotted-zero glyph */
     #jel-root .jaf-line-total td { border-top: 2px solid var(--afims-border, #E2E4ED); font-weight: 700; }
-    #jel-root .jaf-line-total td.jaf-l-val { text-align: right; font-family: "IBM Plex Mono", monospace; }
-    #jel-root .jaf-remove-btn { background: none; border: none; cursor: pointer; color: var(--afims-danger, #C0392B); font-size: 16px; line-height: 1; padding: 4px 6px; border-radius: 5px; }
+    #jel-root .jaf-line-total td.jaf-l-val { text-align: right; font-family:var(--font-body);font-variant-numeric:tabular-nums; }
+    #jel-root .jaf-remove-btn { background: none; border: none; cursor: pointer; color: var(--afims-danger, #C0392B); font-size:var(--fs-lg); line-height: 1; padding: 4px 6px; border-radius: 5px; }
     #jel-root .jaf-remove-btn:hover { background: var(--afims-danger-soft, #FAE1E3); }
 
     /* Supporting Documents card — same convention as voucher/form.php's #vf-root .vf-card/.vf-dz/.vf-att-*. */
     #jel-root .jaf-card { background: var(--afims-surface, #fff); border: 1px solid var(--afims-border, #E4ECF2); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
-    #jel-root .jaf-card-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin: 0 0 12px; }
+    #jel-root .jaf-card-title { font-size:var(--fs-sm); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin: 0 0 12px; }
     #jel-root .jaf-dz { border: 2px dashed var(--afims-border, #E4ECF2); border-radius: 10px; padding: 18px; text-align: center; cursor: pointer; }
     #jel-root .jaf-dz.drag-over { border-color: var(--afims-primary, #0035A9); background: var(--afims-primary-soft, #E6EBF6); }
-    #jel-root .jaf-dz-hint { font-size: 11px; color: var(--afims-text-muted, #62657E); margin-top: 4px; }
+    #jel-root .jaf-dz-hint { font-size:var(--fs-xs); color: var(--afims-text-muted, #62657E); margin-top: 4px; }
     #jel-root .jaf-att-link-row { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
-    #jel-root .jaf-att-link-row input { flex: 1; font-size: 13px; padding: 8px 10px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px; box-sizing: border-box; }
+    #jel-root .jaf-att-link-row input { flex: 1; font-size:var(--fs-base); padding: 8px 10px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px; box-sizing: border-box; }
     #jel-root .jaf-att-link-row input#jaf-att-link-name { flex: 0 0 200px; }
     #jel-root .jaf-att-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
     #jel-root .jaf-att-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 8px; }
-    #jel-root .jaf-att-name { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #jel-root .jaf-att-name { flex: 1; font-size:var(--fs-base); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #jel-root .jaf-att-name a { color: var(--afims-primary-text, #0035A9); text-decoration: none; }
     #jel-root .jaf-att-name a:hover { text-decoration: underline; }
-    #jel-root .jaf-att-remove { background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 5px; }
+    #jel-root .jaf-att-remove { background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); font-size:var(--fs-lg); line-height: 1; padding: 2px 6px; border-radius: 5px; }
     #jel-root .jaf-att-remove:hover { background: var(--afims-danger-soft, #FAE1E3); }
 
     /* Actions column (last column — review-chain buttons + Print) stays visible without having to
@@ -62,16 +63,16 @@ $_jel_voucherView = 'Voucher';
     /* Actions dropdown menu — same convention as app/pages/budget-req-page.php's nha-tools-menu. */
     .nha-tools-menu { position:relative;display:inline-block; }
     .nha-menu-trigger { display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:6px;
-        font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--afims-border, #E4ECF2);
+        font-size:var(--fs-xs);font-weight:600;cursor:pointer;border:1px solid var(--afims-border, #E4ECF2);
         background:var(--afims-surface, #FFFFFF);color:var(--afims-text, #1A1B21);white-space:nowrap;
-        font-family:'IBM Plex Sans',sans-serif;transition:all .15s; }
+        font-family:var(--font-body);transition:all .15s; }
     .nha-menu-trigger:hover { background:var(--afims-surface-subtle, #F4F7FA);border-color:var(--afims-text-disabled, #A9AAB8); }
     .nha-menu-trigger svg { width:12px;height:12px;flex-shrink:0; }
     .nha-tools-dropdown { display:none;position:fixed;min-width:170px;background:var(--afims-surface, #FFFFFF);
         border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);
         z-index:9999;padding:4px 0; }
     .nha-tools-dropdown.open { display:block; }
-    .nha-menu-item { display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px;font-weight:500;
+    .nha-menu-item { display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:var(--fs-sm);font-weight:500;
         color:var(--afims-text, #1A1B21);text-decoration:none;white-space:nowrap;cursor:pointer;
         border:none;background:none;width:100%;text-align:left;transition:background .1s; }
     .nha-menu-item:hover { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-heading-fill, #000E3E); }
@@ -247,7 +248,7 @@ $_jel_voucherView = 'Voucher';
                 </div>
                 <button type="button" id="jaf-btn-addline" class="nha-btn nha-btn-ghost" style="margin-top:8px;" onclick="jaf_addLine()">+ Add Line</button>
                 <div style="margin-top:12px;">
-                    <span id="jaf-balance-msg" style="font-weight:600;font-size:13px;"></span>
+                    <span id="jaf-balance-msg" style="font-weight:600;font-size:var(--fs-base);"></span>
                 </div>
 
                 <!-- Review history — each endorse/approve step with its remarks (read-only; filled by jaf_loadForEdit). -->
@@ -276,7 +277,7 @@ $_jel_voucherView = 'Voucher';
                     <svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
                     <span id="jrm-error-msg"></span>
                 </div>
-                <p id="jrm-msg" style="margin:0 0 12px;font-size:13px;"></p>
+                <p id="jrm-msg" style="margin:0 0 12px;font-size:var(--fs-base);"></p>
                 <div class="nha-fg">
                     <label for="jrm-remarks">Remarks</label>
                     <textarea id="jrm-remarks" rows="3" style="width:100%;" placeholder="Add remarks (optional)…"></textarea>
@@ -374,7 +375,7 @@ function jel_renderTable(rows) {
         <td class="nha-mono">${jel_esc(r.jev_no) || '—'}</td>
         <td class="nha-td-date">${jel_fmtDate(r.jev_date)}</td>
         <td title="${jel_esc(r.source_module)}${r.doc_ref_no ? ' — ' + jel_esc(r.doc_ref_no) : ''}">
-            ${jel_esc(r.source_module) || '—'}${r.doc_ref_no ? '<br><span class="nha-mono" style="font-size:11px;color:var(--afims-text-muted,#62657E);">' + jel_esc(r.doc_ref_no) + '</span>' : ''}
+            ${jel_esc(r.source_module) || '—'}${r.doc_ref_no ? '<br><span class="nha-mono" style="font-size:var(--fs-xs);color:var(--afims-text-muted,#62657E);">' + jel_esc(r.doc_ref_no) + '</span>' : ''}
         </td>
         <td class="nha-mono">${r.dv_id ? `<a href="${JEL_VOUCHER_VIEW}?dv=${r.dv_id}" class="nha-tbl-link" onclick="event.stopPropagation()">${jel_esc(r.dv_no) || '—'}</a>` : '— (standalone)'}</td>
         <td style="max-width:220px;" title="${jel_esc(r.claimant_name)}">
@@ -855,9 +856,9 @@ function jaf_renderHistory(rows) {
     $jel('jaf-history-list').innerHTML = rows.map(h => {
         const step = JAF_HISTORY_STEP[h.status] || { role: '', action: h.status || '—' };
         return `<div class="jaf-att-row" style="align-items:flex-start;">
-            <div style="flex:1;font-size:13px;">
-                <div><strong>${jel_esc(h.actor_name) || '—'}</strong>${step.role ? ` <span style="color:var(--afims-text-muted,#62657E);font-size:12px;">· ${jel_esc(step.role)}</span>` : ''}</div>
-                <div style="margin-top:2px;"><span style="color:var(--afims-text-muted,#62657E);font-size:12px;">${jel_esc(step.action)}</span></div>
+            <div style="flex:1;font-size:var(--fs-base);">
+                <div><strong>${jel_esc(h.actor_name) || '—'}</strong>${step.role ? ` <span style="color:var(--afims-text-muted,#62657E);font-size:var(--fs-sm);">· ${jel_esc(step.role)}</span>` : ''}</div>
+                <div style="margin-top:2px;"><span style="color:var(--afims-text-muted,#62657E);font-size:var(--fs-sm);">${jel_esc(step.action)}</span></div>
                 <div style="margin-top:4px;white-space:pre-wrap;${h.remarks ? '' : 'color:var(--afims-text-muted,#62657E);font-style:italic;'}">${h.remarks ? jel_esc(h.remarks) : 'No remarks'}</div>
             </div>
         </div>`;

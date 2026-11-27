@@ -184,7 +184,7 @@ $_cob_showNote = false;
     </div>
 
     <!-- ── ROLL-UP: one tree per view, same eight columns. There is no tab bar: the page opens on Per Program (Program → Sub-Program →
-         Originating Unit → Project) and that is the only view on screen. The Per Region, Per Type of Fund and Per Component panels are still
+         Region → Project) and that is the only view on screen. The Per Region, Per Type of Fund and Per Component panels are still
          defined here (hidden, never loaded) so a tab bar can be put back without rebuilding them. ──────── -->
     <?php
     // The columns of the COB Monitoring sheet (key = what the API sends, in this order) — cob-page's JS carries the same list (COB_COLS).
@@ -199,7 +199,7 @@ $_cob_showNote = false;
         ['available_amount', 'Budget Balance Available for Earmarking', 'Revised Amount less Outstanding CBA, RFA Approved and LAA Issued — what a new CBA can still draw'],
     ];
     foreach ([
-        'program'     => 'CO: Program → Sub-Program → Originating Unit → Project · COE: PS / MOOE → Originating Unit → Request',
+        'program'     => 'CO: Program → Sub-Program → Region → Project · COE: PS / MOOE → Originating Unit → Request',
         'region'      => 'Region → Program → Sub-Program → Project',
         'fund_source' => 'Type of Fund → Component → Program → Sub-Program → Project',
         'component'   => 'Component → Type of Fund → Program → Sub-Program → Project',
@@ -285,14 +285,14 @@ if ($_cob_showReport) {
    The columns are shown in that order (COB_COLS / $_cob_cols), after Approved Amount and Amendment / Realignment; the keys the API sends keep their old names.
    Outstanding CBA, RFA Approved and LAA Issued are all summed by the server from fims.budget_line_item_earmark (BudgetLineBalanceSql::earmarkAggregateSql()), so they —
    and Budget Balance and Budget Balance Available for Earmarking, which are worked out from them — change as soon as a CBA / RFA / LAA is approved or deleted; this page only displays them.
-   CO and COE: the Per Program tree is asked for with split_coe=1 and so starts with two rows — CO (capital outlay: Program > Sub-Program > Originating Unit >
-   Project) and COE (the lines of a budget request that has no program, as PS / MOOE > Originating Unit > Request). A line is told apart by its account code:
+   CO and COE: the Per Program tree is asked for with split_coe=1 and so starts with two rows — CO (capital outlay: Program > Sub-Program > Region >
+   Project — the Region attached to the project (fims.project.rc_id), else the office that filed the request) and COE (the lines of a budget request that has no program, as PS / MOOE > Originating Unit > Request). A line is told apart by its account code:
    1… is CO, 5-01… is PS, 5-02… is MOOE; PS and MOOE are the COE (CobService::expenseClassSql() / costTypeOf()). Those are the 'bucket', 'class' and 'request' nodes.
    The server decides what each user may see (their RC and the RCs below it; FMD and administrators see all) — nothing here can widen it.
 ═══════════════════════════════════════════════════════════════ */
 
 const COB_API = '<?php echo $_cob_api; ?>' + '/cob';
-// The trees the page can show; the FIRST is the one it opens on (Per Program: Program > Sub-Program > Originating Unit > Project). There is no tab
+// The trees the page can show; the FIRST is the one it opens on (Per Program: Program > Sub-Program > Region > Project). There is no tab
 // bar, so only that one is ever loaded — the others are kept so a tab bar can come back.
 const COB_TABS = ['program', 'region', 'fund_source', 'component'];
 const COB_UNITS = {
