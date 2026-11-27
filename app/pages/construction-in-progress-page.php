@@ -488,7 +488,7 @@ function cip_view(i) {
             ${kv('Project Code', cip_dash(r.project_code))}${kv('Name of Project', cip_dash(r.project_name))}
             ${kv('Program', cip_dash(r.program_name))}${kv('Location', cip_dash(r.location))}
             ${kv('Contractor', cip_dash(r.contractor))}${kv('Contract', cip_dash(r.contract))}
-            ${kv('Area in SQM / Units', r.total_land_area === null || r.total_land_area === undefined || r.total_land_area === '' ? '—' : cip_money(r.total_land_area))}${kv('TCT Number', cip_dash(r.tct_number))}
+            ${kv('Area in SQM / Units', (v => v === null || v === undefined || v === '' ? '—' : Number(v).toLocaleString('en-PH', { maximumFractionDigits: 2 }) + ' sq.m.')(r.total_land_area))}${kv('TCT Number', cip_dash(r.tct_number))}
             ${kv('Category', cip_dash(r.category))}${kv('JEV', cip_dash(r.jev_no))}
         </div></div>
         <div class="cip-card"><h4>Contract Cost</h4><div class="cip-grid">
@@ -524,9 +524,14 @@ async function cip_transfer(i) {
     const r = cip_rows[i];
     if (!r) return;
     // an already transferred project goes to the Fixed Assets page (the account it was transferred to is one of its tabs), on that tab, filtered to this
-    // project, with its View window open. A transfer to an account that has no tab there (Investment Property) opens the read-only pro-forma instead.
+    // project, with its View window open. A transfer to Investment Property (1-05-01-010 / -020) goes to the Investment Property page.
     const faTabs = ['1-06-04-010', '1-06-09-020', '1-06-01-010', '1-06-04-990-03', '1-06-02-990-02'];
     const mplcTab = ['1-06-03-050', '1-06-04-020', '1-06-04-030', '1-06-04-040'];   // an MPLC-book transfer lands on the MPLC tab
+    const ipTabs = ['1-05-01-010', '1-05-01-020'];   // Investment Property - Land / Buildings: the Investment Property page
+    if (r.transfer_approved && ipTabs.includes(String(r.transfer_account || ''))) {
+        window.location.href = window.location.pathname.replace(/[^/]*$/, '') + 'InvestmentPropertyPage?tab=' + encodeURIComponent(r.transfer_account) + '&q=' + encodeURIComponent(r.swa_number) + '&open=' + encodeURIComponent(r.swa_number);
+        return;
+    }
     if (r.transfer_approved && (faTabs.includes(String(r.transfer_account || '')) || mplcTab.includes(String(r.transfer_account || '')))) {
         window.location.href = window.location.pathname.replace(/[^/]*$/, '') + 'FixedAssetsPage?tab=' + encodeURIComponent(mplcTab.includes(String(r.transfer_account)) ? 'MPLC' : r.transfer_account) + (mplcTab.includes(String(r.transfer_account)) ? '&sub=' + encodeURIComponent(r.transfer_account) : '') + '&q=' + encodeURIComponent(r.swa_number) + '&open=' + encodeURIComponent(r.swa_number);
         return;

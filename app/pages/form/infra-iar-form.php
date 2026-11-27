@@ -494,7 +494,7 @@ function ifr_view(i) {
                       vrow('Revised Contract Cost', num(r.contract_cost)), vrow('Contract', ifr_dash(r.contract)),
                       vrow('Date Started', ifr_dash(r.date_started)), vrow('Completion Date (Revised)', ifr_dash(r.completion_date_revised)),
                       vrow('Contract Duration', ifr_dash(r.contract_duration)),
-                      vrow('Area in SQM / Units', r.total_land_area === null || r.total_land_area === undefined || r.total_land_area === '' ? ifr_dash(null) : amp_esc(Number(r.total_land_area).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))),
+                      vrow('Area in SQM / Units', (v => v === null || v === undefined || v === '' ? '—' : Number(v).toLocaleString('en-PH', { maximumFractionDigits: 2 }) + ' sq.m.')(r.total_land_area)),
                       vrow('TCT Number', ifr_dash(r.tct_number)))}
         </div>
         <div class="amp-vw-card"><h4 class="amp-vw-card-title">Account Entries</h4><div class="amp-vw-tblwrap"><table class="amp-v-table">

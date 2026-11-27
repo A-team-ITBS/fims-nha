@@ -489,7 +489,7 @@ function wip_view(i) {
             ${kv('Project Code', wip_dash(r.project_code))}${kv('Name of Project', wip_dash(r.project_name))}
             ${kv('Program', wip_dash(r.program_name))}${kv('Location', wip_dash(r.location))}
             ${kv('Contractor', wip_dash(r.contractor))}${kv('Contract', wip_dash(r.contract))}
-            ${kv('Area in SQM / Units', r.total_land_area === null || r.total_land_area === undefined || r.total_land_area === '' ? '—' : wip_money(r.total_land_area))}${kv('TCT Number', wip_dash(r.tct_number))}
+            ${kv('Area in SQM / Units', (v => v === null || v === undefined || v === '' ? '—' : Number(v).toLocaleString('en-PH', { maximumFractionDigits: 2 }) + ' sq.m.')(r.total_land_area))}${kv('TCT Number', wip_dash(r.tct_number))}
         </div></div>
         <div class="wip-card"><h4>Contract Cost</h4><div class="wip-grid">
             ${kv('Original Contract Cost', wip_money(r.original_contract_cost))}

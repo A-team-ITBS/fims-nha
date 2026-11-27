@@ -853,7 +853,8 @@ class InfraIarService
      * Building are buildings (360); 1-06-02-990-02 Other Land Improvements is a land improvement (120).
      */
     public const FA_LIFE_MONTHS = ['1-06-04-010' => 360, '1-06-09-020' => 360, '1-06-04-990-03' => 360, '1-06-02-990-02' => 120, '1-06-01-010' => 0,
-        '1-06-04-020' => 360, '1-06-04-030' => 360, '1-06-04-040' => 360, '1-06-03-050' => 360];
+        '1-06-04-020' => 360, '1-06-04-030' => 360, '1-06-04-040' => 360, '1-06-03-050' => 360,
+        '1-05-01-010' => 0, '1-05-01-020' => 360];   // Investment Property: Land is not depreciated, Buildings 360 months
 
     /**
      * Fixed Assets page: the projects transferred from CIP to those accounts, with the register columns:
@@ -872,6 +873,12 @@ class InfraIarService
         if (empty($r['success'])) {
             return $r;
         }
+        return $this->depreciate($r);
+    }
+
+    /** Adds the register / depreciation columns (see fixedAssets()) to the rows of a transferList() result; the life comes from FA_LIFE_MONTHS by the account transferred to. */
+    private function depreciate(array $r): array
+    {
         $today = new \DateTime('today');
         $r['data'] = array_map(function ($x) use ($today) {
             $cost   = round((float) ($x['total_amount'] ?? 0), 2);
@@ -930,6 +937,29 @@ class InfraIarService
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /* ─────────────────────── Investment Property page ─────────────────────── */
+
+    /** The tabs of the Investment Property page: 1-05-01-010 Investment Property - Land, 1-05-01-020 Investment Property - Buildings (also targets of Transfer to Fixed Assets). */
+    public const IP_ACCOUNTS = ['1-05-01-010', '1-05-01-020'];
+
+    public function ipCategories(): array
+    {
+        return $this->transferTabs(self::IP_ACCOUNTS);
+    }
+
+    /** The projects transferred to the Investment Property accounts (approved transfers only), with the same register / depreciation columns as Fixed Assets. */
+    public function investmentProperty(int $page = 1, int $limit = 10, string $search = '', string $account = '', string $bookId = '', string $rcId = ''): array
+    {
+        $r = $this->transferList(self::IP_ACCOUNTS, $page, $limit, $search, $account, $bookId, $rcId);
+
+        return empty($r['success']) ? $r : $this->depreciate($r);
+    }
+
+    public function ipFilterOptions(): array
+    {
+        return $this->transferFilters(self::IP_ACCOUNTS);
     }
 
     public function faFilterOptions(): array
