@@ -461,6 +461,57 @@ class CobService
     }
 
     // -------------------------------------------------------------------------
+    // Figures of chosen COB lines — the printed RFA's Part II
+    // -------------------------------------------------------------------------
+
+    /**
+     * What the printed RFA (RfaPrintService, Part II) reads off the COB lines it draws on, summed over those lines — the same figures the COB and the
+     * RFA / LAA Monitoring pages show for them, because they come from the same expressions (lineAmountExprs()):
+     *   fund_balance     the COB's current balance — its Remaining Balance (Revised - CBA Requested - RFA / LAA drawn)
+     *   account_payable  RFA / LAA Amount - Disbursement: what RFAs / LAAs have drawn from the line that has not been disbursed yet
+     *   disbursement     what the disbursement vouchers of the line's RFAs / LAAs have disbursed
+     * A line counts once however many times it is listed (an RFA with several project blocks can name the same COB twice). Unlike the COB pages,
+     * no 'Approved request' or office filter is applied: the ids are the ones the RFA itself drew on, and printing is FMD's.
+     *
+     * @param array<int, int|string> $budgetLineItemIds fims.budget_line_items ids
+     * @return array{lines: int, fund_balance: float, account_payable: float, disbursement: float}|null null when no id is given or none is found
+     */
+    public function figuresForLines(array $budgetLineItemIds): ?array
+    {
+        $ids = array_values(array_unique(array_filter(
+            array_map('intval', array_filter($budgetLineItemIds, 'is_scalar')),
+            static fn (int $id): bool => $id > 0
+        )));
+        if (!$ids) {
+            return null;
+        }
+
+        try {
+            $row = App\ExecuteRow(
+                'SELECT '.$this->sumsSql().'
+                 '.$this->fromSql().'
+                 WHERE li.budget_line_item_id IN ('.implode(', ', $ids).')',
+                'DB'
+            ) ?: [];
+        } catch (\Throwable $e) {
+            App\LogError('CobService::figuresForLines '.$e->getMessage());
+
+            return null;
+        }
+        if ((int) ($row['line_count'] ?? 0) === 0) {
+            return null;
+        }
+        $a = $this->amountsOf($row);
+
+        return [
+            'lines' => (int) $row['line_count'],
+            'fund_balance' => $a['remaining_balance'],
+            'account_payable' => $a['account_payable'],
+            'disbursement' => $a['disbursement'],
+        ];
+    }
+
+    // -------------------------------------------------------------------------
     // Roll-ups — the tree tabs
     // -------------------------------------------------------------------------
 

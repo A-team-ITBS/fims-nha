@@ -976,7 +976,7 @@ async function amp_acceptDelivery(i) {
     const ro = field + 'background:#f4f7fa;color:#5b5e73;';
     const res0 = await window.Swal.fire({
         title: 'Delivery Acceptance', width: 520, showCancelButton: true, focusConfirm: false,
-        confirmButtonText: 'Accept Delivery', cancelButtonText: 'Cancel', confirmButtonColor: '#16A34A', cancelButtonColor: '#6B7280',
+        confirmButtonText: 'Submit', cancelButtonText: 'Cancel', confirmButtonColor: '#16A34A', cancelButtonColor: '#6B7280',
         reverseButtons: true, customClass: { container: 'amp-swal' },
         html: '<div style="text-align:left;">'
             + '<label style="font-size:13px;color:#6b7280;">Date</label><input style="' + ro + '" value="' + today + '" readonly tabindex="-1">'

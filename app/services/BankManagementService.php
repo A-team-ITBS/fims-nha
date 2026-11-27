@@ -316,47 +316,6 @@ class BankManagementService
         return date('Y-m-d', strtotime('-1 day'));
     }
 
-    // ── Fund Sweep settings (fims.app_settings) ──
-    // Only one setting exists today: which day of the week (ISO-8601,
-    // 1=Monday..7=Sunday) the "Process Fund Sweep" button is allowed to
-    // run on — see app/pages/fund-sweeping-page.php's own Settings control.
-    private const FUND_SWEEP_DAY_SETTING_KEY = 'fund_sweep_day_of_week';
-    private const FUND_SWEEP_DAY_DEFAULT = 4; // Thursday
-
-    public function getFundSweepSettings()
-    {
-        $value = App\ExecuteScalar(
-            "SELECT setting_value FROM fims.app_settings WHERE setting_key = " . $this->str(self::FUND_SWEEP_DAY_SETTING_KEY),
-            'DB'
-        );
-        $dayOfWeek = ctype_digit((string) $value) && (int) $value >= 1 && (int) $value <= 7
-            ? (int) $value
-            : self::FUND_SWEEP_DAY_DEFAULT;
-
-        return $this->ok(['sweep_day_of_week' => $dayOfWeek]);
-    }
-
-    public function updateFundSweepSettings(array $data)
-    {
-        $dayOfWeek = (int) ($data['sweep_day_of_week'] ?? 0);
-        if ($dayOfWeek < 1 || $dayOfWeek > 7) {
-            return json_encode(['success' => false, 'message' => 'Sweep day must be a valid day of the week.']);
-        }
-        $userId = (int) App\CurrentUserID();
-        App\Execute(
-            "INSERT INTO fims.app_settings (setting_key, setting_value, updated_by, updated_at)
-             VALUES (" . $this->str(self::FUND_SWEEP_DAY_SETTING_KEY) . ", " . $this->str((string) $dayOfWeek) . ", "
-                . ($userId > 0 ? $userId : 'NULL') . ", CURRENT_TIMESTAMP)
-             ON CONFLICT (setting_key) DO UPDATE SET
-                 setting_value = EXCLUDED.setting_value,
-                 updated_by = EXCLUDED.updated_by,
-                 updated_at = EXCLUDED.updated_at",
-            'DB'
-        );
-
-        return $this->ok(['sweep_day_of_week' => $dayOfWeek]);
-    }
-
     public function previewFundSweep($rcId)
     {
         $rcId = trim((string) $rcId);
@@ -410,23 +369,16 @@ class BankManagementService
     // can't sweep an account outside the region it claims) — lets the
     // Fund Sweeping tab's per-row checkboxes pick which eligible accounts
     // actually get swept, instead of always sweeping every eligible
-    // account in the region. No automatic/scheduled trigger exists — this
-    // is only ever called by a logged-in user clicking "Process Fund
-    // Sweep" (app/pages/fund-sweeping-page.php), gated to whichever day
-    // getFundSweepSettings() currently has configured (default Thursday) —
-    // enforced here too (not just disabling the button client-side) since
-    // this is the one place that actually creates the draft FTLAs. Deposits
-    // dated up through yesterday are swept (see sweepCutoffDate()), weekends
+    // account in the region. No automatic/scheduled trigger exists and no
+    // day gate either — this is only ever called by a logged-in user
+    // clicking "Process Fund Sweep" (app/pages/fund-sweeping-page.php),
+    // runs on demand, any day, as soon as they notice pending money via
+    // that page's "pending (un-swept) deposits" alert. Deposits dated up
+    // through yesterday are swept (see sweepCutoffDate()), weekends
     // excluded, with NO lower bound — same cutoff previewFundSweep() above
     // sums, so what's shown is what actually gets processed.
     public function processFundSweep($rcId, array $accountIds = [])
     {
-        $settings = json_decode($this->getFundSweepSettings(), true);
-        $allowedDay = $settings['data']['sweep_day_of_week'] ?? self::FUND_SWEEP_DAY_DEFAULT;
-        if ((int) date('N') !== (int) $allowedDay) {
-            $dayNames = [1 => 'Mondays', 2 => 'Tuesdays', 3 => 'Wednesdays', 4 => 'Thursdays', 5 => 'Fridays', 6 => 'Saturdays', 7 => 'Sundays'];
-            return json_encode(['success' => false, 'message' => 'Fund Sweep can only be processed on ' . ($dayNames[(int) $allowedDay] ?? 'the configured day') . '.']);
-        }
         $userId = (int) App\CurrentUserID();
         $rcId = trim((string) $rcId);
         $asOf = $this->sweepCutoffDate();

@@ -40,45 +40,21 @@ $fsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css');
     </div>
 
     <!-- No automatic sweep — Fund Sweep is only ever triggered by a user
-         clicking "Process Fund Sweep" below, and only on the configured day
-         (default Thursday — see fims.app_settings' fund_sweep_day_of_week,
-         changeable via the Settings button; both enforced server-side too —
-         see BankManagementService::processFundSweep()'s own day-of-week
-         check). This countdown is just a client-side clock toward the next
-         allowed day so whoever's on this page knows when the button will
-         accept a click — it doesn't call any API or trigger anything
-         itself. -->
-    <div class="fims-table-panel" style="margin-bottom:16px;">
-        <div style="padding:14px 16px;display:flex;align-items:center;gap:12px;">
-            <i class="fas fa-clock" style="font-size:18px;color:#000E3E;"></i>
-            <div style="flex:1;">
-                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--fims-text-subtle);" id="fsCountdownLabel">Next Sweep Window</div>
-                <div id="fsCountdown" style="font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;">—</div>
-            </div>
-            <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="fsSettingsBtn">
-                <i class="fas fa-gear mr-1"></i>Settings
-            </button>
-        </div>
-    </div>
+         clicking "Process Fund Sweep" below, and runs on ANY day (no day
+         gate at all anymore, client or server side — see
+         BankManagementService::processFundSweep()'s own comment). See
+         #fsPendingAlert below for the thing that actually matters, which is
+         whether there's anything to sweep right now. -->
 
-    <!-- Settings — just the one value today: which day of the week Fund
-         Sweep is allowed to run on. Not a modal overlay like the rest of
-         this project's forms; a small inline panel is plenty for one field. -->
-    <div class="fims-table-panel" id="fsSettingsPanel" style="display:none;margin-bottom:16px;">
-        <div style="padding:14px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <label class="fims-label" style="margin:0;white-space:nowrap;">Sweep Day</label>
-            <select class="fims-select fims-input-sm" id="fsSweepDaySelect" style="max-width:200px;">
-                <option value="1">Monday</option>
-                <option value="2">Tuesday</option>
-                <option value="3">Wednesday</option>
-                <option value="4">Thursday</option>
-                <option value="5">Friday</option>
-                <option value="6">Saturday</option>
-                <option value="7">Sunday</option>
-            </select>
-            <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="fsSettingsSaveBtn">Save</button>
-            <span id="fsSettingsHint" style="font-size:11px;color:var(--fims-text-subtle);"></span>
-        </div>
+    <!-- Pending-sweep notification — replaces the old day-gate as the thing
+         that actually matters: are there un-swept deposits waiting, for
+         whichever Region/Office is currently selected below. Purely
+         informational (same "notify, don't block" shift as the countdown
+         above) — Process Fund Sweep is always clickable regardless of this
+         alert's state, as long as at least one eligible account is
+         checked. -->
+    <div id="fsPendingAlert" class="fims-alert fims-alert-warning" style="display:none;margin-bottom:16px;">
+        <i class="fas fa-triangle-exclamation mr-1"></i><span id="fsPendingAlertText"></span>
     </div>
 
     <div class="fims-table-panel">
@@ -188,68 +164,13 @@ html.afims-dark[data-bs-theme="dark"] #fsModule select.fims-select option { back
     document.getElementById('fsRegionSelect').addEventListener('change', loadFundSweepPreview);
 
     // Fund Sweep only runs when a user clicks "Process Fund Sweep" — no
-    // automatic trigger exists — and only on the configured day of the week
-    // (fsSweepDayOfWeek, ISO-8601 1=Monday..7=Sunday, loaded from
-    // GET /fund-sweep/settings below, default 4/Thursday), same rule
-    // enforced again server-side (BankManagementService::processFundSweep())
-    // since that's the one place that actually creates the draft FTLAs;
-    // this is just the button-level reflection of it.
-    let fsSweepDayOfWeek = 4;
-    const FS_DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-    function fsIsSweepDay() {
-        return new Date().getDay() === (fsSweepDayOfWeek % 7); // ISO 7 (Sunday) -> JS 0
-    }
-
+    // automatic trigger exists, and no day gate either (client or server
+    // side — see BankManagementService::processFundSweep()'s own comment).
     function fsUpdateProcessBtn() {
         const checked = document.querySelectorAll('#fsBody .fs-row-check:checked').length;
-        const btn = document.getElementById('fsProcessBtn');
-        const hint = document.getElementById('fsHint');
-        if (!fsIsSweepDay()) {
-            btn.disabled = true;
-            hint.textContent = 'Fund Sweep can only be processed on ' + FS_DAY_NAMES[fsSweepDayOfWeek % 7] + 's.';
-            return;
-        }
-        btn.disabled = checked === 0;
-        hint.textContent = '';
+        document.getElementById('fsProcessBtn').disabled = checked === 0;
+        document.getElementById('fsHint').textContent = '';
     }
-
-    function loadFundSweepSettings() {
-        return fetch(BANK_MANAGEMENT_API + '/fund-sweep/settings', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                if (json && json.success && json.data && json.data.sweep_day_of_week) {
-                    fsSweepDayOfWeek = parseInt(json.data.sweep_day_of_week, 10) || 4;
-                }
-                document.getElementById('fsSweepDaySelect').value = String(fsSweepDayOfWeek);
-            })
-            .catch(() => {});
-    }
-
-    document.getElementById('fsSettingsBtn').addEventListener('click', function () {
-        const panel = document.getElementById('fsSettingsPanel');
-        panel.style.display = panel.style.display === 'none' ? '' : 'none';
-    });
-
-    document.getElementById('fsSettingsSaveBtn').addEventListener('click', function () {
-        const btn = this;
-        const dayOfWeek = parseInt(document.getElementById('fsSweepDaySelect').value, 10);
-        const hint = document.getElementById('fsSettingsHint');
-        btn.disabled = true;
-        hint.textContent = 'Saving…';
-        fetch(BANK_MANAGEMENT_API + '/fund-sweep/settings', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ sweep_day_of_week: dayOfWeek }) })
-            .then(r => r.json())
-            .then(function (json) {
-                btn.disabled = false;
-                if (!json || !json.success) { hint.textContent = ''; toast((json && json.message) || 'Could not save setting.', true); return; }
-                fsSweepDayOfWeek = parseInt(json.data.sweep_day_of_week, 10) || 4;
-                hint.textContent = '';
-                toast('Sweep day set to ' + FS_DAY_NAMES[fsSweepDayOfWeek % 7] + '.');
-                fsUpdateProcessBtn();
-                fsTickCountdown();
-            })
-            .catch(() => { btn.disabled = false; hint.textContent = ''; toast('Could not reach the server.', true); });
-    });
 
     document.getElementById('fsSelectAll').addEventListener('change', function () {
         document.querySelectorAll('#fsBody .fs-row-check').forEach(cb => { cb.checked = this.checked; });
@@ -270,6 +191,7 @@ html.afims-dark[data-bs-theme="dark"] #fsModule select.fims-select option { back
             .then(r => r.json())
             .then(function (json) {
                 const rows = (json && json.success && Array.isArray(json.data)) ? json.data : [];
+                fsUpdatePendingAlert(rows);
                 if (!rows.length) {
                     tbody.innerHTML = '<tr class="fims-empty"><td colspan="6">No accounts on file for this Region/Office.</td></tr>';
                     return;
@@ -303,6 +225,34 @@ html.afims-dark[data-bs-theme="dark"] #fsModule select.fims-select option { back
                 fsUpdateProcessBtn();
             })
             .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="6">Could not reach the server.</td></tr>'; });
+    }
+
+    // "Pending sweeping" notification — the thing that replaced the old
+    // day-gate as the actual call to action (see this page's top comment
+    // and BankManagementService::processFundSweep()'s). Purely a count/sum
+    // over whatever loadFundSweepPreview() already fetched for the
+    // currently-selected Region/Office — same "eligible" test as each
+    // row's own checkbox (balance > 0 and a Main Depository is assigned).
+    function fsUpdatePendingAlert(rows) {
+        const alertEl = document.getElementById('fsPendingAlert');
+        const textEl = document.getElementById('fsPendingAlertText');
+        let count = 0;
+        let total = 0;
+        rows.forEach(function (r) {
+            const balance = parseFloat(r.current_balance) || 0;
+            if (balance > 0 && r.main_depository_account_id) {
+                count++;
+                total += balance;
+            }
+        });
+        if (!count) {
+            alertEl.style.display = 'none';
+            return;
+        }
+        const peso = total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        textEl.textContent = 'You have ' + count + ' account' + (count === 1 ? '' : 's') +
+            ' with pending (un-swept) deposits totaling ₱' + peso + '.';
+        alertEl.style.display = '';
     }
 
     // Expands/collapses a nested breakdown row directly beneath the clicked
@@ -395,48 +345,8 @@ html.afims-dark[data-bs-theme="dark"] #fsModule select.fims-select option { back
             .catch(() => { document.getElementById('fsHint').textContent = ''; toast('Could not reach the server.', true); btn.disabled = false; });
     });
 
-    // ── Countdown to the next Sweep Window (every configured day, all day) ──
-    // No automatic trigger — this just tells whoever's on the page when
-    // the "Process Fund Sweep" button will next accept a click.
-    function nextSweepDayStart() {
-        const now = new Date();
-        const target = new Date(now);
-        target.setHours(0, 0, 0, 0);
-        const jsDay = fsSweepDayOfWeek % 7; // ISO 7 (Sunday) -> JS 0
-        const daysUntil = ((jsDay - now.getDay() + 7) % 7) || 7; // today's the day too — next week's instead
-        target.setDate(now.getDate() + daysUntil);
-        return target;
-    }
-
-    function fsTickCountdown() {
-        const el = document.getElementById('fsCountdown');
-        const label = document.getElementById('fsCountdownLabel');
-        if (!el || !label) return;
-        fsUpdateProcessBtn();
-        const dayName = FS_DAY_NAMES[fsSweepDayOfWeek % 7];
-        if (fsIsSweepDay()) {
-            label.textContent = 'Sweep Window';
-            el.textContent = 'Open today — Process Fund Sweep is available now.';
-            return;
-        }
-        label.textContent = 'Next Sweep Window (' + dayName + ')';
-        const diffMs = nextSweepDayStart().getTime() - Date.now();
-        const totalSeconds = Math.max(0, Math.floor(diffMs / 1000));
-        const days = Math.floor(totalSeconds / 86400);
-        const hours = Math.floor((totalSeconds % 86400) / 3600);
-        const minutes = Math.floor((totalSeconds % 3600) / 60);
-        const seconds = totalSeconds % 60;
-        const pad = n => String(n).padStart(2, '0');
-        el.textContent = days + 'd ' + pad(hours) + 'h ' + pad(minutes) + 'm ' + pad(seconds) + 's';
-    }
-
     // ── Boot ── no tabs to gate behind anymore — load immediately.
     loadRegions();
     loadFundSweepPreview();
-    loadFundSweepSettings().then(function () {
-        fsTickCountdown();
-    });
-    fsTickCountdown();
-    setInterval(fsTickCountdown, 1000);
 })();
 </script>

@@ -490,6 +490,8 @@ class PoDrService
             $where .= ' AND a.po_number ILIKE ' . $this->q('%' . $search . '%');
         }
         if ($onlyWithBalance) {   // the PO picker (adding an IAR): a PO whose DV was already processed is not offered
+            // only an APPROVED RFA's PO is offered (a Draft / For Review / Returned RFA has no approved PO yet; the Disbursement Voucher cannot use it either)
+            $where .= " AND a.status_id = (SELECT st.id FROM fims.settings_status st WHERE st.status_for = 'budget_allocation' AND st.name = 'Approved' ORDER BY st.id LIMIT 1)";
             $where .= ' AND NOT ' . $this->activeDvSql();
             // a PO that already has an IAR is not offered either: further deliveries are added from that row's Actions → Add Deliveries
             $where .= " AND NOT EXISTS (SELECT 1 FROM {$this->h} iar WHERE iar.po_number = a.po_number)";
@@ -940,7 +942,7 @@ class PoDrService
     /**
      * SQL condition (alias `a` = fims.budget_allocation): the RFA's po_number field holds a real PO number. The field is also used for a CONTRACT or other
      * reference number; such a number is not a PO and the RFA belongs to the Infrastructure tab instead. A PO number is one that starts with "PO" followed
-     * by a separator (PO-2026-0101, SAMPLE-PO-PPE-01, PO/2026/…), or one that exists in fims.purchase_orders.
+     * by a separator (PO-2026-0101, PO-32941, PO/2026/…), or one that exists in fims.purchase_orders.
      */
     public function isPoSql(): string
     {
@@ -1020,8 +1022,9 @@ class PoDrService
     private function notifyGsd(string $po, ?int $userId, string $subjectTo, string $notes): void
     {
         try {
-            $r    = App\ExecuteRows("SELECT iar_number FROM {$this->h} WHERE po_number = " . $this->q($po), 'DB');
+            $r    = App\ExecuteRows("SELECT iar_id, iar_number FROM {$this->h} WHERE po_number = " . $this->q($po), 'DB');
             $iar  = $r ? (string) $r[0]['iar_number'] : '';
+            $iarId = $r ? (int) $r[0]['iar_id'] : 0;
             $body = "Delivery Acceptance for PO {$po}" . ($iar !== '' ? " (IAR {$iar})" : '') . ". Subject to: {$subjectTo}." . ($notes !== '' ? " Notes: {$notes}" : '')
                 . ' Open it to prepare the Disbursement Voucher.';
             try {   // the link goes to the DV (Voucher page), which opens the new-DV modal with this PO (and its vendor) filled in — not to the IAR module
@@ -1032,7 +1035,9 @@ class PoDrService
             $link .= '?po=' . rawurlencode($po);
             NotificationService::toRc(self::GSD_RC, "Delivery Acceptance: PO {$po}", $body, $link, [
                 'sender_id' => $userId && $userId > 0 ? $userId : null,
-                'event_key' => "delivery_accepted:{$po}",
+                // one notification per ACCEPTANCE: keyed by the IAR row (a PO number can be accepted again after its IAR was deleted and added anew,
+                // and a key made of the PO number alone would then be de-duplicated away and nobody notified)
+                'event_key' => "delivery_accepted:{$po}:iar{$iarId}",
             ]);
         } catch (\Throwable $e) {
             App\LogError("PoDrService: could not notify GSD of the acceptance of PO {$po} — " . $e->getMessage());

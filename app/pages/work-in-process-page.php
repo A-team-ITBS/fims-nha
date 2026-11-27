@@ -430,9 +430,9 @@ function wip_render(rows, error) {
                         View
                     </button>
                     ${Number(r.percent_completion) >= 90 || r.transfer_jev_no ? `<div class="wip-menu-divider"></div>
-                    <button type="button" class="wip-menu-item" onclick="wip_closeMenus();wip_transfer(${i})" title="${r.transfer_jev_no ? 'Transferred as ' + wip_esc(r.transfer_jev_no) : 'Percentage of Completion reached 90%'}">
+                    <button type="button" class="wip-menu-item" onclick="wip_closeMenus();wip_transfer(${i})" title="${r.transfer_jev_no ? (r.transfer_approved ? 'Transferred as ' : 'Waiting for the approval of ') + wip_esc(r.transfer_jev_no) : 'Percentage of Completion reached 90%'}">
                         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4-4m-4 4l4 4"/></svg>
-                        ${r.transfer_jev_no ? 'Transferred — ' + wip_esc(r.transfer_jev_no) : 'Transfer to MI/PED'}
+                        ${r.transfer_jev_no ? (r.transfer_approved ? 'Transferred — ' : 'For approval — ') + wip_esc(r.transfer_jev_no) : 'Transfer to MI/PED'}
                     </button>` : ''}
                 </div>
             </div>
@@ -489,7 +489,7 @@ function wip_view(i) {
             ${kv('Project Code', wip_dash(r.project_code))}${kv('Name of Project', wip_dash(r.project_name))}
             ${kv('Program', wip_dash(r.program_name))}${kv('Location', wip_dash(r.location))}
             ${kv('Contractor', wip_dash(r.contractor))}${kv('Contract', wip_dash(r.contract))}
-            ${kv('Area in SQM / Units', r.total_land_area === null || r.total_land_area === undefined || r.total_land_area === '' ? '—' : wip_money(r.total_land_area))}${kv('TCT Number', wip_dash(r.tct_number))}
+            ${kv('Area in SQM / Units', (v => v === null || v === undefined || v === '' ? '—' : Number(v).toLocaleString('en-PH', { maximumFractionDigits: 2 }) + ' sq.m.')(r.total_land_area))}${kv('TCT Number', wip_dash(r.tct_number))}
         </div></div>
         <div class="wip-card"><h4>Contract Cost</h4><div class="wip-grid">
             ${kv('Original Contract Cost', wip_money(r.original_contract_cost))}
@@ -526,7 +526,7 @@ async function wip_transfer(i) {
     // an already transferred project goes to the page it was transferred to — Merchandise Inventory (1-04-01-010-xx Completed Development for Sale) or
     // Property and Equipment for Distribution (1-04-02-090-xx) — on the matching tab, filtered to this project, with its View window open.
     const pages = { '1-04-01-010-': 'MerchandiseInventoryPage', '1-04-02-090-': 'PropertyAndEquipmentForDistributionPage' };
-    const target = r.transfer_jev_no ? Object.keys(pages).find(p => String(r.transfer_account || '').startsWith(p)) : null;
+    const target = r.transfer_approved ? Object.keys(pages).find(p => String(r.transfer_account || '').startsWith(p)) : null;
     if (target) {
         window.location.href = window.location.pathname.replace(/[^/]*$/, '') + pages[target] + '?tab=' + encodeURIComponent(r.transfer_account) + '&q=' + encodeURIComponent(r.swa_number) + '&open=' + encodeURIComponent(r.swa_number);
         return;
@@ -546,14 +546,12 @@ async function wip_transfer(i) {
 function wip_trOpen(d) {
     wip_tr = { data: d, edited: false, code: d.transfer ? d.transfer.account_code : '' };
     const done = !!d.transfer, f = wip_money;
-    const orig = d.original.lines.map(l => (Number(l.debit) ? 'Debit ' : 'Credit ') + wip_esc(l.account_code) + ' - ' + wip_esc(l.account_title || '') + ' &nbsp;₱' + f(Number(l.debit) || Number(l.credit))).join('<br>');
     wip_$('wip-tr-body').innerHTML = `
         <div id="wip-tr-msg" class="wip-tr-msg" hidden></div>
         <div class="wip-card"><h4>Project</h4><div class="wip-grid">
             <div><div class="wip-k">SWA No. / RFA No.</div><div class="wip-v">${wip_esc(d.swa_number)} / ${wip_dash(d.rfa_number)}</div></div>
             <div><div class="wip-k">Name of Project</div><div class="wip-v">${wip_dash(d.project_name)}</div></div>
             <div><div class="wip-k">Percentage of Completion</div><div class="wip-v">${wip_bar(d.percent_completion)} <span style="color:var(--afims-text-muted,#62657E);">(paid ${f(d.amount_paid)})</span></div></div>
-            <div><div class="wip-k">Original Entry — ${wip_esc(d.original.jev_no)}</div><div class="wip-v wip-pf-orig">${orig}</div></div>
         </div></div>
         <div class="wip-card">
             <div class="wip-pf-title">Pro-forma JEV — reclassification / transfer</div>

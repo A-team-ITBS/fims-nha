@@ -621,14 +621,41 @@ class CollectionsService
     // picker uses — so parent_code/parent_title are surfaced alongside each
     // row's own account_code (the SL code) for display, even though only
     // the SL-level account_id is what actually gets submitted.
-    public function getGlAccounts()
+    // Account codes a Collecting Officer is actually allowed to post a
+    // Collection line against — a fixed, curated subset of the full postable
+    // chart (receivables a collection can settle, plus the handful of
+    // revenue/income accounts collections actually hit), not every
+    // posting-allowed account in the COA.
+    private const COLLECTION_ACCOUNT_CODES = [
+        '1-03-01-050', // Interests Receivable
+        '1-03-01-270', // Installment Sales Receivable
+        '1-03-02-010', // Operating Lease Receivable
+        '2-05-01-990', // Other Deferred Credits
+        '4-02-01-010', // Permit Fees
+        '4-02-01-040', // Clearance and Certification Fees
+        '4-02-01-130', // Processing Fees
+        '4-02-02-050', // Rent/Lease Income
+        '4-02-02-160', // Sales Revenue
+        '4-02-02-210', // Interest Income
+        '4-02-02-230', // Fines and Penalties-Business Income
+        '4-02-02-990', // Other Business Income
+        '4-06-99-990', // Miscellaneous Income
+    ];
+
+    // $showAll bypasses the curated whitelist above — "Show other accounts"
+    // in the Collection(s) picker, for the rare line that genuinely needs an
+    // account outside the common set. Default (false) is what everyday
+    // Collection registration should see.
+    public function getGlAccounts(bool $showAll = false)
     {
+        $whitelistSql = $showAll ? '' : (' AND ac.account_code IN (' .
+            implode(',', array_map(fn ($c) => $this->str($c), self::COLLECTION_ACCOUNT_CODES)) . ')');
         $rows = App\ExecuteRowsAssociative(
             "SELECT ac.account_id, ac.account_code, ac.account_title,
                     parent.account_code AS parent_code, parent.account_title AS parent_title
              FROM {$this->tableCoa} ac
              LEFT JOIN {$this->tableCoa} parent ON parent.account_id = ac.parent_account_id
-             WHERE ac.status = 'Active' AND ac.posting_allowed = TRUE
+             WHERE ac.status = 'Active' AND ac.posting_allowed = TRUE{$whitelistSql}
              ORDER BY ac.account_code",
             'DB'
         );

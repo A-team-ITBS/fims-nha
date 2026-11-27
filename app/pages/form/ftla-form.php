@@ -30,7 +30,7 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
 
     #ftlm-card {
         background: var(--afims-surface, #FFFFFF);
-        border-radius: 16px;
+        border-radius: 16px;
         max-height: 94vh;
         display: flex;
         flex-direction: column;
@@ -480,14 +480,18 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                         Transfer Details
                     </div>
 
+                    <!-- Transfer Type is no longer user-facing — every FTLA created here is a
+                         Regional Fund Transfer (see ftlm_resetForm()'s default below); the field
+                         stays as a hidden input (not removed outright) so FtlaService::create()'s
+                         "Transfer Type is required" validation and all of transfer_type's existing
+                         downstream uses (status/title branching on SETTLEMENT_TO_MAIN/INTER_ACCOUNT
+                         in ftla-page.php, the TYPE_LABEL list column, the print subject line) keep
+                         working unchanged — and so editing an OLDER FTLA that already has a
+                         different saved type still loads and round-trips that real value instead of
+                         silently overwriting it (see ftlm_fillForm()'s set('ftlm_transfer_type', ...)). -->
+                    <input type="hidden" id="ftlm_transfer_type" name="transfer_type">
+
                     <div class="ftlm-grid-2">
-                        <div class="ftlm-fg" id="ftlm-fg-type">
-                            <label class="ftlm-label req" for="ftlm_transfer_type">Transfer Type</label>
-                            <select class="form-control" id="ftlm_transfer_type" name="transfer_type" onchange="ftlm_schedulePreviewUpdate()">
-                                <option value="">Loading…</option>
-                            </select>
-                            <p class="ftlm-err-msg">Transfer Type is required.</p>
-                        </div>
                         <div class="ftlm-fg" id="ftlm-fg-date">
                             <label class="ftlm-label req" for="ftlm_transfer_date">Transfer Date</label>
                             <input type="date" class="form-control" id="ftlm_transfer_date" name="transfer_date"
@@ -871,7 +875,6 @@ let ftlm_currentStep = 0;
 let ftlm_currentId   = null;
 let ftlm_bankLoaded  = false;
 let ftlm_banks       = [];   // regional bank accounts (source)
-let ftlm_typesLoaded = false;
 let ftlm_debitRows   = [];   // "Multiple debit accounts" rows: [{bank_account_id, amount}]
 let ftlm_allocLoaded = false;
 let ftlm_laaOptions  = [];   // approved/terminal LAA records — Funding Reference picker
@@ -1160,7 +1163,6 @@ function ftlm_validateStep(n) {
             g.classList.toggle('has-err', bad);
             if (bad) missing.push(label);
         };
-        mark('ftlm-fg-type',    'ftlm_transfer_type',      'Transfer Type');
         mark('ftlm-fg-date',    'ftlm_transfer_date',      'Transfer Date');
         mark('ftlm-fg-amount',  'ftlm_transfer_amount',    'Transfer Amount', f => ftlm_parseAmount(f.value) > 0);
         mark('ftlm-fg-purpose', 'ftlm_purpose',            'Purpose / Particulars');
@@ -1177,7 +1179,6 @@ function ftlm_validateStep(n) {
 /* ── Real-time field error clearing ─────────────────────── */
 (function ftlm_bindLiveValidation() {
     const pairs = [
-        ['ftlm_transfer_type',      'ftlm-fg-type'],
         ['ftlm_transfer_date',      'ftlm-fg-date'],
         ['ftlm_transfer_amount',    'ftlm-fg-amount'],
         ['ftlm_purpose',            'ftlm-fg-purpose'],
@@ -1293,21 +1294,6 @@ async function ftlm_loadBankAccounts() {
     }
 }
 
-async function ftlm_loadTransferTypes() {
-    const sel = ftlm$('ftlm_transfer_type');
-    try {
-        const res = await ftlm_fetch('ftla/transfer-types');
-        const types = res.data || [];
-        if (sel) {
-            sel.innerHTML = '<option value="">— Select —</option>' +
-                types.map(t => `<option value="${t.value}">${ftlmEsc(t.label)}</option>`).join('');
-        }
-    } catch (e) {
-        if (sel) sel.innerHTML = '<option value="">Failed to load</option>';
-        console.error('[FTLM] transfer types:', e.message);
-    }
-}
-
 function ftlm_updateFundSourceDisplay() {
     const out = ftlm$('ftlm_from_fund_source_name');
     if (!out) return;
@@ -1369,6 +1355,28 @@ function ftlm_onDebitRowChange(idx, field, value) {
     ftlm_schedulePreviewUpdate();
 }
 
+// Purpose / Particulars auto-generation — same "derive from the DV, same as
+// Amount does" idea ftlm_recalcDvAmount()/ftlm_onDebitDvChange() already use
+// for Transfer Amount: regenerated every time the DV selection changes
+// (single-debit field or any multi-debit row), not just filled once when
+// empty. A manual edit made after picking a DV is NOT preserved across a
+// later DV change — same tradeoff Amount already makes, so the two fields
+// stay consistent with each other instead of Purpose behaving differently.
+function ftlm_purposeForDv(dv) {
+    if (!dv) return '';
+    let line = 'DV No. ' + dv.dv_no;
+    if (dv.claimant_name) line += ' — ' + dv.claimant_name;
+    if (dv.particulars) line += ': ' + dv.particulars;
+    return line;
+}
+function ftlm_generatePurposeFromDvNumbers(dvNumbers) {
+    const dvs = dvNumbers.map(no => ftlm_dvOptions.find(r => r.dv_no === no)).filter(Boolean);
+    if (!dvs.length) return '';
+    if (dvs.length === 1) return 'Fund transfer for the payment of ' + ftlm_purposeForDv(dvs[0]) + '.';
+    return 'Fund transfer for the payment of the following Disbursement Vouchers: ' +
+        dvs.map(ftlm_purposeForDv).join('; ') + '.';
+}
+
 // Picking a row's own DV auto-fills that row's own Amount from its
 // net_amount — same idea as the old shared-picker auto-fill, just scoped
 // to one row now ("1 DV per account"). Re-renders the whole table (instead
@@ -1383,6 +1391,11 @@ function ftlm_onDebitDvChange(idx, dvNo) {
             ftlm_debitRows[idx].amount = ftlm_parseAmount(String(dv.net_amount));
         }
         ftlm_autoFillRfaFromDv(dvNo);
+    }
+    const dvNumbers = ftlm_debitRows.map(r => r.dv_no).filter(Boolean);
+    if (dvNumbers.length) {
+        const purposeEl = ftlm$('ftlm_purpose');
+        if (purposeEl) purposeEl.value = ftlm_generatePurposeFromDvNumbers(dvNumbers);
     }
     ftlm_renderDebitRows();
     ftlm_schedulePreviewUpdate();
@@ -1618,6 +1631,8 @@ function ftlm_recalcDvAmount() {
     if (dv && dv.net_amount) {
         ftlm_setAmount(ftlm_parseAmount(String(dv.net_amount)));
     }
+    const purposeEl = ftlm$('ftlm_purpose');
+    if (purposeEl) purposeEl.value = ftlm_generatePurposeFromDvNumbers([dvNo]);
     ftlm_autoFillRfaFromDv(dvNo);
     ftlm_schedulePreviewUpdate();
 }
@@ -1933,10 +1948,6 @@ async function ftlm_open(id) {
     document.body.style.overflow = 'hidden';
     document.body.style.paddingRight = (window.innerWidth - document.documentElement.clientWidth) + 'px';
 
-    if (!ftlm_typesLoaded) {
-        ftlm_typesLoaded = true;
-        await ftlm_loadTransferTypes();
-    }
     if (!ftlm_bankLoaded) {
         ftlm_bankLoaded = true;
         await ftlm_loadBankAccounts();  // await so selects have options before fillForm runs

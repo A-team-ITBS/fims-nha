@@ -291,7 +291,7 @@ function pd_render(rows, error) {
         <td>${pd_dash(r.requesting_office)}</td>
         <td>${pd_dash(r.project_code)}</td>
         <td>${pd_dash(r.project_name)}</td>
-        <td class="pd-num">${pd_orDash(r.total_land_area)}</td>
+        <td class="pd-num">${(v => v === null || v === undefined || v === '' ? '—' : Number(v).toLocaleString('en-PH', { maximumFractionDigits: 2 }) + ' sq.m.')(r.total_land_area)}</td>
         <td class="pd-num"><strong>${pd_money(r.total_amount)}</strong></td>
         <td class="pd-num">${pd_orDash(r.cost_per_unit)}</td>
         <td style="white-space:nowrap;">
@@ -363,7 +363,7 @@ function pd_view(i) {
         </div></div>
         <div class="pd-card"><h4>Inventory</h4><div class="pd-grid">
             ${kv('Category', pd_dash(r.category))}${kv('Transfer JEV', pd_dash(r.transfer_jev_no))}
-            ${kv('Area in SQM / Units', pd_orDash(r.total_land_area))}${kv('Total Amount (transferred)', '<strong>' + pd_money(r.total_amount) + '</strong>')}
+            ${kv('Area in SQM / Units', (v => v === null || v === undefined || v === '' ? '—' : Number(v).toLocaleString('en-PH', { maximumFractionDigits: 2 }) + ' sq.m.')(r.total_land_area))}${kv('Total Amount (transferred)', '<strong>' + pd_money(r.total_amount) + '</strong>')}
             ${kv('Cost Per Sqm / Unit', pd_orDash(r.cost_per_unit))}${kv('Date Transferred', pd_dash(r.transfer_date))}
         </div></div>`;
     pd_$('pd-overlay').classList.add('open');

@@ -53,6 +53,13 @@ html.afims-dark[data-bs-theme="dark"] .fxa-menu-trigger { color:#FFFFFF;backgrou
 .fxa-fc-empty { padding:8px 12px; font-size:13px; color:var(--afims-text-secondary,#6b7280); }
 /* Land is not depreciated: its tab hides the depreciation columns (useful life, salvage value, accumulated depreciation) */
 #fxa-root.fxa-land .fxa-dep-col { display:none; }
+/* the Asset Account column (which of the four MPLC accounts) shows on the MPLC tab only */
+#fxa-root:not(.fxa-mplc) .fxa-mplc-col { display:none; }
+/* the MPLC cards are buttons: the selected one is outlined and its projects fill the list */
+.fxa-card-btn { cursor:pointer; user-select:none; }
+.fxa-card-btn:focus-visible { outline:2px solid var(--afims-primary, #0035A9); outline-offset:2px; }
+.fxa-card-btn.selected { box-shadow:0 0 0 2px var(--afims-primary, #0035A9), var(--sh-md, 0 4px 12px rgba(0,0,0,.12)); }
+@media (max-width:900px) { #fxa-cards { grid-template-columns:repeat(2, minmax(0, 1fr)) !important; } }
 /* View window */
 .fxa-grid { display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:12px 24px; }
 .fxa-k { font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--afims-text-muted, #62657E); }
@@ -87,6 +94,9 @@ html.afims-dark[data-bs-theme="dark"] .fxa-card h4 { color:#FFFFFF; }
     <!-- ── TABS: one per fixed-asset account (account titles only) ── -->
     <div class="nha-tabs no-print" id="fxa-tabs"></div>
 
+    <!-- ── CARDS of the MPLC tab: one per MPLC account (GET /infra-iar/fa-mplc-cards); clicking one filters the list, clicking it again clears the filter ── -->
+    <div class="nha-summary no-print" id="fxa-cards" style="display:none;grid-template-columns:repeat(4, minmax(0, 1fr));"></div>
+
     <!-- ── FILTERS ────────────────────────────────────────── -->
     <div class="nha-filters no-print">
         <div class="nha-filter-row">
@@ -120,6 +130,7 @@ html.afims-dark[data-bs-theme="dark"] .fxa-card h4 { color:#FFFFFF; }
                     <tr>
                         <th>RESPONSIBILITY <br> CENTER</th>
                         <th>DESCRIPTION</th>
+                        <th class="fxa-mplc-col">ASSET <br> ACCOUNT</th>
                         <th>LOCATION</th>
                         <th>CONTRACTOR</th>
                         <th>JEV <br> REFERENCE</th>
@@ -181,8 +192,10 @@ const fxa_money = v => Number(v || 0).toLocaleString('en-PH', { minimumFractionD
 const fxa_orDash = v => (v === null || v === undefined || v === '') ? '—' : fxa_money(v);
 /* Land is not depreciated: its useful life, salvage value and accumulated depreciation show a dash */
 const fxa_isLand = r => r.useful_life_years === null || r.useful_life_years === undefined;
-const FXA_LAND = '1-06-01-010';                                  // the Land account: not depreciated
-const fxa_cols = () => fxa_tab === FXA_LAND ? 10 : 13;           // columns shown (the table's colspan)
+const FXA_LAND = '1-06-01-010';
+let fxa_sub = new URLSearchParams(window.location.search).get('sub') || '';   // the MPLC card selected ('' = all four); ?sub= comes from the Construction in Progress page
+const FXA_MPLC = 'MPLC';                                         // the MPLC tab: Power Supply Systems, School Buildings, Hospitals and Health Centers, Markets                                  // the Land account: not depreciated
+const fxa_cols = () => fxa_tab === FXA_LAND ? 10 : (fxa_tab === FXA_MPLC ? 14 : 13);           // columns shown (the table's colspan)
 const fxa_life = r => fxa_isLand(r) ? '—' : fxa_esc(String(r.useful_life_years));
 const fxa_dep  = (r, v) => fxa_isLand(r) ? '—' : fxa_money(v);
 
@@ -255,6 +268,36 @@ async function fxa_loadTabs() {
         if (tabs.length) fxa_selectTab((tabs.find(t => t.account_code === want) || tabs[0]).account_code, true);
     } catch (e) { /* no tabs: the page then lists nothing */ }
 }
+/* the cards under the MPLC tab: Power Supply Systems / School Buildings / Hospitals and Health Centers / Markets, each with its project count and total amount */
+const FXA_CARD_COLORS = ['navy', 'amber', 'green', 'teal'];
+async function fxa_loadCards() {
+    const box = fxa_$('fxa-cards');
+    box.style.display = fxa_tab === FXA_MPLC ? 'grid' : 'none';   // (not [hidden]: the card grid's own display wins over it)
+    if (fxa_tab !== FXA_MPLC) return;
+    try {
+        const res  = await fetch(`${FXA_API}/fa-mplc-cards`, { credentials: 'same-origin', headers: fxa_authHeaders() });
+        const json = await res.json();
+        if (!json.success) return;
+        box.innerHTML = (json.data || []).map((c, i) => `<div class="nha-sc nha-sc-${FXA_CARD_COLORS[i % FXA_CARD_COLORS.length]} fxa-card-btn" data-code="${fxa_esc(c.account_code)}" role="button" tabindex="0" title="Show the ${fxa_esc(c.account_title)} projects (click again to show all MPLC)">
+            <div class="nha-sc-top"><div><div class="nha-sc-label">${fxa_esc(c.account_title)}</div><div class="nha-sc-val">${c.projects}</div></div></div>
+            <p class="nha-kpi-sub">${fxa_esc(c.account_code)} · ₱${fxa_money(c.total_amount)}</p></div>`).join('');
+        box.querySelectorAll('.fxa-card-btn').forEach(c => {
+            c.addEventListener('click', () => fxa_selectCard(c.dataset.code));
+            c.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fxa_selectCard(c.dataset.code); } });
+        });
+        fxa_markCard();
+    } catch (e) { /* the cards just stay empty */ }
+}
+function fxa_markCard() {
+    document.querySelectorAll('.fxa-card-btn').forEach(c => c.classList.toggle('selected', c.dataset.code === fxa_sub));
+}
+function fxa_selectCard(code) {
+    fxa_sub = fxa_sub === code ? '' : code;      // a second click on the same card shows all four again
+    fxa_markCard();
+    fxa_page = 1;
+    fxa_load();
+}
+
 function fxa_selectTab(code, force) {
     if (!force && code === fxa_tab) return;
     fxa_tab = code;
@@ -263,16 +306,19 @@ function fxa_selectTab(code, force) {
         b.classList.toggle('active', on);
         if (on) fxa_tabTitle = b.dataset.title;
     });
+    if (code !== FXA_MPLC) fxa_sub = '';
+    fxa_$('fxa-root').classList.toggle('fxa-mplc', code === FXA_MPLC);
     fxa_$('fxa-root').classList.toggle('fxa-land', code === FXA_LAND);   // Land is not depreciated: its tab hides the depreciation columns
     fxa_page = 1;
     fxa_load();
+    fxa_loadCards();                                         // the MPLC tab's cards (hidden on the other tabs)
 }
 
 async function fxa_load() {
     if (!fxa_tab) return;                                     // the tabs load first (fxa_loadTabs)
     window.PagePreloader?.show();
     try {
-        const params = new URLSearchParams({ search: fxa_$('fxa-filter-search').value || '', page: fxa_page, limit: FXA_PAGE_SIZE, account: fxa_tab });
+        const params = new URLSearchParams({ search: fxa_$('fxa-filter-search').value || '', page: fxa_page, limit: FXA_PAGE_SIZE, account: (fxa_tab === FXA_MPLC && fxa_sub) ? fxa_sub : fxa_tab });
         if (fxa_fcSel.book_id) params.set('book_id', fxa_fcSel.book_id);   // Book of Accounts filter
         if (fxa_fcSel.rc_id)   params.set('rc_id', fxa_fcSel.rc_id);       // Regional Office/District Office filter
         const res  = await fetch(`${FXA_API}/fixed-assets?${params}`, { credentials: 'same-origin', headers: fxa_authHeaders() });
@@ -303,6 +349,7 @@ function fxa_render(rows, error) {
     tbody.innerHTML = rows.map((r, i) => `<tr>
         <td>${fxa_dash(r.requesting_office)}</td>
         <td>${fxa_dash(r.project_name)}</td>
+        <td class="fxa-mplc-col">${fxa_dash(r.category)}</td>
         <td>${fxa_dash(r.location)}</td>
         <td>${fxa_dash(r.contractor)}</td>
         <td>${fxa_dash(r.transfer_jev_no)}</td>
@@ -382,7 +429,7 @@ function fxa_view(i) {
         </div></div>
         <div class="fxa-card"><h4>Fixed Asset</h4><div class="fxa-grid">
             ${kv('Category', fxa_dash(r.category))}${kv('Transfer JEV', fxa_dash(r.transfer_jev_no))}
-            ${kv('Area in SQM / Units', fxa_orDash(r.total_land_area))}${kv('Total Amount (transferred)', '<strong>' + fxa_money(r.total_amount) + '</strong>')}
+            ${kv('Area in SQM / Units', (v => v === null || v === undefined || v === '' ? '—' : Number(v).toLocaleString('en-PH', { maximumFractionDigits: 2 }) + ' sq.m.')(r.total_land_area))}${kv('Total Amount (transferred)', '<strong>' + fxa_money(r.total_amount) + '</strong>')}
             ${kv('Cost Per Sqm / Unit', fxa_orDash(r.cost_per_unit))}${kv('Date Transferred', fxa_dash(r.transfer_date))}
         </div></div>
         ${fxa_isLand(r) ? '' : `<div class="fxa-card"><h4>Depreciation</h4><div class="fxa-grid">
@@ -399,7 +446,7 @@ function fxa_closeView() { fxa_$('fxa-overlay').classList.remove('open'); }
 /* ── wiring ── */
 (function () {
     const run = () => {
-        fxa_$('fxa-refresh').addEventListener('click', () => fxa_load());
+        fxa_$('fxa-refresh').addEventListener('click', () => { fxa_load(); fxa_loadCards(); });
         const search = fxa_$('fxa-filter-search'), clear = fxa_$('fxa-search-clear');
         search.addEventListener('input', () => {
             clear.hidden = !search.value;

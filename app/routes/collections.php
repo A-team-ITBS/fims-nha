@@ -40,7 +40,8 @@ $app->get("/collections/lookup/responsibility-centers", function ($request, $res
 
 $app->get("/collections/lookup/gl-accounts", function ($request, $response) {
     $service = new Service\CollectionsService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->getGlAccounts());
+    $showAll = !empty($request->getQueryParams()['all']);
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getGlAccounts($showAll));
 });
 
 $app->get("/collections/lookup/bank-accounts", function ($request, $response) {

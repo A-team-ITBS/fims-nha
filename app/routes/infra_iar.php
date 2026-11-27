@@ -190,8 +190,35 @@ $app->get('/infra-iar/fa-categories', function ($request, $response, $args) use 
     return $response->withJson($InfraIarService->faCategories());
 })->add($jwtMiddleware);
 
+// The cards under the MPLC tab: one per MPLC account { account_code, account_title, projects, total_amount }
+$app->get('/infra-iar/fa-mplc-cards', function ($request, $response, $args) use ($InfraIarService) {
+    return $response->withJson($InfraIarService->faMplcCards());
+})->add($jwtMiddleware);
+
 $app->get('/infra-iar/fa-filter-options', function ($request, $response, $args) use ($InfraIarService) {
     return $response->withJson($InfraIarService->faFilterOptions());
+})->add($jwtMiddleware);
+
+// Investment Property page: the projects transferred to 1-05-01-010 Land / 1-05-01-020 Buildings (approved transfers); same query string and columns as /infra-iar/fixed-assets.
+$app->get('/infra-iar/investment-property', function ($request, $response, $args) use ($InfraIarService) {
+    $params = $request->getQueryParams();
+
+    return $response->withJson($InfraIarService->investmentProperty(
+        isset($params['page']) ? (int) $params['page'] : 1,
+        isset($params['limit']) ? (int) $params['limit'] : 10,
+        (string) ($params['search'] ?? ''),
+        (string) ($params['account'] ?? ''),
+        (string) ($params['book_id'] ?? ''),
+        (string) ($params['rc_id'] ?? '')
+    ));
+})->add($jwtMiddleware);
+
+$app->get('/infra-iar/ip-categories', function ($request, $response, $args) use ($InfraIarService) {
+    return $response->withJson($InfraIarService->ipCategories());
+})->add($jwtMiddleware);
+
+$app->get('/infra-iar/ip-filter-options', function ($request, $response, $args) use ($InfraIarService) {
+    return $response->withJson($InfraIarService->ipFilterOptions());
 })->add($jwtMiddleware);
 
 // Property and Equipment for Distribution page: the projects transferred to 1-04-02-090-01 Land / 1-04-02-090-02 Building / Community Facilities.
