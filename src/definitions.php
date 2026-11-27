@@ -180,6 +180,7 @@ return [
     "soa_generator_page" => \DI\create(SoaGeneratorPage::class),
     "admin_fee_page" => \DI\create(AdminFeePage::class),
     "admin_fee_rates_page" => \DI\create(AdminFeeRatesPage::class),
+    "investment_property_page" => \DI\create(InvestmentPropertyPage::class),
 
     // User table
     "usertable" => \DI\get("users"),
