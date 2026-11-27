@@ -93,6 +93,14 @@ html.afims-dark[data-bs-theme="dark"] .wip-menu-trigger { color:#FFFFFF;backgrou
 #wip-tr-print { height:38px; padding:0 16px; font-size:13px; }
 .wip-pf-orig { font-size:12px; color:var(--afims-text-secondary, #5B5E73); line-height:1.7; }
 @media (max-width:900px) { .wip-pf-row { grid-template-columns:minmax(0, 1fr) 1fr 1fr; } }
+/* View window: Financials cards */
+.wip-fin { display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:12px; }
+.wip-fin-box { border:1px solid var(--afims-border, #E4ECF2);background:var(--afims-surface-subtle, #F4F7FA);border-radius:10px;padding:14px;text-align:center; }
+.wip-fin-box span { display:block;font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--afims-text-muted, #62657E); }
+.wip-fin-box strong { display:block;margin-top:6px;font-size:15px; }
+.wip-fin-green { background:#DCF1E3;border-color:#B6DEC2; }
+.wip-fin-red { background:#FBE0E2;border-color:#F3BEC3; }
+@media (max-width:760px) { .wip-fin { grid-template-columns:minmax(0, 1fr); } }
 /* View window */
 .wip-grid { display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:12px 24px; }
 .wip-k { font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--afims-text-muted, #62657E); }
@@ -504,8 +512,34 @@ function wip_view(i) {
             <div class="nha-tbl-scroll"><table class="nha-tbl"><thead><tr><th>Description</th><th style="text-align:right;">Cost</th><th style="text-align:right;">% Accomplishment</th></tr></thead>
             <tbody>${items.map(it => `<tr><td style="white-space:pre-wrap;">${wip_esc(it.description)}</td><td class="wip-num">${wip_money(it.cost)}</td><td class="wip-num">${wip_pct(it.accomplishment_pct)}</td></tr>`).join('')}</tbody>
             <tfoot><tr><td style="text-align:right;">Total</td><td class="wip-num">${wip_money(r.items_cost)}</td><td class="wip-num">${wip_pct(r.accomplishment)}</td></tr></tfoot></table></div>
+        </div>
+        <div class="wip-card"><h4>Financials</h4><div class="wip-fin">
+            <div class="wip-fin-box"><span>CONTRACT COST</span><strong style="color:#0035A9;">₱${wip_money(r.contract_cost)}</strong></div>
+            <div class="wip-fin-box wip-fin-green"><span>BILLING PROGRESS</span><strong id="wip-bill-total" style="color:#16A34A;">₱0.00</strong></div>
+            <div class="wip-fin-box wip-fin-red"><span>UNBILLED AMOUNT</span><strong id="wip-bill-unbilled" style="color:#DC2626;">₱${wip_money(r.contract_cost)}</strong></div>
+        </div></div>
+        <div class="wip-card"><h4>Billing Progress <small style="font-weight:400;color:var(--afims-text-muted,#62657E);">&nbsp;Recognised through a Disbursement Voucher or an approved JEV</small></h4>
+            <div class="nha-tbl-scroll"><table class="nha-tbl"><thead><tr><th>Date</th><th>JEV Number</th><th>JEV Status</th><th style="text-align:right;">Billed</th><th style="text-align:right;">Running Total</th><th>Particulars</th></tr></thead>
+            <tbody id="wip-bill-body"><tr><td colspan="6"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr></tbody></table></div>
         </div>`;
     wip_$('wip-overlay').classList.add('open');
+    wip_loadBilling(r);
+}
+/* the billing progress of the project: its billings in order (first billing, second billing, …) with a running total; the cards beside it use the revised contract cost */
+async function wip_loadBilling(r) {
+    const body = wip_$('wip-bill-body');
+    try {
+        const res  = await fetch(`${WIP_API}/billing-progress?id=${encodeURIComponent(r.swa_id)}`, { credentials: 'same-origin', headers: wip_authHeaders() });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load the billing progress.');
+        const e = json.data.entries || [], billed = Number(json.data.billed || 0), cost = Number(r.contract_cost || 0);
+        wip_$('wip-bill-total').textContent = '₱' + wip_money(billed);
+        wip_$('wip-bill-unbilled').textContent = '₱' + wip_money(Math.max(0, cost - billed));
+        body.innerHTML = e.length ? e.map(x => `<tr><td style="white-space:nowrap;">${wip_dash(x.date)}</td><td>${wip_dash(x.jev_no)}</td><td>${wip_dash(x.jev_status)}</td><td class="wip-num">${wip_money(x.billed)}</td><td class="wip-num">${wip_money(x.running_total)}</td><td><strong>${wip_esc(x.label)}</strong>${x.particulars ? ' — ' + wip_esc(x.particulars) : ''}</td></tr>`).join('')
+            : '<tr><td colspan="6"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No billing progress entries yet.</span></div></td></tr>';
+    } catch (err) {
+        body.innerHTML = '<tr><td colspan="6">' + wip_esc(err.message) + '</td></tr>';
+    }
 }
 function wip_closeView() { wip_$('wip-overlay').classList.remove('open'); }
 

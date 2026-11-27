@@ -244,6 +244,13 @@ $app->get('/infra-iar/ped-filter-options', function ($request, $response, $args)
     return $response->withJson($InfraIarService->pedFilterOptions());
 })->add($jwtMiddleware);
 
+// The billing progress of a project (?id= the SWA id) for the View window of Work-In-Process / Construction in Progress: { entries[{date, jev_no, jev_status, billed, running_total, particulars, label}], billed }
+$app->get('/infra-iar/billing-progress', function ($request, $response, $args) use ($InfraIarService) {
+    $result = $InfraIarService->billingProgress((int) ($request->getQueryParams()['id'] ?? 0));
+
+    return $response->withJson($result, $result['success'] ? 200 : 404);
+})->add($jwtMiddleware);
+
 // Work-In-Process → Transfer to MI/PED: the data of the reclassification pro-forma (?id=) — the original JEV (book read-only), the old WIP account,
 // the amount, the four Debit accounts and whether the project reached 90% of completion (paid / revised contract cost)
 $app->get('/infra-iar/transfer-proforma', function ($request, $response, $args) use ($InfraIarService) {

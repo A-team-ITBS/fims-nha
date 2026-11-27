@@ -60,6 +60,12 @@ html.afims-dark[data-bs-theme="dark"] .fxa-menu-trigger { color:#FFFFFF;backgrou
 .fxa-card-btn:focus-visible { outline:2px solid var(--afims-primary, #0035A9); outline-offset:2px; }
 .fxa-card-btn.selected { box-shadow:0 0 0 2px var(--afims-primary, #0035A9), var(--sh-md, 0 4px 12px rgba(0,0,0,.12)); }
 @media (max-width:900px) { #fxa-cards { grid-template-columns:repeat(2, minmax(0, 1fr)) !important; } }
+/* a NEW ASSET ACQUISITION (added to the account in the current year) is highlighted */
+#fxa-root .nha-tbl tr.fxa-new td { background:#ECF8F0; }
+#fxa-root .nha-tbl tr.fxa-new td:first-child { box-shadow:inset 3px 0 0 #16A34A; }
+html.afims-dark[data-bs-theme="dark"] #fxa-root .nha-tbl tr.fxa-new td { background:#12301F; }
+.fxa-newtag { display:inline-block;margin-top:4px;padding:2px 8px;border-radius:999px;background:#DCF1E3;color:#166534;font-size:10px;font-weight:700;letter-spacing:.03em;white-space:nowrap; }
+.fxa-newnote { margin:0 0 14px;padding:10px 14px;border-radius:8px;background:#ECF8F0;border:1px solid #B6DEC2;color:#166534;font-size:12px;font-weight:600; }
 /* View window */
 .fxa-grid { display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:12px 24px; }
 .fxa-k { font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--afims-text-muted, #62657E); }
@@ -346,8 +352,8 @@ function fxa_render(rows, error) {
         tbody.innerHTML = '<tr><td colspan="' + fxa_cols() + '"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">' + fxa_esc(error || 'No ' + fxa_tabTitle + ' found. A project shows here once it is transferred from Construction in Progress.') + '</span></div></td></tr>';
         return;
     }
-    tbody.innerHTML = rows.map((r, i) => `<tr>
-        <td>${fxa_dash(r.requesting_office)}</td>
+    tbody.innerHTML = rows.map((r, i) => `<tr class="${r.new_acquisition ? 'fxa-new' : ''}">
+        <td>${fxa_dash(r.requesting_office)}${r.new_acquisition ? `<br><span class="fxa-newtag" title="Added to this account in ${r.acquisition_year}">NEW ASSET ACQUISITION ${r.acquisition_year}</span>` : ''}</td>
         <td>${fxa_dash(r.project_name)}</td>
         <td class="fxa-mplc-col">${fxa_dash(r.category)}</td>
         <td>${fxa_dash(r.location)}</td>
@@ -419,6 +425,7 @@ function fxa_view(i) {
     const kv = (k, v) => `<div><div class="fxa-k">${k}</div><div class="fxa-v">${v}</div></div>`;
     fxa_$('fxa-view-title').textContent = 'Fixed Assets — ' + (r.project_name || r.swa_number || '');
     fxa_$('fxa-view-body').innerHTML = `
+        ${r.new_acquisition ? `<div class="fxa-newnote">New asset acquisition — this project was added to Fixed Assets in ${r.acquisition_year}.</div>` : ''}
         <div class="fxa-card"><h4>Project</h4><div class="fxa-grid">
             ${kv('RFA No.', fxa_dash(r.rfa_number))}${kv('SWA No.', fxa_dash(r.swa_number))}
             ${kv('Book of Accounts', fxa_dash(r.book_name))}${kv('Regional Office / District Office', fxa_dash(r.requesting_office))}

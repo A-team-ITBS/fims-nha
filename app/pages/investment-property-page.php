@@ -49,6 +49,12 @@ html.afims-dark[data-bs-theme="dark"] .ipr-menu-trigger { color:#FFFFFF;backgrou
 .ipr-fc-empty { padding:8px 12px; font-size:13px; color:var(--afims-text-secondary,#6b7280); }
 /* Land is not depreciated: its tab hides the depreciation columns (useful life, salvage value, accumulated depreciation) */
 #ipr-root.ipr-land .ipr-dep-col { display:none; }
+/* a NEW ASSET ACQUISITION (added to the account in the current year) is highlighted */
+#ipr-root .nha-tbl tr.ipr-new td { background:#ECF8F0; }
+#ipr-root .nha-tbl tr.ipr-new td:first-child { box-shadow:inset 3px 0 0 #16A34A; }
+html.afims-dark[data-bs-theme="dark"] #ipr-root .nha-tbl tr.ipr-new td { background:#12301F; }
+.ipr-newtag { display:inline-block;margin-top:4px;padding:2px 8px;border-radius:999px;background:#DCF1E3;color:#166534;font-size:10px;font-weight:700;letter-spacing:.03em;white-space:nowrap; }
+.ipr-newnote { margin:0 0 14px;padding:10px 14px;border-radius:8px;background:#ECF8F0;border:1px solid #B6DEC2;color:#166534;font-size:12px;font-weight:600; }
 /* View window */
 .ipr-grid { display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:12px 24px; }
 .ipr-k { font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--afims-text-muted, #62657E); }
@@ -298,8 +304,8 @@ function ipr_render(rows, error) {
         tbody.innerHTML = '<tr><td colspan="' + ipr_cols() + '"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">' + ipr_esc(error || 'No ' + ipr_tabTitle + ' found. A project shows here once it is transferred from Construction in Progress.') + '</span></div></td></tr>';
         return;
     }
-    tbody.innerHTML = rows.map((r, i) => `<tr>
-        <td>${ipr_dash(r.requesting_office)}</td>
+    tbody.innerHTML = rows.map((r, i) => `<tr class="${r.new_acquisition ? 'ipr-new' : ''}">
+        <td>${ipr_dash(r.requesting_office)}${r.new_acquisition ? `<br><span class="ipr-newtag" title="Added to this account in ${r.acquisition_year}">NEW ASSET ACQUISITION ${r.acquisition_year}</span>` : ''}</td>
         <td>${ipr_dash(r.project_name)}</td>
         <td style="white-space:nowrap;">${ipr_dash(r.completion_date_revised)}</td>
         <td>${ipr_dash(r.location)}</td>
@@ -370,6 +376,7 @@ function ipr_view(i) {
     const kv = (k, v) => `<div><div class="ipr-k">${k}</div><div class="ipr-v">${v}</div></div>`;
     ipr_$('ipr-view-title').textContent = 'Investment Property — ' + (r.project_name || r.swa_number || '');
     ipr_$('ipr-view-body').innerHTML = `
+        ${r.new_acquisition ? `<div class="ipr-newnote">New asset acquisition — this project was added to Investment Property in ${r.acquisition_year}.</div>` : ''}
         <div class="ipr-card"><h4>Project</h4><div class="ipr-grid">
             ${kv('RFA No.', ipr_dash(r.rfa_number))}${kv('SWA No.', ipr_dash(r.swa_number))}
             ${kv('Book of Accounts', ipr_dash(r.book_name))}${kv('Regional Office / District Office', ipr_dash(r.requesting_office))}

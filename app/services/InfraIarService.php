@@ -939,6 +939,64 @@ class InfraIarService
         }
     }
 
+    /**
+     * The billing progress of ONE project (the View window of Work-In-Process / Construction in Progress): its billings in date order — first billing,
+     * second billing, … — each recognised through a Disbursement Voucher of the project's RFA (RELEASED, or its JEV approved) or through an APPROVED / POSTED
+     * JEV that references the project (doc_ref_no = the SWA or RFA number; the project's own recording and transfer JEVs are not billings).
+     * Returns { entries: [{ date, jev_no, jev_status, billed, running_total, particulars, label }], billed } — the cards (Contract Cost / Billing Progress /
+     * Unbilled Amount) are worked out by the page from the revised contract cost.
+     */
+    public function billingProgress(int $id): array
+    {
+        try {
+            $rec = App\ExecuteRows("SELECT s.swa_number, s.allocation_id, a.allocation_number, a.dv_id,
+                       NULLIF(s.line_transaction -> 0 ->> 'jev_id', '')::int AS own_jev, NULLIF(s.transfer_line -> 0 ->> 'jev_id', '')::int AS transfer_jev
+                  FROM {$this->t} s JOIN fims.budget_allocation a ON a.allocation_id = s.allocation_id WHERE s.swa_id = " . (int) $id, 'DB');
+            if (!$rec) {
+                return ['success' => false, 'message' => 'Record not found.'];
+            }
+            $rec  = $rec[0];
+            $aid  = (int) $rec['allocation_id'];
+            $appr = "('APPROVED', 'POSTED')";
+            $rows = [];
+            // 1) Disbursement Vouchers of the RFA — recognised when RELEASED (paid) or when the DV's JEV is approved
+            $dvs = App\ExecuteRows("SELECT dv.dv_id, dv.dv_no, dv.dv_date::text AS d, dv.gross_amount, dv.particulars, ds.name AS dv_status,
+                       (SELECT j.jev_no FROM fims.journal_entry_vouchers j WHERE j.dv_id = dv.dv_id ORDER BY j.jev_id LIMIT 1) AS jev_no,
+                       (SELECT js.name FROM fims.journal_entry_vouchers j JOIN fims.settings_status js ON js.id = j.status_id WHERE j.dv_id = dv.dv_id ORDER BY j.jev_id LIMIT 1) AS jev_status
+                  FROM fims.disbursement_vouchers dv LEFT JOIN fims.settings_status ds ON ds.id = dv.status_id
+                 WHERE (dv.dv_id = " . (int) ($rec['dv_id'] ?: 0) . " OR dv.rfa_allocation_ids @> ARRAY[{$aid}]) ORDER BY dv.dv_date, dv.dv_id", 'DB') ?: [];
+            foreach ($dvs as $d) {
+                $ok = strtoupper((string) $d['dv_status']) === 'RELEASED' || in_array(strtoupper((string) $d['jev_status']), ['APPROVED', 'POSTED'], true);
+                if ($ok) {
+                    $rows[] = ['date' => $d['d'], 'jev_no' => $d['jev_no'] ?: ('DV ' . $d['dv_no']), 'jev_status' => $d['jev_status'] ?: $d['dv_status'], 'billed' => (float) $d['gross_amount'], 'particulars' => (string) $d['particulars']];
+                }
+            }
+            // 2) approved JEVs that reference the project (not its recording / transfer JEV, not a DV's JEV)
+            $skip = array_filter([(int) $rec['own_jev'], (int) $rec['transfer_jev']]);
+            $jevs = App\ExecuteRows("SELECT j.jev_no, j.jev_date::text AS d, j.total_debit, j.particulars, js.name AS jev_status
+                  FROM fims.journal_entry_vouchers j JOIN fims.settings_status js ON js.id = j.status_id
+                 WHERE j.dv_id IS NULL AND js.name IN {$appr} AND j.doc_ref_no IN (" . $this->q($rec['swa_number']) . ', ' . $this->q($rec['allocation_number']) . ')'
+                . ($skip ? ' AND j.jev_id NOT IN (' . implode(',', array_map('intval', $skip)) . ')' : '') . ' ORDER BY j.jev_date, j.jev_id', 'DB') ?: [];
+            foreach ($jevs as $j) {
+                $rows[] = ['date' => $j['d'], 'jev_no' => $j['jev_no'], 'jev_status' => $j['jev_status'], 'billed' => (float) $j['total_debit'], 'particulars' => (string) $j['particulars']];
+            }
+            usort($rows, fn ($x, $y) => strcmp((string) $x['date'], (string) $y['date']));
+            $ord = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth', 'Ninth', 'Tenth'];
+            $run = 0.0;
+            foreach ($rows as $i => &$r) {
+                $run += $r['billed'];
+                $r['running_total'] = round($run, 2);
+                $r['billed']        = round($r['billed'], 2);
+                $r['label']         = ($ord[$i] ?? (($i + 1) . 'th')) . ' Billing';
+            }
+            unset($r);
+
+            return ['success' => true, 'data' => ['entries' => $rows, 'billed' => round($run, 2)]];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
     /* ─────────────────────── Investment Property page ─────────────────────── */
 
     /** The tabs of the Investment Property page: 1-05-01-010 Investment Property - Land, 1-05-01-020 Investment Property - Buildings (also targets of Transfer to Fixed Assets). */
@@ -1018,6 +1076,9 @@ class InfraIarService
                 $amount = round((float) ($r['transfer_amount'] ?? 0), 2);
                 $area   = $r['total_land_area'] !== null && $r['total_land_area'] !== '' ? (float) $r['total_land_area'] : 0.0;
                 $r['total_amount']  = $amount;
+                // a NEW ASSET ACQUISITION: the project was added to the account (its transfer JEV date) in the current year
+                $r['acquisition_year'] = !empty($r['transfer_date']) ? (int) substr((string) $r['transfer_date'], 0, 4) : null;
+                $r['new_acquisition']  = $r['acquisition_year'] !== null && $r['acquisition_year'] === (int) date('Y');
                 $r['cost_per_unit'] = $area > 0 ? round($amount / $area, 2) : null;
 
                 return $r;
