@@ -123,6 +123,10 @@ class PayrollSetupService
     }
     public const STATUSES   = ['ACTIVE', 'INACTIVE'];
 
+    /** "The item has no (usable) account": none set, or one no longer in the Chart of Accounts as an Active, postable account
+     *  (e.g. switched off by "04 - seed_data/22"). Needs the list's LEFT JOIN of the Chart of Accounts as c. */
+    private const NO_ACCOUNT_SQL = "(i.account_code IS NULL OR c.account_code IS NULL OR c.status <> 'Active' OR c.posting_allowed IS NOT TRUE)";
+
     private function str(mixed $v): string
     {
         return App\QuotedValue(trim((string) $v), App\DataType::STRING, 'DB');
@@ -350,20 +354,27 @@ class PayrollSetupService
      * $page === null returns every match; otherwise paginates and adds the KPI summary.
      * $category: one of CATEGORIES | $status: ACTIVE|INACTIVE | $account: 'with' (has an account) | 'none' (no account yet)
      */
-    public function fetchAlls(?int $page = null, int $limit = 10, string $search = '', string $category = '', string $status = '', string $account = ''): array
+    public function fetchAlls(?int $page = null, int $limit = 10, string $search = '', string $category = '', string $status = '', string $account = '', string $items = ''): array
     {
         try {
             $where = ['1=1'];
+            // $items: comma-separated item codes — only those (Payroll Management's blocked import links here with the items to fix)
+            $itemCodes = array_values(array_filter(array_map(fn ($c) => strtoupper(trim($c)), explode(',', $items))));
+            if ($itemCodes) {
+                $where[] = 'UPPER(i.item_code) IN (' . implode(', ', array_map(fn ($c) => $this->str($c), array_slice($itemCodes, 0, 200))) . ')';
+            }
             if ($category !== '') {
                 $where[] = 'i.category = ' . $this->str(strtoupper($category));
             }
             if ($status !== '') {
                 $where[] = 'i.status = ' . $this->str(strtoupper($status));
             }
+            // an account that is no longer usable (not in the Chart of Accounts, Inactive, no posting) counts as NO account:
+            // the import / RFA / DV can't post to it, so the item needs one assigned (NO_ACCOUNT_SQL)
             if ($account === 'with') {
-                $where[] = 'i.account_code IS NOT NULL';
+                $where[] = 'NOT ' . self::NO_ACCOUNT_SQL;
             } elseif ($account === 'none') {
-                $where[] = 'i.account_code IS NULL';
+                $where[] = self::NO_ACCOUNT_SQL;
             }
             if ($search !== '') {
                 $s       = App\QuotedValue('%' . $search . '%', App\DataType::STRING, 'DB');
@@ -371,7 +382,8 @@ class PayrollSetupService
             }
             $whereSql = implode(' AND ', $where);
 
-            $select = "SELECT i.*, c.account_title
+            // account_status: 'Active' / 'Inactive' from the Chart of Accounts, NULL when the code isn't there (or no account)
+            $select = "SELECT i.*, c.account_title, c.status AS account_status, c.posting_allowed AS account_posting
                        FROM {$this->table} i
                        LEFT JOIN {$this->tableCoa} c ON c.account_code = i.account_code
                        WHERE {$whereSql}
@@ -395,7 +407,7 @@ class PayrollSetupService
                 "SELECT COUNT(*) FILTER (WHERE i.category = 'EARNING')                    AS earnings,
                         COUNT(*) FILTER (WHERE i.category IN ('DEDUCTION', 'REFUND'))      AS deductions,
                         COUNT(*) FILTER (WHERE i.category = 'EMPLOYER_SHARE')              AS employer_share,
-                        COUNT(*) FILTER (WHERE i.account_code IS NULL)                     AS no_account,
+                        COUNT(*) FILTER (WHERE " . self::NO_ACCOUNT_SQL . ")               AS no_account,
                         COUNT(*) FILTER (WHERE i.status = 'ACTIVE')                        AS active,
                         COUNT(*) FILTER (WHERE i.status <> 'ACTIVE')                       AS inactive
                  FROM {$this->table} i LEFT JOIN {$this->tableCoa} c ON c.account_code = i.account_code

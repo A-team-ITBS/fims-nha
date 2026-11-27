@@ -9,7 +9,8 @@ use PHPMaker2024\FIMS\Service\PayrollManagementService;
  *   GET    /payroll-management/list?year=&status=   summary rows per imported month + KPIs
  *   POST   /payroll-management/preview              multipart payroll_file + payroll_month + payroll_year → totals (nothing saved)
  *   POST   /payroll-management/import               same + replace=1 to replace that month's import
- *   DELETE /payroll-management/delete/{periodId}    remove a month's imported records (no active DV only)
+ *   DELETE /payroll-management/delete/{periodId}    remove a month's imported records (no active DV / RFA only)
+ *   POST   /payroll-management/rfa/{periodId}       Create RFA: the month's payroll RFA (Draft) from the import's accounts and amounts
  *   GET    /payroll-management/records/{periodId}   employees of an imported month (search, page, limit)
  *   GET    /payroll-management/record-items/{id}    one employee's amounts per payroll item
  *   GET    /payroll-management/ytd?year=&month=&department=&status=&search=   Year-to-Date report per employee
@@ -68,7 +69,18 @@ $app->delete('/payroll-management/delete/{id:[0-9]+}', function ($request, $resp
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
-$app->get('/payroll-management/records/{id:[0-9]+}', function ($request, $response, $args) use ($PayrollManagementService, $payrollMgmtJson) {
+// Create RFA: the month's payroll RFA (Draft memo request, direct COE draw) with the import's accounts and amounts
+$app->post('/payroll-management/rfa/{id:[0-9]+}', function ($request, $response, $args) use ($PayrollManagementService, $payrollMgmtJson) {
+    try {
+        return $payrollMgmtJson($response, $PayrollManagementService->createRfa((int) $args['id'], (int) $request->getAttribute('user_id')));
+    } catch (\Exception $e) {
+        LogError('POST /payroll-management/rfa ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+$app->get('/payroll-management/records/{id:[0-9]+}',function ($request, $response, $args) use ($PayrollManagementService, $payrollMgmtJson) {
     try {
         return $payrollMgmtJson($response, $PayrollManagementService->fetchRecords((int) $args['id'], $request->getQueryParams()));
     } catch (\Exception $e) {

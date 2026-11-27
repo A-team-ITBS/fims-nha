@@ -15,7 +15,8 @@ use PHPMaker2024\FIMS as App;
  *   PENDING (agency of an imported month, no remittance DV yet)
  *     ── Accounting "Create DV" on the agency (startDv()) ── the DV form (Disbursement Voucher page) for that agency:
  *        claimant = the agency, no RFA (the government share is budgeted with the payroll); entry Dr the agency's Due to …
- *        (employee share) and Dr its government-share expense / Cr Accounts Payable for the total
+ *        (employee share), Dr its Due to … for the government share (the payroll JEV took up the expense: Dr 5-01-03-… /
+ *        Cr Due to …, PayrollManagementService::GOV_SHARE_PAYABLE) / Cr Accounts Payable for the total
  *   IN DV: the DV runs FMD → Accounting → FOR_TREASURY → Treasury pays it (Disbursement Preparation)
  *   REMITTED (its DV released) ── "Confirm Receipt" (the agency's OR) ──► CONFIRMED
  *   The agency's DV cancelled / deleted → it has no DV again (its Create DV comes back).
@@ -367,7 +368,8 @@ class DeductionRemittanceService
     /**
      * What the DV form fills from a SCHEDULED remittance: claimant = the agency, particulars, account (the agency's
      * payable), amount = total to remit, no deductions, and the accounting entry — Dr each payable of the employee share
-     * (less refunds), Dr each government-share expense, Cr Accounts Payable for the total (Treasury's payment JEV then
+     * (less refunds), Dr the agency's Due to … for the government share (its expense is in the payroll JEV), Cr Accounts
+     * Payable for the total (Treasury's payment JEV then
      * debits Accounts Payable / credits Cash, as for every DV). No RFA: the employee share was budgeted with the payroll and
      * the government share is budgeted together with it.
      */
@@ -672,23 +674,39 @@ class DeductionRemittanceService
             'DB'
         ) ?: [];
         $by = [];
+        $payableTitles = null;
         foreach ($rows as $r) {
             [$ag, $kind, $signed] = $this->classify($r['category'], (string) $r['account_code'], (float) $r['amount']);
             if ($ag !== $agency || $kind === null) {
                 continue;
             }
-            $acct = (string) $r['account_code'];
-            $by[$acct] ??= ['amount' => 0.0, 'title' => $r['account_title'] ?: $acct, 'kind' => $kind];
-            $by[$acct]['amount'] += $signed;
+            $acct  = (string) $r['account_code'];
+            $title = $r['account_title'] ?: $acct;
+            if ($kind === 'EMPLOYER') {
+                // the payroll JEV already took up the government share as expense (Dr 5-01-03-… / Cr Due to …): the remittance
+                // pays that Due to … (PayrollManagementService::GOV_SHARE_PAYABLE) — debiting the expense again would double it
+                $acct = PayrollManagementService::govSharePayable($acct);
+                if ($payableTitles === null) {
+                    $codes = array_values(array_unique(PayrollManagementService::GOV_SHARE_PAYABLE));
+                    $payableTitles = array_column(App\ExecuteRows(
+                        'SELECT account_code, account_title FROM fims.chart_of_accounts WHERE account_code IN ('
+                        . implode(', ', array_map(fn ($c) => App\QuotedValue($c, App\DataType::STRING, 'DB'), $codes)) . ')',
+                        'DB'
+                    ) ?: [], 'account_title', 'account_code');
+                }
+                $title = $payableTitles[$acct] ?? $acct;
+            }
+            $by[$acct . '|' . $kind] ??= ['account' => $acct, 'amount' => 0.0, 'title' => $title, 'kind' => $kind];
+            $by[$acct . '|' . $kind]['amount'] += $signed;
         }
         $lines = [];
-        foreach ($by as $acct => $x) {
+        foreach ($by as $x) {
             $amt = round($x['amount'], 2);
             if (abs($amt) < 0.005) {
                 continue;
             }
             $desc = ($x['kind'] === 'EMPLOYER' ? "Government share — {$x['title']}" : $x['title']);
-            $lines[] = ['account_code' => $acct, 'debit' => $amt > 0 ? $amt : 0.0, 'credit' => $amt < 0 ? -$amt : 0.0, 'description' => $desc, 'kind' => $x['kind']];
+            $lines[] = ['account_code' => $x['account'], 'debit' => $amt > 0 ? $amt : 0.0, 'credit' => $amt < 0 ? -$amt : 0.0, 'description' => $desc, 'kind' => $x['kind']];
         }
 
         return $lines;
