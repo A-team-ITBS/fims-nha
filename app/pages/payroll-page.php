@@ -6,7 +6,8 @@ namespace PHPMaker2024\FIMS;
  * payroll-page.php — Payroll Management (PayrollPage). A separate module from Payroll Setup (payroll-setup-page.php,
  * the payroll items master): this page only IMPORTS the monthly employee payroll (the Regular FIMS MONTHLY PAYROLL
  * Excel template) and lists one summary row per imported month: Payroll Month, Year, Import Date, Status, Total
- * Payroll Amount (gross). No DV creation here — the payroll DV is prepared in the DV module from an imported month.
+ * Payroll Amount (gross). Per month: Create RFA (a Draft RFA with the import's account codes and amounts, opened in the memo
+ * request form to submit) → once Approved, Create DV (the DV module, charged to that RFA only) → View DV.
  * Each template column is matched to a Payroll Setup item by its item code.
  * API: app/routes/payroll_management.php → app/services/PayrollManagementService.php.
  */
@@ -116,7 +117,7 @@ $_pr_api = preg_match('~/api$~', $_pr_api) ? $_pr_api : $_pr_api . '/api';
     <div class="pr-pane active" id="pr-pane-imports">
     <div class="nha-summary">
         <div class="nha-sc nha-sc-navy"><div class="nha-sc-top"><div><div class="nha-sc-label">Imported Months</div><div class="nha-sc-val" id="pr-kpi-imports">—</div></div></div><p class="nha-kpi-sub">In the selected year</p></div>
-        <div class="nha-sc nha-sc-teal"><div class="nha-sc-top"><div><div class="nha-sc-label">Total Payroll (Gross)</div><div class="nha-sc-val" id="pr-kpi-gross">—</div></div></div><p class="nha-kpi-sub">Sum of the imports listed</p></div>
+        <div class="nha-sc nha-sc-teal"><div class="nha-sc-top"><div><div class="nha-sc-label">Total Payroll Amount</div><div class="nha-sc-val" id="pr-kpi-gross">—</div></div></div><p class="nha-kpi-sub">Gross pay + gov't share of the imports listed</p></div>
         <div class="nha-sc nha-sc-green"><div class="nha-sc-top"><div><div class="nha-sc-label">Total Net Pay</div><div class="nha-sc-val" id="pr-kpi-net">—</div></div></div><p class="nha-kpi-sub">Gross less employee deductions</p></div>
         <div class="nha-sc nha-sc-amber"><div class="nha-sc-top"><div><div class="nha-sc-label">Awaiting DV</div><div class="nha-sc-val" id="pr-kpi-pending">—</div></div></div><p class="nha-kpi-sub">Imported months with no DV yet</p></div>
     </div>
@@ -142,6 +143,9 @@ $_pr_api = preg_match('~/api$~', $_pr_api) ? $_pr_api : $_pr_api . '/api';
         </div>
     </div>
 
+    <!-- Create RFA results (what the budget doesn't cover, …) -->
+    <div class="pr-msg" id="pr-list-msg" style="margin:0 0 12px;"></div>
+
     <div class="nha-table-wrap">
         <div class="nha-tbl-scroll">
             <table class="nha-tbl">
@@ -151,15 +155,18 @@ $_pr_api = preg_match('~/api$~', $_pr_api) ? $_pr_api : $_pr_api . '/api';
                         <th>Year</th>
                         <th>Import Date</th>
                         <th>Status</th>
-                        <th class="text-end">Total Payroll Amount</th>
+                        <th class="text-end">Gross Pay</th>
+                        <th class="text-end" title="Government (employer) share — in the payroll JEV and the RFA">Gov't Share</th>
+                        <th class="text-end" title="Gross Pay + Gov't Share — exactly the month's RFA, used up by its DV">Total Payroll Amount</th>
                         <th class="text-end">Net Pay</th>
                         <th class="text-end">Employees</th>
+                        <th>RFA</th>
                         <th>Disbursement Voucher</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="pr-tbody">
-                    <tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    <tr><td colspan="12"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -426,7 +433,7 @@ async function pr_load() {
     if ($pr('pr-f-year').value) params.set('year', $pr('pr-f-year').value);
     if ($pr('pr-f-status').value) params.set('status', $pr('pr-f-status').value);
     const body = $pr('pr-tbody');
-    body.innerHTML = '<tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>';
+    body.innerHTML = '<tr><td colspan="12"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>';
     try {
         const json = await pr_json(await pr_authFetch('payroll-management/list?' + params));
         if (!json.success) throw new Error(json.message || 'Failed to load.');
@@ -449,12 +456,12 @@ async function pr_load() {
         }
         const k = json.kpis || {};
         $pr('pr-kpi-imports').textContent = k.imports ?? 0;
-        $pr('pr-kpi-gross').textContent   = pr_peso(k.total_gross);
+        $pr('pr-kpi-gross').textContent   = pr_peso(k.total_payroll ?? k.total_gross);
         $pr('pr-kpi-net').textContent     = pr_peso(k.total_net);
         $pr('pr-kpi-pending').textContent = k.without_dv ?? 0;
         const rows = json.data || [];
         if (!rows.length) {
-            body.innerHTML = '<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No payroll imported yet.</span><div class="nha-empty-text">Use Import Payroll to bring in a month\'s payroll file.</div></div></td></tr>';
+            body.innerHTML = '<tr><td colspan="12"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No payroll imported yet.</span><div class="nha-empty-text">Use Import Payroll to bring in a month\'s payroll file.</div></div></td></tr>';
             return;
         }
         body.innerHTML = rows.map(r => {
@@ -463,24 +470,38 @@ async function pr_load() {
                 : r.import_status === 'PARTIAL_DV' ? '<span class="nha-bdg nha-bdg-blue">Partly in a DV</span>'
                 : '<span class="nha-bdg nha-bdg-amber">Imported</span>';
             pr_rowsById[r.payroll_period_id] = r;
-            // one action: the month's payroll DV — Create DV (none yet) or View DV, both on the Disbursement Voucher page
+            const rfa = r.rfa_id
+                ? `<span class="nha-mono">${pr_esc(r.rfa_no || '')}</span> <span class="nha-bdg ${r.rfa_status === 'Approved' ? 'nha-bdg-green' : 'nha-bdg-gray'}">${pr_esc(r.rfa_status || '')}</span>`
+                : '<span class="nha-text-muted">—</span>';
+            // one action, in order: Create RFA (the import's accounts and amounts) → Open RFA while it can still be edited and
+            // submitted → Create DV once it is Approved (the DV must use that RFA) → View DV
+            const green = 'style="background:var(--afims-success, #11A752);color:#fff;border-color:transparent;"';
             const action = r.dv_id
                 ? `<button type="button" class="nha-btn-act" title="Open DV ${pr_esc(r.dv_nos || '')}" onclick="pr_goDv('dv', ${Number(r.dv_id)})">View DV</button>`
-                : `<button type="button" class="nha-btn-act" style="background:var(--afims-success, #11A752);color:#fff;border-color:transparent;" title="Prepare the payroll Disbursement Voucher for this month" onclick="pr_goDv('payroll', ${Number(r.payroll_period_id)})">Create DV</button>`;
+                : !r.rfa_id
+                ? `<button type="button" class="nha-btn-act" ${green} title="Create this month's payroll RFA from the imported account codes and amounts" onclick="pr_createRfa(${Number(r.payroll_period_id)}, this)">Create RFA</button>`
+                : r.rfa_status === 'Approved'
+                ? `<button type="button" class="nha-btn-act" ${green} title="Prepare the payroll Disbursement Voucher, charged to RFA ${pr_esc(r.rfa_no || '')}" onclick="pr_goDv('payroll', ${Number(r.payroll_period_id)})">Create DV</button>`
+                : PR_RFA_EDITABLE.includes(r.rfa_status)
+                ? `<button type="button" class="nha-btn-act" title="Review the RFA and submit it for approval" onclick="pr_openRfa(${Number(r.rfa_id)})">Open RFA</button>`
+                : `<span class="nha-text-muted" title="The RFA is being reviewed (Memo Request → RFA/LAA). Create DV appears once it is Approved.">Awaiting approval</span>`;
             return `<tr>
                 <td><strong>${pr_esc(r.month_name)}</strong></td>
                 <td>${pr_esc(r.fiscal_yr)}</td>
                 <td>${pr_esc(pr_date(r.imported_at))}${r.imported_by_name ? `<div class="pr-hint">by ${pr_esc(r.imported_by_name)}</div>` : ''}</td>
                 <td>${status}</td>
                 <td class="pr-num">${pr_peso(r.total_gross)}</td>
+                <td class="pr-num">${pr_peso(r.total_employer_share)}</td>
+                <td class="pr-num"><strong>${pr_peso(r.total_payroll)}</strong></td>
                 <td class="pr-num">${pr_peso(r.total_net)}</td>
                 <td class="pr-num">${pr_esc(r.employee_count)}</td>
+                <td style="white-space:nowrap;">${rfa}</td>
                 <td>${dv}</td>
                 <td style="white-space:nowrap;">${action}</td>
             </tr>`;
         }).join('');
     } catch (e) {
-        body.innerHTML = `<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">${pr_esc(e.message)}</span></div></td></tr>`;
+        body.innerHTML = `<tr><td colspan="12"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">${pr_esc(e.message)}</span></div></td></tr>`;
     }
 }
 
@@ -503,6 +524,52 @@ function pr_fillYears() {
 function pr_goDv(param, id) {
     window.location.href = PR_VOUCHER_URL + '?' + param + '=' + encodeURIComponent(id);
 }
+
+/* ── Payroll RFA ────────────────────────────────────────────── */
+// RFA statuses its requester can still edit and submit (the Memo Request page gives Edit on the same ones)
+const PR_RFA_EDITABLE = ['Draft', 'Returned'];
+
+function pr_listMsg(kind, html) {
+    const m = $pr('pr-list-msg');
+    m.className = 'pr-msg' + (kind ? ' ' + kind : '');
+    m.innerHTML = html;
+}
+
+/** Create RFA: the API builds the month's RFA (Draft, direct COE draw — one line per imported account, the imported amounts),
+    then the memo request form opens on it to review and submit for approval. */
+async function pr_createRfa(periodId, btn) {
+    pr_listMsg('', '');
+    if (btn) btn.disabled = true;
+    window.PagePreloader?.show();
+    try {
+        const json = await pr_json(await pr_authFetch('payroll-management/rfa/' + periodId, { method: 'POST' }));
+        if (!json.success) {
+            const list = (json.errors || []).length ? '<ul>' + json.errors.map(e => `<li>${pr_esc(e)}</li>`).join('') + '</ul>' : '';
+            pr_listMsg('err', pr_esc(json.message || 'Failed to create the RFA.') + list);
+            if (json.data?.allocation_id) pr_load(); // it already had one: show it
+            return;
+        }
+        pr_listMsg('', '');
+        await pr_load();
+        pr_openRfa(json.data.allocation_id);
+    } catch (e) {
+        pr_listMsg('err', pr_esc(e.message));
+    } finally {
+        window.PagePreloader?.hide();
+        if (btn) btn.disabled = false;
+    }
+}
+
+/** The memo request form (form/budget-allocation-form.php, included below as a modal) opened on the payroll RFA. */
+function pr_openRfa(allocationId) {
+    if (!window.cbaModal) {
+        pr_listMsg('err', 'The RFA form could not be loaded. Please refresh the page.');
+        return;
+    }
+    window.cbaModal.open(allocationId);
+}
+// the memo request form calls window.mrq_load() after a save (its host page's list): here, refresh the payroll list
+if (typeof window.mrq_load !== 'function') window.mrq_load = () => pr_load();
 
 /* ── Import modal ───────────────────────────────────────────── */
 function pr_open() {
@@ -538,6 +605,20 @@ function pr_formData(replace) {
     return fd;
 }
 
+/** Where to fix a blocked import: the items THIS file filled in that have no account (or are inactive) open in Payroll Setup
+    on their own (PayrollSetupPage?items=…); otherwise the general hint for columns not set up yet. Opens in a new tab so the
+    import modal keeps the file — preview again after saving the items. */
+function pr_setupFixHtml(items) {
+    const codes = (items || []).filter(Boolean);
+    if (!codes.length) {
+        return `<div style="margin-top:6px;">Add the missing items (item code = column name, with their account) in <a href="${PR_SETUP_URL}" target="_blank" rel="noopener">Payroll Setup</a>, then preview again.</div>`;
+    }
+    const url = PR_SETUP_URL + (PR_SETUP_URL.includes('?') ? '&' : '?') + 'items=' + encodeURIComponent(codes.join(','));
+    return `<div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <a href="${url}" target="_blank" rel="noopener" class="nha-btn nha-btn-primary" style="text-decoration:none;">Open Payroll Setup — ${codes.length} item${codes.length > 1 ? 's' : ''} to fix</a>
+        <span>Assign each item its account there, then preview again.</span></div>`;
+}
+
 async function pr_preview() {
     pr_resetPreview();
     if (!$pr('pr-file').files.length) { pr_msg('err', 'Choose the payroll file (.xlsx).'); return; }
@@ -563,8 +644,7 @@ async function pr_preview() {
             return;
         }
         if (d.blocking?.length) {
-            pr_msg('err', '<strong>Cannot import yet:</strong><ul>' + d.blocking.map(b => `<li>${pr_esc(b)}</li>`).join('') + '</ul>'
-                + `<div style="margin-top:6px;">Add the missing items (item code = column name, with their account) in <a href="${PR_SETUP_URL}" target="_blank" rel="noopener">Payroll Setup</a>, then preview again.</div>`);
+            pr_msg('err', '<strong>Cannot import yet:</strong><ul>' + d.blocking.map(b => `<li>${pr_esc(b)}</li>`).join('') + '</ul>' + pr_setupFixHtml(d.fix_items));
             return;
         }
         const replace = !!(d.existing && d.existing.record_count > 0);
@@ -595,7 +675,8 @@ async function pr_import() {
     try {
         const json = await pr_json(await pr_authFetch('payroll-management/import', { method: 'POST', body: pr_formData(pr_previewed.replace) }));
         if (!json.success) {
-            pr_msg('err', pr_esc(json.message || 'Import failed.') + (json.errors?.length ? '<ul>' + json.errors.map(e => `<li>${pr_esc(e)}</li>`).join('') + '</ul>' : ''));
+            pr_msg('err', pr_esc(json.message || 'Import failed.') + (json.errors?.length ? '<ul>' + json.errors.map(e => `<li>${pr_esc(e)}</li>`).join('') + '</ul>' : '')
+                + (json.fix_items?.length ? pr_setupFixHtml(json.fix_items) : ''));
             $pr('pr-save').disabled = false;
             return;
         }
@@ -996,4 +1077,10 @@ else pr_boot();
 <?php
 // Annualization → each employee's BIR 2316 through the shared print preview (prp_open({ fiscal_yr, employee_id }, { type: 'BIR2316' })).
 include_once __DIR__ . '/readone/print-preview-readone.php';
+
+// Create RFA / Open RFA → the memo request form as a modal (window.cbaModal.open(id)), RFA only — the same form the
+// RFA/LAA Memo Request page uses (pr_openRfa()).
+$cbaAsModal = true;
+$cbaAllowedTypes = ['RFA'];
+include __DIR__ . '/form/budget-allocation-form.php';
 ?>

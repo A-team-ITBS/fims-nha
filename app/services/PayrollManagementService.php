@@ -9,7 +9,8 @@ use PHPMaker2024\FIMS as App;
  *
  * IMPORT ONLY: brings in the monthly employee payroll (the Regular FIMS MONTHLY PAYROLL Excel template) and lists one
  * summary row per imported month (Payroll Month, Year, Import Date, Status, Total Payroll Amount = gross).
- * No DV is created here — a payroll DV is prepared in the DV module from an imported month.
+ * Per month: Create RFA (createRfa() — a Draft RFA with the import's accounts and amounts) → once that RFA is Approved, the
+ * payroll DV is prepared in the DV module from the imported month and must use that RFA.
  *
  * Writes into the payroll tables of the Payroll module (no tables of its own):
  *   fims.payroll_periods       one per month (fiscal_yr + payroll_month); created when missing; prepared_at/by = import date/user
@@ -68,14 +69,29 @@ class PayrollManagementService
                         COUNT(dv.dv_id) FILTER (WHERE COALESCE(st.name, '') <> 'CANCELLED') AS linked_count,
                         STRING_AGG(DISTINCT dv.dv_no, ', ') FILTER (WHERE COALESCE(st.name, '') <> 'CANCELLED') AS dv_nos,
                         MIN(dv.dv_id) FILTER (WHERE COALESCE(st.name, '') <> 'CANCELLED') AS dv_id,
-                        STRING_AGG(DISTINCT st.name, ', ') FILTER (WHERE COALESCE(st.name, '') <> 'CANCELLED') AS dv_statuses
+                        STRING_AGG(DISTINCT st.name, ', ') FILTER (WHERE COALESCE(st.name, '') <> 'CANCELLED') AS dv_statuses,
+                        ba.allocation_id AS rfa_id, COALESCE(ba.allocation_number, ba.request_referrence_no) AS rfa_no, rst.name AS rfa_status,
+                        MAX(cost.pay_gross) AS pay_gross, MAX(cost.gov_share) AS gov_share
                    FROM {$this->tPeriod} p
+                   -- the payroll's cost, the same way the RFA and the DV count it (rfaRequirement()): the employees' gross on the
+                   -- expense accounts (earnings, less leave without pay, plus expense refunds) and the government share
+                   LEFT JOIN (SELECT r2.payroll_period_id,
+                                     SUM(CASE i2.category WHEN 'DEDUCTION' THEN -ri2.amount ELSE ri2.amount END)
+                                         FILTER (WHERE i2.category <> 'EMPLOYER_SHARE') AS pay_gross,
+                                     SUM(ri2.amount) FILTER (WHERE i2.category = 'EMPLOYER_SHARE') AS gov_share
+                                FROM {$this->tLine} ri2
+                                JOIN {$this->tRecord} r2 ON r2.payroll_record_id = ri2.payroll_record_id
+                                JOIN {$this->tItem} i2 ON i2.payroll_item_id = ri2.payroll_item_id
+                               WHERE ri2.account_code LIKE '5-%'
+                               GROUP BY r2.payroll_period_id) cost ON cost.payroll_period_id = p.payroll_period_id
                    JOIN {$this->tRecord} r ON r.payroll_period_id = p.payroll_period_id
                    LEFT JOIN {$this->tDv} dv ON dv.dv_id = r.disbursement_voucher_id
                    LEFT JOIN {$this->tSt} st ON st.id = dv.status_id
                    LEFT JOIN uac.users u ON u.user_id = p.prepared_by
+                   LEFT JOIN fims.budget_allocation ba ON ba.allocation_id = p.rfa_allocation_id AND ba.deleted_at IS NULL
+                   LEFT JOIN {$this->tSt} rst ON rst.id = ba.status_id
                   " . (ctype_digit((string) ($filters['year'] ?? '')) ? 'WHERE p.fiscal_yr = ' . (int) $filters['year'] : '') . '
-                  GROUP BY p.payroll_period_id, u.username
+                  GROUP BY p.payroll_period_id, u.username, ba.allocation_id, rst.name
                   ORDER BY p.fiscal_yr DESC, p.payroll_month DESC',
                 'DB'
             ) ?: [];
@@ -85,6 +101,10 @@ class PayrollManagementService
                 $count  = (int) $r['employee_count'];
                 $linked = (int) $r['linked_count'];
                 $r['import_status'] = $linked === 0 ? 'IMPORTED' : ($linked >= $count ? 'DV_CREATED' : 'PARTIAL_DV');
+                // Total Payroll Amount = gross + government share — exactly the month's RFA and what its DV uses up
+                $r['total_gross']          = round((float) ($r['pay_gross'] ?? 0), 2);
+                $r['total_employer_share'] = round((float) ($r['gov_share'] ?? 0), 2);
+                $r['total_payroll']        = round($r['total_gross'] + $r['total_employer_share'], 2);
                 $r['month_name'] = self::MONTHS[(int) $r['payroll_month']] ?? (string) $r['period_name'];
                 if (in_array($filters['status'] ?? '', ['IMPORTED', 'DV_CREATED', 'PARTIAL_DV'], true) && $r['import_status'] !== $filters['status']) {
                     continue;
@@ -99,6 +119,7 @@ class PayrollManagementService
             return ['success' => true, 'data' => $out, 'years' => $years, 'kpis' => [
                 'imports'     => count($out),
                 'total_gross' => round(array_sum(array_map('floatval', array_column($out, 'total_gross'))), 2),
+                'total_payroll' => round(array_sum(array_map('floatval', array_column($out, 'total_payroll'))), 2),
                 'total_net'   => round(array_sum(array_map('floatval', array_column($out, 'total_net'))), 2),
                 'without_dv'  => count(array_filter($out, fn ($r) => $r['import_status'] !== 'DV_CREATED')),
             ]];
@@ -776,6 +797,31 @@ class PayrollManagementService
     private const DV_DED_TYPE_OTHER = 'PAYROLL_OTHER';
     private const DV_AP_ACCOUNT     = '2-01-01-010'; // Accounts Payable — what Treasury's payment entry debits
 
+    /**
+     * Government (employer) share: the payroll JEV recognizes it — Dr the share's expense account, Cr the agency's Due to … —
+     * and the remittance DV later pays that Due to … (DeductionRemittanceService). Expense account prefix → payable account.
+     * ECC (Employees Compensation) is remitted to GSIS. A share on an account not listed here credits Accounts Payable.
+     */
+    public const GOV_SHARE_PAYABLE = [
+        '5-01-03-010' => '2-02-01-020', // Retirement and Life Insurance Premiums → Due to GSIS
+        '5-01-03-040' => '2-02-01-020', // Employees Compensation Insurance Premiums (ECC) → Due to GSIS
+        '5-01-03-020' => '2-02-01-030', // Pag-IBIG Contributions → Due to Pag-IBIG
+        '5-01-03-030' => '2-02-01-040', // PhilHealth Contributions → Due to PhilHealth
+        '5-01-03-050' => '2-02-01-150', // Provident/Welfare Fund Contributions → Due to PFAI
+    ];
+
+    /** The payable a government-share expense account is credited to in the payroll JEV (see GOV_SHARE_PAYABLE). */
+    public static function govSharePayable(string $expenseAccount): string
+    {
+        foreach (self::GOV_SHARE_PAYABLE as $prefix => $payable) {
+            if (str_starts_with($expenseAccount, $prefix)) {
+                return $payable;
+            }
+        }
+
+        return self::DV_AP_ACCOUNT;
+    }
+
     /** Imported months a DV can be prepared from: not used by another live DV (plus the one DV $dvId already uses). */
     public function available(int $dvId = 0): array
     {
@@ -814,7 +860,9 @@ class PayrollManagementService
      *   everything else (Due to GSIS / BIR / PhilHealth / Pag-IBIG, other payables, receivables): DEDUCTION credits it,
      *     REFUND debits it back — these are the DV's deductions;
      *   net = gross − deductions = the month's total net pay → Cr Accounts Payable.
-     * The employer share is not part of the payroll DV (it is not paid to the employees).
+     * The government (employer) share is in the payroll JEV too: Dr its expense account (5-01-03-…), Cr the agency's Due to …
+     * (GOV_SHARE_PAYABLE) — it is not paid to the employees, so the DV's Amount / deductions / net stay the employees'; the
+     * remittance DV later pays the Due to …. With it, the DV uses up its RFA exactly: gross + government share.
      */
     public function dvData(int $periodId): array
     {
@@ -836,18 +884,23 @@ class PayrollManagementService
                    FROM {$this->tLine} ri
                    JOIN {$this->tRecord} r ON r.payroll_record_id = ri.payroll_record_id
                    JOIN {$this->tItem} i ON i.payroll_item_id = ri.payroll_item_id
-                  WHERE r.payroll_period_id = {$periodId} AND i.category <> 'EMPLOYER_SHARE'
+                  WHERE r.payroll_period_id = {$periodId}
                   GROUP BY i.category, ri.account_code",
                 'DB'
             ) ?: [];
 
             $expense = $liability = [];
+            $govShare = [];   // government-share expense account => amount (JEV only — not the employees' gross / deductions)
             $missing = [];
             foreach ($sums as $s) {
                 $acct = (string) ($s['account_code'] ?? '');
                 $amt  = (float) $s['amount'];
                 if ($acct === '') {
                     $missing[] = $s['category'];
+                    continue;
+                }
+                if ($s['category'] === 'EMPLOYER_SHARE') {
+                    $govShare[$acct] = ($govShare[$acct] ?? 0) + $amt;
                     continue;
                 }
                 $isExpense = str_starts_with($acct, '5-');
@@ -872,8 +925,15 @@ class PayrollManagementService
                 return ['success' => false, 'message' => "{$label} has no earnings to pay."];
             }
 
+            $govPayable = [];   // agency payable => government share credited to it
+            foreach ($govShare as $acct => $amt) {
+                $payable = self::govSharePayable((string) $acct);
+                $govPayable[$payable] = ($govPayable[$payable] ?? 0) + $amt;
+            }
+            $employerShare = round(array_sum($govShare), 2);
+
             $titles = [];
-            $codes  = array_unique(array_merge(array_keys($expense), array_keys($liability), [self::DV_AP_ACCOUNT]));
+            $codes  = array_unique(array_merge(array_keys($expense), array_keys($liability), array_keys($govShare), array_keys($govPayable), [self::DV_AP_ACCOUNT]));
             foreach (App\ExecuteRows('SELECT account_code, account_title FROM fims.chart_of_accounts WHERE account_code IN (' . implode(', ', array_map(fn ($c) => $this->str($c), $codes)) . ')', 'DB') ?: [] as $c) {
                 $titles[$c['account_code']] = $c['account_title'];
             }
@@ -930,7 +990,8 @@ class PayrollManagementService
                 ];
             }
 
-            // accounting entry: Dr expense, Cr payables / receivables, Cr Accounts Payable for the net pay
+            // accounting entry — debits first: Dr salaries & benefits, Dr government share; then the credits: Cr payables /
+            // receivables (employee deductions), Cr each agency's Due to … for the government share, Cr Accounts Payable for the net pay
             $lines = [];
             $desc  = "Payroll — {$label}";
             arsort($expense);
@@ -940,11 +1001,25 @@ class PayrollManagementService
                     $lines[] = ['account_code' => $acct, 'description' => $desc, 'debit' => $amt > 0 ? $amt : 0, 'credit' => $amt < 0 ? -$amt : 0];
                 }
             }
+            ksort($govShare);
+            foreach ($govShare as $acct => $amt) {
+                $amt = round($amt, 2);
+                if (abs($amt) >= 0.005) {
+                    $lines[] = ['account_code' => $acct, 'description' => "Government share — {$label}", 'debit' => $amt > 0 ? $amt : 0, 'credit' => $amt < 0 ? -$amt : 0];
+                }
+            }
             ksort($liability);
             foreach ($liability as $acct => $amt) {
                 $amt = round($amt, 2);
                 if (abs($amt) >= 0.005) {
                     $lines[] = ['account_code' => $acct, 'description' => $titles[$acct] ?? $desc, 'debit' => $amt < 0 ? -$amt : 0, 'credit' => $amt > 0 ? $amt : 0];
+                }
+            }
+            ksort($govPayable);
+            foreach ($govPayable as $acct => $amt) {
+                $amt = round($amt, 2);
+                if (abs($amt) >= 0.005) {
+                    $lines[] = ['account_code' => $acct, 'description' => 'Government share — ' . ($titles[$acct] ?? $acct), 'debit' => $amt < 0 ? -$amt : 0, 'credit' => $amt > 0 ? $amt : 0];
                 }
             }
             if ($net > 0) {
@@ -958,12 +1033,15 @@ class PayrollManagementService
                 'gross_amount'      => $gross,
                 'total_deductions'  => $dedTotal,
                 'net_amount'        => $net,
+                'employer_share'    => $employerShare,                     // in the JEV, not in Amount / deductions / net
+                'total_payroll'     => round($gross + $employerShare, 2),  // what the month's RFA is for and the DV uses up
                 'claimant_name'     => 'Officers and Employees of NHA',
                 'particulars'       => "Payment of salaries and other compensation of {$tot['n']} officers and employees for the month of {$label}.",
                 'account_code'      => array_key_first($expense),
                 'deductions'        => $deductions,
                 'lines'             => $lines,
                 'warnings'          => $warnings,
+                'rfa'               => $this->rfaFor($periodId), // the month's payroll RFA (Create RFA) — the DV form selects it
             ]];
         } catch (\Throwable $e) {
             App\LogError('PayrollManagementService::dvData ' . $e->getMessage());
@@ -1022,8 +1100,192 @@ class PayrollManagementService
             return null;
         }
         $row['label'] = (self::MONTHS[(int) $row['payroll_month']] ?? '') . ' ' . $row['fiscal_yr'];
+        // the government share and the payroll total (gross + government share = what the DV uses up of its RFA)
+        $req = $this->rfaRequirement((int) $row['payroll_period_id']);
+        $row['employer_share'] = $req['employer_share'] ?? 0;
+        $row['total_payroll']  = $req['total'] ?? null;
 
         return $row;
+    }
+
+    // ═══ Payroll RFA (Create RFA) ══════════════════════════════════════════════════════════
+    //
+    // A payroll DV draws from the month's OWN RFA: Payroll Management → Create RFA builds it from the import, and the DV module
+    // only accepts that RFA for the month (DisbursementVoucherService::checkPayrollAgainstRfas()). The RFA is an ordinary memo
+    // request (BudgetAllocationService::create(), saved as Draft) made of one direct COE draw block — no Parent CBA, no Project,
+    // no vendor — with one line per imported expense account:
+    //   the 5-… accounts as dvData() sums them (earnings, less leave without pay, plus expense refunds) = the DV's gross, and
+    //   the employer (government) share accounts (5-01-03-…), which the payroll's remittance DVs pay later without an RFA.
+    // So the RFA's amount is exactly what the payroll costs: gross + employer share. Each account is charged to an approved
+    // budget line (Budget Proposal) of the same fiscal year with that account code — the line with the most available balance.
+
+    /** The month's imported charges per account: ['expense' => [acct => amount], 'employer' => [acct => amount], 'missing' => bool]. */
+    private function payrollCharges(int $periodId): array
+    {
+        $expense = $employer = [];
+        $missing = false;
+        foreach (App\ExecuteRows(
+            "SELECT i.category, ri.account_code, SUM(ri.amount) AS amount
+               FROM {$this->tLine} ri
+               JOIN {$this->tRecord} r ON r.payroll_record_id = ri.payroll_record_id
+               JOIN {$this->tItem} i ON i.payroll_item_id = ri.payroll_item_id
+              WHERE r.payroll_period_id = {$periodId}
+              GROUP BY i.category, ri.account_code",
+            'DB'
+        ) ?: [] as $s) {
+            $acct = (string) ($s['account_code'] ?? '');
+            $amt  = (float) $s['amount'];
+            if ($acct === '') {
+                $missing = true;
+                continue;
+            }
+            if (!str_starts_with($acct, '5-')) {
+                continue; // payables / receivables: deductions, not a cost of the payroll
+            }
+            if ($s['category'] === 'EMPLOYER_SHARE') {
+                $employer[$acct] = ($employer[$acct] ?? 0) + $amt;
+            } else {
+                // same signs as dvData(): an EARNING or REFUND adds to the expense account, a DEDUCTION (leave without pay) reduces it
+                $expense[$acct] = ($expense[$acct] ?? 0) + ($s['category'] === 'DEDUCTION' ? -$amt : $amt);
+            }
+        }
+
+        return ['expense' => $expense, 'employer' => $employer, 'missing' => $missing];
+    }
+
+    /** The month's live payroll RFA (not deleted), or null: allocation_id, allocation_number, request_referrence_no, status. */
+    public function rfaFor(int $periodId): ?array
+    {
+        $row = App\ExecuteRow(
+            "SELECT a.allocation_id, a.allocation_number, a.request_referrence_no, a.fiscal_year, st.name AS status
+               FROM {$this->tPeriod} p
+               JOIN fims.budget_allocation a ON a.allocation_id = p.rfa_allocation_id AND a.deleted_at IS NULL
+               LEFT JOIN {$this->tSt} st ON st.id = a.status_id
+              WHERE p.payroll_period_id = {$periodId}",
+            'DB'
+        );
+
+        return $row ?: null;
+    }
+
+    /**
+     * What the month's payroll RFA must cover — gross (the DV's amount) + employer share — or ['error' => …].
+     * Used by Create RFA and by the DV module's payroll check, so the two always agree on the figure.
+     */
+    public function rfaRequirement(int $periodId): array
+    {
+        $c = $this->payrollCharges($periodId);
+        if ($c['missing']) {
+            return ['error' => 'Some payroll items of this month have no account. Set their account in Payroll Setup, then import the month again.'];
+        }
+        $gross    = round(array_sum($c['expense']), 2);
+        $employer = round(array_sum($c['employer']), 2);
+
+        return ['gross' => $gross, 'employer_share' => $employer, 'total' => round($gross + $employer, 2), 'expense' => $c['expense'], 'employer' => $c['employer']];
+    }
+
+    /** POST /payroll-management/rfa/{periodId}: create the month's payroll RFA (Draft) from the import. */
+    public function createRfa(int $periodId, int $userId): array
+    {
+        try {
+            $p = App\ExecuteRow("SELECT payroll_period_id, fiscal_yr, payroll_month FROM {$this->tPeriod} WHERE payroll_period_id = {$periodId}", 'DB');
+            if (!$p) {
+                return ['success' => false, 'httpCode' => 404, 'message' => 'Payroll month not found.'];
+            }
+            $fy    = (int) $p['fiscal_yr'];
+            $label = (self::MONTHS[(int) $p['payroll_month']] ?? '') . ' ' . $fy;
+            $count = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tRecord} WHERE payroll_period_id = {$periodId}", 'DB');
+            if (!$count) {
+                return ['success' => false, 'message' => "{$label} has no imported payroll."];
+            }
+            if ($rfa = $this->rfaFor($periodId)) {
+                return ['success' => false, 'httpCode' => 409, 'message' => "The {$label} payroll already has its RFA (" . ($rfa['allocation_number'] ?: $rfa['request_referrence_no']) . ", {$rfa['status']}).",
+                    'data' => $rfa];
+            }
+
+            $req = $this->rfaRequirement($periodId);
+            if (isset($req['error'])) {
+                return ['success' => false, 'message' => $req['error']];
+            }
+            $charges = [];
+            foreach ([$req['expense'], $req['employer']] as $group) {
+                foreach ($group as $acct => $amt) {
+                    $charges[$acct] = round(($charges[$acct] ?? 0) + $amt, 2);
+                }
+            }
+            ksort($charges);
+            if ($neg = array_keys(array_filter($charges, fn ($a) => $a < -0.004))) {
+                return ['success' => false, 'message' => "The {$label} payroll has a negative total on account " . implode(', ', $neg) . ' (refunds or leave without pay larger than the earnings) — check the import.'];
+            }
+            $charges = array_filter($charges, fn ($a) => $a >= 0.005);
+            if (!$charges) {
+                return ['success' => false, 'message' => "{$label} has no amounts to request."];
+            }
+
+            // the fiscal year's approved budget lines (the same list the RFA form's COB picker shows), by account code
+            $approved = (new BudgetLineItemService())->fetchApproved('', '', '', (string) $fy);
+            if (!($approved['success'] ?? false)) {
+                return ['success' => false, 'message' => $approved['message'] ?? 'Failed to load the approved budget lines.'];
+            }
+            $byAccount = [];
+            foreach ($approved['data'] as $li) {
+                $byAccount[(string) $li['account_code']][] = $li;
+            }
+            $lines  = [];
+            $errors = [];
+            foreach ($charges as $acct => $amt) {
+                $cands = $byAccount[$acct] ?? [];
+                if (!$cands) {
+                    $errors[] = "{$acct}: " . number_format($amt, 2) . " needed — no approved FY {$fy} budget line has this account.";
+                    continue;
+                }
+                usort($cands, fn ($a, $b) => (float) $b['available_amount'] <=> (float) $a['available_amount']);
+                $li = $cands[0];
+                if ((float) $li['available_amount'] + 0.005 < $amt) {
+                    $errors[] = "{$acct}: " . number_format($amt, 2) . ' needed — the budget line with the most left has only ' . number_format((float) $li['available_amount'], 2) . ' available.';
+                    continue;
+                }
+                // the same fields the RFA form keeps per line (budget-allocation-form.php, baaLineObject()), so it shows them on Edit
+                $lines[] = [
+                    'budget_line_item_id' => (string) $li['budget_line_item_id'],
+                    'type_of_fund_id'     => $li['type_of_fund_id'] !== null ? (string) $li['type_of_fund_id'] : '',
+                    'type_of_fund'        => (string) ($li['type_of_fund'] ?? ''),
+                    'account_code'        => $acct,
+                    'account_title'       => (string) ($li['account_title'] ?? ''),
+                    'fiscal_yr'           => (string) $li['fiscal_yr'],
+                    'proposed_amount'     => (string) ($li['proposed_amount'] ?? ''),
+                    'suggested_amount'    => (string) ($li['suggested_amount'] ?? ''),
+                    'available_amount'    => (string) ($li['available_amount'] ?? ''),
+                    'requested_amount'    => number_format($amt, 2, '.', ''),
+                    'allocated_amount'    => '',
+                ];
+            }
+            if ($errors) {
+                return ['success' => false, 'message' => "The {$label} payroll RFA can't be created — the FY {$fy} budget doesn't cover every account:", 'errors' => $errors];
+            }
+
+            $result = (new BudgetAllocationService())->create([
+                'allocation_type' => 'RFA',
+                'fiscal_year'     => $fy,
+                'document_type'   => 'COE',
+                'description'     => "Payroll — {$label}: salaries and other compensation of {$count} officers and employees (gross "
+                    . number_format($req['gross'], 2) . ' + employer share ' . number_format($req['employer_share'], 2) . ').',
+                'projects'        => [['is_direct_draw' => true, 'line_transaction' => $lines]],
+            ], $userId);
+            if (!($result['success'] ?? false)) {
+                return ['success' => false, 'message' => $result['message'] ?? 'Failed to create the RFA.'];
+            }
+            $allocId = (int) $result['allocation_id'];
+            App\Execute("UPDATE {$this->tPeriod} SET rfa_allocation_id = {$allocId}, updated_at = CURRENT_TIMESTAMP WHERE payroll_period_id = {$periodId}", 'DB');
+
+            return ['success' => true, 'httpCode' => 201,
+                'message' => "RFA {$result['request_referrence_no']} created for the {$label} payroll (" . number_format($req['total'], 2) . '). Review it and submit it for approval.',
+                'data'    => ['allocation_id' => $allocId, 'request_referrence_no' => $result['request_referrence_no'] ?? null, 'total' => $req['total']]];
+        } catch (\Throwable $e) {
+            App\LogError('PayrollManagementService::createRfa ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to create the payroll RFA.'];
+        }
     }
 
     // ═══ Import ══════════════════════════════════════════════════════════════════════════
@@ -1066,7 +1328,7 @@ class PayrollManagementService
                 return $parsed;
             }
             if ($parsed['blocking']) {
-                return ['success' => false, 'message' => 'The payroll file cannot be imported yet.', 'errors' => $parsed['blocking']];
+                return ['success' => false, 'message' => 'The payroll file cannot be imported yet.', 'errors' => $parsed['blocking'], 'fix_items' => $parsed['fix_items'] ?? []];
             }
             $label    = self::MONTHS[$period['month']] . ' ' . $period['year'];
             $existing = $this->periodState($period['month'], $period['year']);
@@ -1240,7 +1502,7 @@ class PayrollManagementService
         $amountCols = [];   // col index => item row
         $unmapped   = [];   // col index => ['column', 'code']
         $inactive   = [];
-        $noAccount  = [];
+        $inactiveCols = []; // col index => item row (an INACTIVE item: its amounts would be left out)
         foreach ($headers as $c => $h) {
             $u = strtoupper($h);
             if ($h === '' || preg_match('/^EXPR\d*$/i', $h) || str_starts_with($u, '1INCOME.') || str_starts_with($u, '2INCOME.')) {
@@ -1251,13 +1513,13 @@ class PayrollManagementService
                 $unmapped[$c] = ['column' => $this->itemKey($h), 'code' => $hasCodeRow ? ($codes[$c] ?? '') : ''];
             } elseif ($item['status'] !== 'ACTIVE') {
                 $inactive[] = $item['item_code'];
+                $inactiveCols[$c] = $item;
             } else {
                 $amountCols[$c] = $item;
-                if (empty($item['account_code'])) {
-                    $noAccount[$item['item_code']] = true;
-                }
             }
         }
+        $usedItems    = [];   // item_code => item row: active items with amounts in this file
+        $inactiveUsed = [];   // item_code => true: INACTIVE items with amounts in this file
 
         $employees = [];
         $errors = [];
@@ -1292,6 +1554,12 @@ class PayrollManagementService
                     $unmappedUsed[$c] = $um;
                 }
             }
+            foreach ($inactiveCols as $c => $item) {
+                $num = $this->toNumber($cells[$c] ?? '');
+                if ($num !== null && abs($num) >= 0.005) {
+                    $inactiveUsed[$item['item_code']] = true;
+                }
+            }
             foreach ($amountCols as $c => $item) {
                 $v = $cells[$c] ?? '';
                 if ($v === '' || $v === null) {
@@ -1308,6 +1576,7 @@ class PayrollManagementService
                     continue;
                 }
                 $id = (int) $item['payroll_item_id'];
+                $usedItems[$item['item_code']] = $item;
                 $emp['lines'][$id] ??= ['amount' => 0.0, 'account_code' => $item['account_code']];
                 $emp['lines'][$id]['amount'] = round($emp['lines'][$id]['amount'] + $num, 2);
                 $emp['totals'][$item['category']] += $num;
@@ -1336,12 +1605,64 @@ class PayrollManagementService
             $blocking[] = 'These columns have amounts but are not in Payroll Setup (add each as a payroll item with this item code): '
                 . implode(', ', array_map(fn ($u) => $u['column'] . ($u['code'] !== '' ? " [{$u['code']}]" : ''), $unmappedUsed)) . '.';
         }
-        if ($noAccount) {
-            $warnings[] = 'Payroll items with no account yet (set it in Payroll Setup before preparing the DV): ' . implode(', ', array_keys($noAccount)) . '.';
+        // A column HR filled in must post to a usable account, or the month's RFA / DV can't be made from it: tell them which
+        // item to fix in Payroll Setup now, at import, instead of at Create RFA. Columns left empty are not checked.
+        if ($inactiveUsed) {
+            $blocking[] = 'These columns have amounts but their Payroll Setup item is INACTIVE (the amounts would be left out). In Payroll Setup, '
+                . 'set the item back to ACTIVE, then import again: ' . implode(', ', array_keys($inactiveUsed)) . '.';
         }
+        [$noAccountMsg, $noAccountCodes] = $this->unusableAccounts($usedItems);
+        if ($noAccountMsg) {
+            $blocking[] = $noAccountMsg;
+        }
+        // the Payroll Setup items this file needs fixed (the page links straight to them: PayrollSetupPage?items=…)
+        $fixItems = array_values(array_unique(array_merge(array_keys($inactiveUsed), $noAccountCodes)));
         // template columns that are not set up and carry no amounts in this file are simply ignored (not reported)
         return ['success' => true, 'file_name' => $name, 'employees' => $employees, 'totals' => $tot,
-            'blocking' => array_slice($blocking, 0, 40), 'warnings' => array_slice($warnings, 0, 50), 'skipped_columns' => array_values(array_unique($inactive))];
+            'blocking' => array_slice($blocking, 0, 40), 'warnings' => array_slice($warnings, 0, 50), 'skipped_columns' => array_values(array_unique($inactive)),
+            'fix_items' => $fixItems];
+    }
+
+    /**
+     * The items HR filled in ($used: item_code => item row) whose account can't be posted to — no account, an account that is
+     * not in the Chart of Accounts, one that is Inactive (e.g. switched off by "04 - seed_data/22", not in NHA's books) or one
+     * that does not allow posting. Returns [message naming the items and what to do in Payroll Setup, their item codes],
+     * or [null, []] when all are fine.
+     */
+    private function unusableAccounts(array $used): array
+    {
+        if (!$used) {
+            return [null, []];
+        }
+        $codes = array_values(array_unique(array_filter(array_map(fn ($i) => (string) ($i['account_code'] ?? ''), $used))));
+        $coa   = [];
+        if ($codes) {
+            foreach (App\ExecuteRows(
+                'SELECT account_code, account_title, status, posting_allowed FROM fims.chart_of_accounts WHERE account_code IN ('
+                . implode(', ', array_map(fn ($c) => $this->str($c), $codes)) . ')',
+                'DB'
+            ) ?: [] as $a) {
+                $coa[$a['account_code']] = $a;
+            }
+        }
+        // an account that is no longer usable (not in the Chart of Accounts, Inactive, no posting) counts as no account at all —
+        // the same rule as Payroll Setup's "No account" (PayrollSetupService::NO_ACCOUNT_SQL)
+        $none      = [];
+        $itemCodes = [];
+        foreach ($used as $code => $it) {
+            $acct = (string) ($it['account_code'] ?? '');
+            $a    = $coa[$acct] ?? null;
+            if ($acct === '') {
+                $none[]      = $code;
+                $itemCodes[] = $code;
+            } elseif (!$a || ($a['status'] ?? '') !== 'Active' || !in_array(strtolower((string) $a['posting_allowed']), ['t', 'true', '1'], true)) {
+                $none[]      = "{$code} (was {$acct}, no longer in the Chart of Accounts)";
+                $itemCodes[] = $code;
+            }
+        }
+
+        return $none ? ['These columns have amounts but no account is assigned to them in Payroll Setup: ' . implode(', ', $none)
+            . '. In Payroll Setup, edit each item and assign its account, then import again.', $itemCodes] : [null, []];
     }
 
     /** Minimal .xlsx reader: the "MONTHLY PAYROLL" sheet (else the first) as [rowNo => [colIndex => value]]; null if not a workbook. */
@@ -1466,6 +1787,9 @@ class PayrollManagementService
             $blocked = "The {$label} payroll is used by Disbursement Voucher {$dvs}. Cancel or delete that DV first.";
         } elseif ($rem = (new DeductionRemittanceService())->liveRemittanceAgencies($id)) {
             $blocked = "The {$label} deductions already have remittance DVs (" . implode(', ', $rem) . ') in Deductions & Remittances — cancel or delete them first.';
+        } elseif ($rfa = $this->rfaFor($id)) {
+            // the RFA's amounts are this import's: replacing / deleting the import would leave it requesting the wrong figures
+            $blocked = "The {$label} payroll has its RFA (" . ($rfa['allocation_number'] ?: $rfa['request_referrence_no']) . ", {$rfa['status']}) made from this import. Delete that RFA first.";
         }
 
         return ['payroll_period_id' => $id, 'record_count' => $count, 'blocked' => $blocked];
@@ -1482,6 +1806,7 @@ class PayrollManagementService
             'total_gross' => $t['EARNING'], 'total_deductions' => $t['DEDUCTION'], 'total_refunds' => $t['REFUND'],
             'total_net' => round($t['EARNING'] + $t['REFUND'] - $t['DEDUCTION'], 2), 'total_employer_share' => $t['EMPLOYER_SHARE'],
             'blocking' => $parsed['blocking'], 'warnings' => $parsed['warnings'], 'skipped_columns' => $parsed['skipped_columns'],
+            'fix_items' => $parsed['fix_items'] ?? [],
         ];
     }
 

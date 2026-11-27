@@ -1088,6 +1088,20 @@ class DisbursementVoucherService
         if ($f['_payrollPeriodId'] || $f['_remittanceId'] || $f['_dvRemit'] || !$f['_rfaRows']) {
             return [[], null];
         }
+        // A payroll RFA (Payroll Management → Create RFA) belongs to its month's payroll DV alone — it must be used up by it exactly.
+        $ids = implode(', ', array_map('intval', array_column($f['_rfaRows'], 'allocation_id')));
+        $payrollRfas = App\ExecuteRows(
+            "SELECT p.fiscal_yr, p.payroll_month, COALESCE(a.allocation_number, a.request_referrence_no) AS rfa_no
+               FROM fims.payroll_periods p JOIN {$this->tableRfa} a ON a.allocation_id = p.rfa_allocation_id
+              WHERE p.rfa_allocation_id IN ({$ids})",
+            'DB'
+        ) ?: [];
+        if ($payrollRfas) {
+            $months = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+            return [array_map(fn ($r) => "RFA {$r['rfa_no']} is the " . ($months[(int) $r['payroll_month']] ?? '') . " {$r['fiscal_yr']} payroll RFA — "
+                . 'only that month\'s payroll DV can use it.', $payrollRfas), null];
+        }
         $budget = 0.0;
         $remaining = 0.0;
         foreach ($f['_rfaRows'] as $row) {
@@ -1110,12 +1124,27 @@ class DisbursementVoucherService
     }
 
     /**
+     * What this DV takes from its RFA(s) for balance_amount: a payroll DV uses up its month's RFA — gross + the government share
+     * its JEV takes up (PayrollManagementService::rfaRequirement()), so its balance comes to 0.00; any other DV its net amount.
+     */
+    private function rfaDraw(?int $payrollPeriodId, float $gross, float $net): float
+    {
+        if (!$payrollPeriodId) {
+            return $net;
+        }
+        $req = (new PayrollManagementService())->rfaRequirement($payrollPeriodId);
+
+        return isset($req['error']) ? $gross : round($gross + (float) $req['employer_share'], 2);
+    }
+
+    /**
      * The RFA rules for a PAYROLL DV (Payroll Management → Create DV), on top of "the RFA is Approved" (prepare()):
+     *   - the RFA must be the month's own payroll RFA (Payroll Management → Create RFA), alone;
      *   - the payroll month's fiscal year must be the RFA's fiscal year;
      *   - every RFA must have a Personnel Services line (account 5-01-…) — a payroll is never MOOE / Capital Outlay;
-     *   - the RFAs' remaining balance must cover the payroll's GROSS plus its EMPLOYER (government) share: the
-     *     employer share is paid later by the remittance DVs, which carry no RFA of their own, so the payroll's
-     *     RFA is what funds it.
+     *   - the RFA's total must be EXACTLY the payroll total — GROSS plus the EMPLOYER (government) share, which the
+     *     payroll JEV also recognizes (Dr expense / Cr Due to …) and the remittance DVs pay later without an RFA — and
+     *     no other voucher may have drawn from it: the payroll DV uses the RFA up, leaving no balance.
      * Returns the RFAs' budget like checkAmountAgainstRfas() does, so budget/obligation come from the RFAs.
      *
      * @return array{0: array<int, string>, 1: ?float} [errors, budgetFromRfas]
@@ -1137,6 +1166,20 @@ class DisbursementVoucherService
         }
         $months = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
         $label  = ($months[(int) $payroll['payroll_month']] ?? 'Month ' . $payroll['payroll_month']) . ' ' . $payroll['fiscal_yr'];
+
+        // The month's own RFA (Payroll Management → Create RFA) is the only one its DV may use. A DV saved before payroll RFAs
+        // existed (being edited, the month has none) keeps the older rules below.
+        $payrollSvc = new PayrollManagementService();
+        $monthRfa   = $payrollSvc->rfaFor($periodId);
+        if ($monthRfa) {
+            $picked = array_map('intval', array_column($f['_rfaRows'], 'allocation_id'));
+            if ($picked !== [(int) $monthRfa['allocation_id']]) {
+                return [['The ' . $label . ' payroll must be charged to its own RFA ' . ($monthRfa['allocation_number'] ?: $monthRfa['request_referrence_no'])
+                    . ' (Payroll Management → Create RFA), and to that RFA only.'], null];
+            }
+        } elseif ($excludeDvId === null) {
+            return [['The ' . $label . ' payroll has no RFA yet. Create it in Payroll Management (Create RFA) and have it approved first.'], null];
+        }
 
         $errors    = [];
         $budget    = 0.0;
@@ -1164,10 +1207,24 @@ class DisbursementVoucherService
             $remaining += (float) $detail['data']['remaining_balance'];
         }
 
-        $gross    = round((float) $payroll['gross'], 2);
-        $employer = round((float) $payroll['employer_share'], 2);
+        // the same figure the payroll RFA was created with: the DV's gross (earnings less leave without pay, plus expense
+        // refunds — dvData()) + employer share. Falls back to the records' totals if the import can't be read that way.
+        $req      = $payrollSvc->rfaRequirement($periodId);
+        $gross    = isset($req['error']) ? round((float) $payroll['gross'], 2) : $req['gross'];
+        $employer = isset($req['error']) ? round((float) $payroll['employer_share'], 2) : $req['employer_share'];
         $required = round($gross + $employer, 2);
-        if ($required - $remaining > 0.005) {
+        if ($monthRfa) {
+            // The month's own RFA is used up EXACTLY by its DV: its total must be the payroll total (gross + government share),
+            // and nothing of it drawn by any other voucher — so the RFA has no balance left once the payroll DV is done.
+            if (abs($budget - $required) > 0.005) {
+                $errors[] = 'RFA ' . ($monthRfa['allocation_number'] ?: $monthRfa['request_referrence_no']) . ' is for ' . number_format($budget, 2)
+                    . ' but the ' . $label . ' payroll total is ' . number_format($required, 2) . ' (gross ' . number_format($gross, 2)
+                    . ' + government share ' . number_format($employer, 2) . ') — the payroll RFA must be exactly the payroll total.';
+            } elseif (abs($remaining - $required) > 0.005) {
+                $errors[] = 'RFA ' . ($monthRfa['allocation_number'] ?: $monthRfa['request_referrence_no']) . ' has ' . number_format($remaining, 2)
+                    . ' remaining (another voucher drew from it) — the ' . $label . ' payroll needs all of its ' . number_format($required, 2) . '.';
+            }
+        } elseif ($required - $remaining > 0.005) {
             $errors[] = 'The ' . $label . ' payroll needs ' . number_format($required, 2) . ' (gross ' . number_format($gross, 2)
                 . ' + employer share ' . number_format($employer, 2) . ') but the selected RFA(s) have only '
                 . number_format($remaining, 2) . ' remaining.';
@@ -1917,7 +1974,9 @@ class DisbursementVoucherService
         if ($netAmount < 0) {
             return ['success' => false, 'message' => 'Validation failed.', 'errors' => ['Deductions (' . number_format($totalDeductions, 2) . ') plus withholding tax (' . number_format($totalWithholding, 2) . ') cannot exceed the Amount (' . number_format((float) $dv['gross_amount'], 2) . ').']];
         }
-        $balance         = round((float) $dv['obligation_amount'] - ((float) $dv['payments_prior_amount'] + $netAmount), 2);
+        $payrollMonth    = (new PayrollManagementService())->forDv($dvId);
+        $balance         = round((float) $dv['obligation_amount'] - ((float) $dv['payments_prior_amount']
+            + $this->rfaDraw($payrollMonth ? (int) $payrollMonth['payroll_period_id'] : null, (float) $dv['gross_amount'], $netAmount)), 2);
 
         $uid = $userId > 0 ? (string) $userId : 'NULL';
 
@@ -2531,7 +2590,7 @@ class DisbursementVoucherService
             }
 
             $paymentsPrior = $this->priorPaymentsForRfas(array_column($f['_rfaRows'], 'allocation_id'), null);
-            $balance       = round($f['obligation_amount'] - ($paymentsPrior + $f['net_amount']), 2);
+            $balance       = round($f['obligation_amount'] - ($paymentsPrior + $this->rfaDraw($f['_payrollPeriodId'], (float) $f['gross_amount'], (float) $f['net_amount'])), 2);
 
             $submitted = $f['status'] === 'FOR_FMD_REVIEW';
             $uid       = $userId > 0 ? (string) $userId : 'NULL';
@@ -2659,7 +2718,7 @@ class DisbursementVoucherService
             }
 
             $paymentsPrior = $this->priorPaymentsForRfas(array_column($f['_rfaRows'], 'allocation_id'), $dvId);
-            $balance       = round($f['obligation_amount'] - ($paymentsPrior + $f['net_amount']), 2);
+            $balance       = round($f['obligation_amount'] - ($paymentsPrior + $this->rfaDraw($f['_payrollPeriodId'], (float) $f['gross_amount'], (float) $f['net_amount'])), 2);
 
             $submitted = $f['status'] === 'FOR_FMD_REVIEW';
             $uid       = $userId > 0 ? (string) $userId : 'NULL';

@@ -636,6 +636,7 @@ let vf_bound   = false;
 let vf_paymentsPrior = 0;    // sum of net_amount other active vouchers already drew against the selected RFA(s)
 let vf_selectedRfaIds = [];  // allocation_id values picked in the RFA multi-select, in selection order
 let vf_payrollPeriodId = null; // imported payroll month (payroll_period_id) this DV pays — picked in the Vendor dropdown's Payroll group — or null
+let vf_payrollGovShare = 0;    // that month's government share: in its JEV (not in Amount / deductions / net) and drawn from its RFA
 let vf_remittanceId = null;    // payroll remittance this DV pays — the month's agencies (GSIS / BIR / …), one DV per month — Voucher?remittance={id} — or null (no RFA needed)
 let vf_dvRemitVendors = [];   // the vendors the month's open withholding came from (new Remittance DV only) — the select under the claimant
 let vf_dvRemit = null;       // {period, type}: a month's EWT / Withholding VAT / Penalty Tax this DV pays to BIR — Remittance List "Remit" → Voucher?remit_period=YYYY-MM&remit_type={type} — or null (no RFA needed)
@@ -761,6 +762,7 @@ function vf_reset() {
     $vf('vf-saro').value = '';
 
     vf_payrollPeriodId = null;
+    vf_payrollGovShare = 0;
     vf_remittanceId = null;
     vf_dvRemit = null;
     vf_dvRemitVendors = [];
@@ -2153,11 +2155,14 @@ function vf_recalc() {
     vf_syncAutoJevLines(); // gross/deductions just changed — refresh the hidden Accounting Entries grid's totals
 
     const obligation    = vf_numVal($vf('vf-obligation').value);
-    const totalPayments = vf_paymentsPrior + netAmount;
+    // A payroll DV uses up its RFA: gross + the government share its JEV takes up (the RFA is exactly that) — Balance 0.00.
+    // Any other DV: its net amount, as before.
+    const thisRequest   = vf_payrollPeriodId ? gross + vf_payrollGovShare : netAmount;
+    const totalPayments = vf_paymentsPrior + thisRequest;
     const balance       = obligation - totalPayments;
 
     $vf('vf-payments').textContent       = vf_peso(vf_paymentsPrior);
-    $vf('vf-this-request').textContent   = vf_peso(netAmount);
+    $vf('vf-this-request').textContent   = vf_peso(thisRequest);
     $vf('vf-total-payments').textContent = vf_peso(totalPayments);
     $vf('vf-balance').textContent        = vf_peso(balance);
 }
@@ -2204,15 +2209,14 @@ async function vf_applyPayroll(id) {
         const json = await res.json().catch(() => ({}));
         if (!res.ok || !json.success) throw new Error(json.message || 'HTTP ' + res.status);
         const d = json.data;
+        // the month's own payroll RFA (Payroll Management → Create RFA) is the only RFA this DV may use, and it must be Approved
+        const rfa = d.rfa;
+        if (!rfa) throw new Error(`The ${d.label} payroll has no RFA yet. Create it in Payroll Management (Create RFA) and have it approved first.`);
+        if (rfa.status !== 'Approved') throw new Error(`The ${d.label} payroll RFA ${rfa.allocation_number || rfa.request_referrence_no} is ${rfa.status} — it must be Approved before the payroll DV can be prepared.`);
         if (vf_payrollPeriodId) vf_clearPayrollFill(); // switching from one month to another
         vf_payrollPeriodId = Number(d.payroll_period_id);
+        vf_payrollGovShare = Number(d.employer_share) || 0;
         vf_renderDedTypeButtons();
-
-        // payroll RFAs carry no vendor — drop RFAs picked for a vendor
-        if (vf_selectedRfaIds.some(rid => vf_rfas[rid]?.vendor_id)) {
-            vf_selectedRfaIds = [];
-            vf_renderRfaChips();
-        }
         $vf('vf-claimant').value         = d.claimant_name;
         $vf('vf-claimant-address').value = '';
         $vf('vf-claimant-tin').value     = '';
@@ -2230,6 +2234,10 @@ async function vf_applyPayroll(id) {
         vf_recalc();
         vf_refreshAllJevHints();
         vf_showPayrollCard(d);
+        // select the month's RFA (only it) — vf_onRfaSelectionChange() reads its details (budget, prior payments); a payroll
+        // DV keeps the imported gross as its Amount
+        vf_selectedRfaIds = [String(rfa.allocation_id)];
+        await vf_onRfaSelectionChange();
         if ($vf('vf-rfa-dropdown').classList.contains('open')) vf_renderRfaDropdown();
     } catch (e) {
         if (vf_payrollPeriodId) vf_clearPayrollFill();
@@ -2498,6 +2506,7 @@ function vf_showRemittanceCard(d) {
 /** Undo vf_applyPayroll(): empties every field the payroll month filled, then auto Accounting Entries resume. */
 function vf_clearPayrollFill() {
     vf_payrollPeriodId = null;
+    vf_payrollGovShare = 0;
     vf_renderDedTypeButtons();
     ['vf-claimant', 'vf-claimant-address', 'vf-claimant-tin', 'vf-particulars', 'vf-account-code', 'vf-gross'].forEach(id => { $vf(id).value = ''; });
     vf_clearDeductionRows();
@@ -2505,6 +2514,11 @@ function vf_clearPayrollFill() {
     $vf('vf-jev-tbody').innerHTML = '';
     vf_jevSeq = 0;
     $vf('vf-vendor-card').classList.remove('visible');
+    // the month's payroll RFA goes with it (vf_applyPayroll() selected it)
+    vf_selectedRfaIds = [];
+    vf_paymentsPrior = 0;
+    $vf('vf-payments-hint').textContent = '';
+    vf_renderRfaChips();
     vf_recalc();
 }
 
@@ -2551,6 +2565,7 @@ async function vf_loadExisting() {
     // so restoring it doesn't refill or clear what was saved).
     if (dv.payroll) {
         vf_payrollPeriodId = Number(dv.payroll.payroll_period_id);
+        vf_payrollGovShare = Number(dv.payroll.employer_share) || 0;
         vf_renderDedTypeButtons();
         $vf('vf-vendor').value = VF_PAYROLL_PREFIX + vf_payrollPeriodId;
         vf_showPayrollCard({ ...dv.payroll, claimant_name: dv.claimant_name });

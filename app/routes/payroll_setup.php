@@ -23,7 +23,8 @@ $app->get('/payroll-setup/accounts', function ($request, $response, $args) use (
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
-// Fetch all (with pagination + KPI summary). Optional: page, limit, search, category, status, account (with|none)
+// Fetch all (with pagination + KPI summary). Optional: page, limit, search, category, status, account (with|none),
+// items (comma-separated item codes: only those — the link from a blocked payroll import)
 // `all=1` returns every match without pagination.
 $app->get('/payroll-setup/list', function ($request, $response, $args) use ($PayrollSetupService) {
     try {
@@ -35,7 +36,8 @@ $app->get('/payroll-setup/list', function ($request, $response, $args) use ($Pay
             (string) ($p['search'] ?? ''),
             (string) ($p['category'] ?? ''),
             (string) ($p['status'] ?? ''),
-            (string) ($p['account'] ?? '')
+            (string) ($p['account'] ?? ''),
+            (string) ($p['items'] ?? '')
         );
 
         return $response->withJson($result, $result['success'] ? 200 : 500);
