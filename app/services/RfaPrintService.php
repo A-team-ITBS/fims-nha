@@ -45,6 +45,22 @@ class RfaPrintService
     }
 
     /**
+     * The COB figures Part II is worked out from — the payload's `cob_line_item_ids` (the budget line items / COBs the RFA draws on, any
+     * number of them) read through CobService::figuresForLines(), summed over the lines. null when there are none to read.
+     *
+     * @return array{fund_balance: float, account_payable: float, disbursement: float}|null
+     */
+    private function cobFigures(array $p): ?array
+    {
+        $ids = $p['cob_line_item_ids'] ?? null;
+        if (!is_array($ids) || !$ids) {
+            return null;
+        }
+
+        return (new CobService())->figuresForLines($ids);
+    }
+
+    /**
      * RFA model. Payload (all optional):
      *   allocation_number (or rfa_no), date, payee_name (requesting office),
      *   requesting_department_type ('MAIN' → STAFF form) or requesting_department_id /
@@ -52,9 +68,9 @@ class RfaPrintService
      *   (1a 1a2 1b 2a 2b 2c 2d), filled_out_by / rfa_type (override the variant),
      *   particulars (or description / project_description; one line per row), amount,
      *   cert_correct_name / _title / _office (Part I signatory),
-     *   project_name, total_estimated_cost, total_funds_available, total_funded_to_date,
-     *   balance, payments_outstanding, this_request, total_payments,
-     *   total_contract_cost, adjustment_additive, adjustment_deductive, total_allotment,
+     *   project_name, cob_line_item_ids (the COB lines the RFA draws on — Part II a, b, c and g
+     *   are worked out from them, see below), payments_outstanding (e), this_request (f),
+     *   adjustment_additive, adjustment_deductive,
      *   funding_source { saro_no, saro_date, or_no, or_date, corporate_receipts,
      *                    subsidy, equity, agency_name },
      *   certified_funds_name / _title, recommending_name (blank → the current FMD
@@ -73,12 +89,27 @@ class RfaPrintService
         // Money shown on the form, or '' (the form then prints a blank line).
         $show   = fn (float $v) => $v > 0 ? PrintService::money($v) : '';
 
-        $avail     = $num('total_funds_available');
-        $funded    = $num('total_funded_to_date');
-        $balance   = $num('balance', max(0, $avail - $funded));
+        // Money that may be negative (c = a − b is, when the request is more than the COB has left): shown whenever it is not zero.
+        $showSigned = fn (?float $v) => $v !== null && abs($v) >= 0.005 ? PrintService::money($v) : '';
+
         $payments  = $num('payments_outstanding');
         $thisReq   = $num('this_request', $amount);
-        $totalPaid = $num('total_payments', $payments + $thisReq);
+
+        // Part II is the Finance Unit's, and it is filled from the COB the RFA draws on (cobFigures(): the COB's current
+        // balance, its Account Payable and its Disbursement — summed over every COB line when the RFA has several):
+        //   a = COB balance + Account Payable          (per SARO / COB line)
+        //   b = this RFA's amount + Account Payable
+        //   c = a − b
+        //   d = not filled up
+        //   g = the total disbursement of the SARO / COB for the year
+        //   h = j = this RFA's amount
+        // e (payments & outstanding payable), f (this request) and i (adjustments) keep their own fields. With no COB line to read,
+        // a, b, c and g print blank — they cannot be worked out.
+        $cob = $this->cobFigures($p);
+        $a   = $cob ? round($cob['fund_balance'] + $cob['account_payable'], 2) : null;
+        $b   = $cob ? round($amount + $cob['account_payable'], 2) : null;
+        $c   = $cob ? round($a - $b, 2) : null;
+        $g   = $cob ? $cob['disbursement'] : null;
 
         $particulars = array_values(array_filter(array_map(
             fn ($l) => PrintService::text($l),
@@ -100,29 +131,29 @@ class RfaPrintService
         $partA = [
             ['text', 'a. Total estimated cost for the'],
             ['project', PrintService::text($p['project_name'] ?? '')],
-            ['field', '   Project', $show($num('total_estimated_cost')), 'P'],
+            ['field', '   Project', $showSigned($a), 'P'],
             ['text', 'b. Total funds made available'],
-            ['field', '   for the year amount to', $show($avail), ''],
+            ['field', '   for the year amount to', $showSigned($b), ''],
             ['text', 'c. To date, contracted and/or'],
             ['text', '   planned works had been'],
-            ['field', '   funded in the amount of', $show($funded), ''],
+            ['field', '   funded in the amount of', $showSigned($c), ''],
             ['text', 'd. Balance of funds allocated'],
-            ['field', '   (b – c) .', $show($balance), ''],
+            ['field', '   (b – c) .', '', ''],
             ['text', 'e. Payments & outstanding'],
             ['field', '   Payable to date .', $show($payments), ''],
             ['field', 'f. This request, if approved', $show($thisReq), ''],
             ['text', 'g. Total payments for project'],
-            ['field', '   to date (e + f)', $show($totalPaid), 'P'],
+            ['field', '   to date (e + f)', $showSigned($g), 'P'],
         ];
         $partB = [
             ['text', 'h. Total Contract Cost/RIV/PO'],
-            ['field', '   Included in ( c )', $show($num('total_contract_cost', $amount)), 'P'],
+            ['field', '   Included in ( c )', $show($amount), 'P'],
             ['text', 'i. Adjustment'],
             ['field', '   ● Additive', $show($num('adjustment_additive')), ''],
             ['field', '   ● Deductive', $show($num('adjustment_deductive')), ''],
             ['text', 'j. Total allotment for this'],
             ['text', '   Contract/RIV/PO'],
-            ['field', '   ', $show($num('total_allotment', $amount)), ''],
+            ['field', '   ', $show($amount), ''],
         ];
 
         return [
@@ -162,10 +193,10 @@ class RfaPrintService
             ],
             // As on the old FMD form: the auto-assigned FMD Department Manager
             // prints under RECOMMENDING APPROVAL; APPROVED stays blank unless sent.
-            // A regional office's RFA is recommended by its own Finance Unit Head —
-            // only recommending_name, never the FMD Department Manager.
+            // The regional office's RFA gets it too (the "(Finance Unit Head)" line), as the
+            // regional CBA is signed by the FMD Department Manager when nobody is named.
             'recommending'  => PrintService::text($p['recommending_name'] ?? '')
-                ?: ($regional ? '' : (PrintService::resolveSignatoryName('FMD Department Manager') ?? '')),
+                ?: (PrintService::resolveSignatoryName('FMD Department Manager') ?? ''),
             'approved'      => PrintService::text($p['approved_name'] ?? ''),
             'file_base'     => preg_match('/^RFA/i', $rfaNo)
                 ? preg_replace('/[^A-Za-z0-9\-]/', '_', $rfaNo)

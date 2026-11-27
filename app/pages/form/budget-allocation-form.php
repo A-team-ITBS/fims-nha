@@ -6230,10 +6230,9 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 			// ── RFA-specific fields ───────────────────────────────────────────────
 			// gen_rfa_docx.js reads: rfa_no, payee_name, particulars, amount,
 			// rfa_type, cert_correct_name/title/office, signatory_name_2..4,
-			// project_name, total_estimated_cost, total_funds_available,
-			// total_funded_to_date, balance, payments_outstanding, this_request,
-			// total_payments, total_contract_cost, adjustment_additive/deductive,
-			// total_allotment, funding_source (object with saro_no, saro_date,
+			// project_name, cob_line_item_ids (Part II a, b, c, g, h, j are worked out
+			// from them by RfaPrintService), payments_outstanding, this_request,
+			// adjustment_additive/deductive, funding_source (object with saro_no, saro_date,
 			// or_no, or_date, corporate_receipts, ng_support, subsidy, equity,
 			// agency_name), certFundsName/Title, recommendingName/Title,
 			// approvedName/Title.
@@ -6270,22 +6269,17 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 				payload.signatory_position_3 = v('signatory_position_3') || '';
 				payload.signatory_name_4 = v('signatory_name_4') || '';
 				payload.signatory_position_4 = v('signatory_position_4') || '';
-				// A COB is an approved budget line item: it has no fund balance or SARO reference of its own, so those
-				// print blank (total funds available falls back to the amounts below).
-				var rfaBvFundBalance = 0;
+				// A COB is an approved budget line item: it has no SARO reference of its own, so that prints blank.
 				var rfaSaroRef = '';
 				var rfaSaroDate = '';
 
-				// Financial reference fields — use raw amounts where applicable
-				payload.total_estimated_cost = v('requested_amount_raw') || '0';
-				// "Total funds made available for the year" is the fund balance of
-				// the requested Budget Version, not the requested/allocated amount.
-				payload.total_funds_available = rfaBvFundBalance > 0 ?
-					rfaBvFundBalance :
-					(v('allocated_amount_raw') || v('requested_amount_raw') || '0');
+				// Part II's money (a, b, c, g — and h, j = the amount) is worked out by RfaPrintService from the COB lines this
+				// request draws on: every line of every project block is sent by id, and the print service reads each COB's
+				// current balance, Account Payable and Disbursement itself — the same figures as a saved request's print
+				// (PrintPayloadService). Nothing is computed in the browser.
+				payload.cob_line_item_ids = BAA_ROWS.map(function(idx) { return baaLineObject(idx).budget_line_item_id; })
+					.filter(function(id, i, all) { return id && all.indexOf(id) === i; });
 				payload.this_request = v('requested_amount_raw') || '0';
-				payload.total_allotment = v('requested_amount_raw') || '0';
-				payload.total_contract_cost = v('requested_amount_raw') || '0';
 				// Funding source sub-object (SARO/OR details)
 				payload.funding_source = {
 					saro_no: rfaSaroRef,
