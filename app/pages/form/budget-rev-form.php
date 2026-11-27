@@ -1575,6 +1575,14 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const amtRaw = s => String(s ?? '').replace(/,/g, '').trim();
     const amtText = v => (v === '' || v === null || v === undefined || isNaN(Number(v)) ? '' : Number(v).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    // Regroup what is typed into a Proposed Amount as it goes: digits and one dot only, at most two decimals, thousands commas added (1000 → 1,000).
+    function amtGroup(str) {
+        const s = String(str).replace(/[^\d.]/g, '');
+        const dot = s.indexOf('.');
+        const int = (dot === -1 ? s : s.slice(0, dot)).replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        const dec = dot === -1 ? null : s.slice(dot + 1).replace(/\./g, '').slice(0, 2);
+        return dec === null ? int : (int || '0') + '.' + dec;
+    }
     const round2 = n => Math.round(n * 100) / 100;
     const DOC_EXT = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif'];   // keep in sync with BudgetRevisionService::ATTACHMENT_ALLOWED_EXT
     const DOC_MAX = 20 * 1024 * 1024;                                                       // … and ATTACHMENT_MAX_BYTES
@@ -1869,7 +1877,18 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
 
         name.addEventListener('input', () => onNameInput(card));
         name.addEventListener('focus', () => { if (!card._opts.size) searchProjects(card); });
-        amt.addEventListener('input', () => { amt.value = amt.value.replace(/[^0-9.,]/g, ''); updateTotal(); });
+        amt.addEventListener('input', () => {
+            const before = amt.value, caret = amt.selectionStart;
+            const sig = before.slice(0, caret).replace(/[^\d.]/g, '').length;   // digits / dots left of the caret
+            const next = amtGroup(before);
+            if (next !== before) {
+                amt.value = next;
+                let pos = 0, seen = 0;   // put the caret back after the same digit it was after
+                while (pos < next.length && seen < sig) { if (/[\d.]/.test(next.charAt(pos))) seen++; pos++; }
+                amt.setSelectionRange(pos, pos);
+            }
+            updateTotal();
+        });
         amt.addEventListener('blur', () => { const r = amtRaw(amt.value); if (r !== '' && !isNaN(Number(r))) amt.value = amtText(r); updateTotal(); });
         card.querySelector('.brv-sp-toggle').addEventListener('click', () => {
             const collapsed = card.classList.toggle('is-collapsed');
