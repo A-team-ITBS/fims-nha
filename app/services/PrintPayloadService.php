@@ -204,12 +204,11 @@ class PrintPayloadService
                 'signatory_name_4', 'signatory_position_4'] as $blank) {
                 $payload[$blank] = '';
             }
-            $zeroIfNone = $requestedStr !== '' ? $requestedStr : '0';
-            $payload['total_estimated_cost'] = $zeroIfNone;
-            $payload['total_funds_available'] = $allocatedStr !== '' ? $allocatedStr : $zeroIfNone;
-            $payload['this_request'] = $zeroIfNone;
-            $payload['total_allotment'] = $zeroIfNone;
-            $payload['total_contract_cost'] = $zeroIfNone;
+            $payload['this_request'] = $requestedStr !== '' ? $requestedStr : '0';
+            // Part II's money (a, b, c, g — and h, j = the amount) is worked out by RfaPrintService from the COB lines this request
+            // draws on, across ALL its project blocks: their ids go in, the print service reads each COB's current balance, Account
+            // Payable and Disbursement itself (this builder touches no database).
+            $payload['cob_line_item_ids'] = self::lineItemIds($lines);
             // a COB has no SARO / OR reference of its own: the funding source prints blank
             $payload['funding_source'] = [
                 'saro_no' => '', 'saro_date' => '', 'or_no' => '', 'or_date' => '',
@@ -311,6 +310,20 @@ class PrintPayloadService
         }
 
         return array_values(array_filter(array_is_list($lt) ? $lt : [$lt], 'is_array'));
+    }
+
+    /** The budget line item (COB) ids of line_transaction lines — each once, blanks and non-numbers dropped, in the order they first appear. */
+    private static function lineItemIds(array $lines): array
+    {
+        $ids = [];
+        foreach ($lines as $l) {
+            $id = $l['budget_line_item_id'] ?? null;
+            if (is_numeric($id) && (int) $id > 0) {
+                $ids[(int) $id] = (int) $id;
+            }
+        }
+
+        return array_values($ids);
     }
 
     /** The Type of Fund of the first line that has one ("Sources of Fund" on the certificates). */

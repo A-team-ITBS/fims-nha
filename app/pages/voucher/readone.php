@@ -29,30 +29,31 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 ?>
 
 <style>
+    #vr-root :is(.nha-mono, .nha-amt, .u-font-mono, .fims-mono, .amt-cell) { font-family: var(--font-body); font-variant-numeric: tabular-nums; } /* plain zero, no dotted-zero glyph */
 #vr-root .vr-card { background: var(--afims-surface, #fff); border: 1px solid var(--afims-border, #E4ECF2); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
-#vr-root .vr-card-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin: 0 0 12px; }
+#vr-root .vr-card-title { font-size:var(--fs-sm); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin: 0 0 12px; }
 #vr-root dl.vr-dl { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 20px; margin: 0; }
 #vr-root dl.vr-dl.vr-dl3 { grid-template-columns: repeat(3, 1fr); }
-#vr-root dl.vr-dl dt { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin: 0; }
-#vr-root dl.vr-dl dd { font-size: 14px; font-weight: 600; color: var(--afims-text, #1e293b); margin: 2px 0 0; }
-#vr-root .vr-particulars { font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+#vr-root dl.vr-dl dt { font-size:var(--fs-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin: 0; }
+#vr-root dl.vr-dl dd { font-size:var(--fs-md); font-weight: 600; color: var(--afims-text, #1e293b); margin: 2px 0 0; }
+#vr-root .vr-particulars { font-size:var(--fs-base); line-height: 1.6; white-space: pre-wrap; }
 #vr-root .vr-a-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 20px; }
-#vr-root .vr-a-f dt { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin: 0; }
-#vr-root .vr-a-f dd { font-size: 14px; font-weight: 600; color: var(--afims-text, #1e293b); margin: 2px 0 0; word-break: break-word; }
+#vr-root .vr-a-f dt { font-size:var(--fs-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin: 0; }
+#vr-root .vr-a-f dd { font-size:var(--fs-md); font-weight: 600; color: var(--afims-text, #1e293b); margin: 2px 0 0; word-break: break-word; }
 #vr-root .vr-a-full { grid-column: 1 / -1; }
 @media (max-width: 768px) { #vr-root .vr-a-grid { grid-template-columns: 1fr; } }
-#vr-root .vr-ledger { border-collapse: collapse; width: 100%; font-size: 13px; }
+#vr-root .vr-ledger { border-collapse: collapse; width: 100%; font-size:var(--fs-base); }
 #vr-root .vr-ledger td { padding: 6px 4px; border-bottom: 1px solid var(--afims-surface-subtle, #F4F7FA); }
 #vr-root .vr-ledger td.vr-l-label { color: var(--afims-text-muted, #62657E); font-weight: 600; width: 55%; }
-#vr-root .vr-ledger td.vr-l-val { text-align: right; font-family: "IBM Plex Mono", monospace; font-weight: 600; }
+#vr-root .vr-ledger td.vr-l-val { text-align: right; font-family:var(--font-body);font-variant-numeric:tabular-nums; font-weight: 600; }
 #vr-root .vr-ledger tr.vr-l-total td { border-top: 2px solid var(--afims-border, #E4ECF2); border-bottom: none; font-weight: 700; }
 #vr-root .vr-net { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 18px; margin-bottom: 14px;
     border: 2px solid var(--afims-primary-soft, #E6EBF6); border-radius: 12px;
     background: linear-gradient(to right, var(--afims-primary-soft, #E6EBF6), var(--afims-surface, #fff)); }
-#vr-root .vr-net small { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); }
-#vr-root .vr-net strong { font-family: "IBM Plex Mono", monospace; font-size: 20px; color: var(--afims-primary-text, #0035A9); }
-#vr-root .vr-rejection { padding: 10px 14px; background: var(--afims-danger-soft, #FAE1E3); border-left: 4px solid var(--afims-danger, #DC3545); border-radius: 8px; font-size: 13px; color: var(--afims-danger-text, #8F222D); margin-bottom: 14px; }
-#vr-root .vje-remove { background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); padding: 4px 6px; border-radius: 5px; font-size: 16px; line-height: 1; }
+#vr-root .vr-net small { display: block; font-size:var(--fs-xs); text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); }
+#vr-root .vr-net strong { font-family:var(--font-body);font-variant-numeric:tabular-nums; font-size:var(--fs-2xl); color: var(--afims-primary-text, #0035A9); }
+#vr-root .vr-rejection { padding: 10px 14px; background: var(--afims-danger-soft, #FAE1E3); border-left: 4px solid var(--afims-danger, #DC3545); border-radius: 8px; font-size:var(--fs-base); color: var(--afims-danger-text, #8F222D); margin-bottom: 14px; }
+#vr-root .vje-remove { background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); padding: 4px 6px; border-radius: 5px; font-size:var(--fs-lg); line-height: 1; }
 #vr-root .vje-remove:hover { background: var(--afims-danger-soft, #FAE1E3); }
 /* Accounting's editable Deduction / ATC rows — same blocks and "+ TYPE" pills as the entry form (form.php). */
 #vr-root .vje-row { position: relative; margin-bottom: 10px; }
@@ -62,8 +63,8 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 /* Deduction / ATC rows laid out like the entry form's (form.php .vf-ded-row / .vf-atc-row): name on the left, Rate and Amount
    columns on the right, one hairline between rows. The VAT block keeps its own layout. */
 #vr-root .vje-ded-row:not([data-vat="1"]), #vr-root .vr-ro-ded, #vr-root .vje-atc-row, #vr-root .vr-ro-atc {
-    display: grid; grid-template-columns: minmax(0, 1fr) 180px 170px 44px; align-items: center; margin: 0; padding: 10px 14px; border-top: 1px solid #E4ECF6; }
-#vr-root .vje-ded-row:not([data-vat="1"]) > .vr-ded-label, #vr-root .vr-ro-ded > .vr-ded-label { grid-column: 1; grid-row: 1; margin: 0; font-weight: 400; font-size: 14px; color: var(--afims-text, #1C1E29); }
+    display: grid; grid-template-columns: minmax(0, 1fr) 180px 170px 44px; align-items: center; margin: 0; padding: 10px 14px; border-top: 1px solid var(--afims-border); }
+#vr-root .vje-ded-row:not([data-vat="1"]) > .vr-ded-label, #vr-root .vr-ro-ded > .vr-ded-label { grid-column: 1; grid-row: 1; margin: 0; font-weight: 400; font-size:var(--fs-md); color: var(--afims-text, #1C1E29); }
 #vr-root .vje-ded-row:not([data-vat="1"]) > .vje-grid2, #vr-root .vr-ro-ded > .vje-grid2, #vr-root .vje-atc-row > .vje-grid3, #vr-root .vr-ro-atc > .vje-grid3 { display: contents; }
 #vr-root .vje-ded-row:not([data-vat="1"]) > .vje-grid2 > .vje-fg:nth-child(1), #vr-root .vr-ro-ded > .vje-grid2 > .vje-fg:nth-child(1) { grid-column: 2; grid-row: 1; padding-right: 14px; margin: 0; }
 #vr-root .vje-ded-row:not([data-vat="1"]) > .vje-grid2 > .vje-fg:nth-child(2), #vr-root .vr-ro-ded > .vje-grid2 > .vje-fg:nth-child(2) { grid-column: 3; grid-row: 1; margin: 0; }
@@ -78,85 +79,85 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 #vr-root .vje-ded-row:not([data-vat="1"]) > .vje-fg, #vr-root .vr-ro-ded > .vje-fg { grid-column: 1 / -1; grid-row: 2; }
 #vr-root .vje-ded-row:not([data-vat="1"]) > .vje-remove, #vr-root .vje-atc-row > .vje-remove { position: static; grid-column: 4; grid-row: 1; justify-self: center; }
 /* editable VAT row (Accounting stage): same one-line layout as the entry form — Less: VAT withheld (Inclusive | Exclusive) | rate | amount | x */
-#vr-root .vje-ded-row[data-vat="1"] { display: grid; grid-template-columns: minmax(0, 1fr) 180px 170px 44px; align-items: center; margin: 0; padding: 10px 14px; border-top: 1px solid #E4ECF6; }
-#vr-root .vje-ded-row[data-vat="1"] > .vr-ded-label { grid-column: 1; grid-row: 1; margin: 0; font-weight: 400; font-size: 14px; color: var(--afims-text, #1C1E29); }
+#vr-root .vje-ded-row[data-vat="1"] { display: grid; grid-template-columns: minmax(0, 1fr) 180px 170px 44px; align-items: center; margin: 0; padding: 10px 14px; border-top: 1px solid var(--afims-border); }
+#vr-root .vje-ded-row[data-vat="1"] > .vr-ded-label { grid-column: 1; grid-row: 1; margin: 0; font-weight: 400; font-size:var(--fs-md); color: var(--afims-text, #1C1E29); }
 #vr-root .vje-ded-row[data-vat="1"] .vje-vat-types { display: inline-flex; margin: 0 0 0 10px; gap: 6px; vertical-align: middle; }
-#vr-root .vje-ded-row[data-vat="1"] .vje-vat-opt { padding: 4px 10px; font-size: 12px; }
+#vr-root .vje-ded-row[data-vat="1"] .vje-vat-opt { padding: 4px 10px; font-size:var(--fs-sm); }
 #vr-root .vje-ded-row[data-vat="1"] > .vr-vat-rate { grid-column: 2; grid-row: 1; padding-right: 14px; margin: 0; }
 #vr-root .vje-ded-row[data-vat="1"] > .vr-vat-wamt { grid-column: 3; grid-row: 1; margin: 0; }
 #vr-root .vje-ded-row[data-vat="1"] .vr-vat-rate input, #vr-root .vje-ded-row[data-vat="1"] .vr-vat-wamt input { text-align: right; }
 #vr-root .vje-ded-row[data-vat="1"] > .vje-remove { position: static; grid-column: 4; grid-row: 1; justify-self: center; }
-#vr-root .vje-ded-row[data-vat="1"] > .vr-vat-info { grid-column: 1 / -1; grid-row: 2; margin-top: 6px; font-size: 12px; color: var(--afims-text-muted, #62657E); }
-#vr-root .vr-vat-info input { width: 110px; padding: 2px 6px; border: 0; border-bottom: 1px dashed var(--afims-border, #B9C4D0); background: transparent !important; font-size: 12px; text-align: right; color: inherit; }
-#vr-root .vje-ded-row[data-vat="1"] > .vje-vat-hint { grid-column: 1 / -1; grid-row: 3; margin-top: 2px; font-size: 11.5px; color: var(--afims-text-muted, #62657E); }
+#vr-root .vje-ded-row[data-vat="1"] > .vr-vat-info { grid-column: 1 / -1; grid-row: 2; margin-top: 6px; font-size:var(--fs-sm); color: var(--afims-text-muted, #62657E); }
+#vr-root .vr-vat-info input { width: 110px; padding: 2px 6px; border: 0; border-bottom: 1px dashed var(--afims-border, #B9C4D0); background: transparent !important; font-size:var(--fs-sm); text-align: right; color: inherit; }
+#vr-root .vje-ded-row[data-vat="1"] > .vje-vat-hint { grid-column: 1 / -1; grid-row: 3; margin-top: 2px; font-size:var(--fs-xs); color: var(--afims-text-muted, #62657E); }
 #vr-root .vr-ded-section > :first-child, #vr-root #vje-ded-list > :first-child { border-top: 0; }
-#vr-root .vje-fg label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin-bottom: 3px; }
-#vr-root .vje-fg input, #vr-root .vje-fg select { width: 100%; font-size: 13px; padding: 8px 12px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 8px; box-sizing: border-box; font-family: inherit; background: var(--afims-surface, #fff); color: var(--afims-text, #1e293b); }
+#vr-root .vje-fg label { display: block; font-size:var(--fs-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin-bottom: 3px; }
+#vr-root .vje-fg input, #vr-root .vje-fg select { width: 100%; font-size:var(--fs-base); padding: 8px 12px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 8px; box-sizing: border-box; font-family: inherit; background: var(--afims-surface, #fff); color: var(--afims-text, #1e293b); }
 #vr-root .vje-fg input[readonly] { background: var(--afims-surface-subtle, #F4F7FA); cursor: default; pointer-events: none; user-select: none; }
 #vr-root .vje-fg input[readonly]:focus { outline: none; box-shadow: none; border-color: var(--afims-border, #E4ECF2); }
 /* Amount column: the box text sits 12px inside its box, so the header, Gross and Net values are inset the same 12px to line up with it */
 #vr-root .vr-bd-table th:nth-child(4), #vr-root .vr-bd-gross td:nth-child(4) { padding-right: 26px; }
-#vr-root .vr-net-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 70px 12px 14px; background: #E3EBF8; border-top: 1px solid #D5E0F0; font-size: 14px; color: #0B1B43; }
-#vr-root .vr-net-row b { font-family: "IBM Plex Mono", monospace; font-size: 15px; }
-#vr-root .vr-acct-hint { font-family: "IBM Plex Mono", monospace; font-size: 12px; font-weight: 400; color: var(--afims-text-muted, #62657E); white-space: nowrap; }
+#vr-root .vr-net-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 70px 12px 14px; background: var(--afims-surface-subtle); border-top: 1px solid var(--afims-border); font-size:var(--fs-md); color: var(--afims-heading); }
+#vr-root .vr-net-row b { font-family:var(--font-body);font-variant-numeric:tabular-nums; font-size:var(--fs-md); }
+#vr-root .vr-acct-hint { font-family:var(--font-body);font-variant-numeric:tabular-nums; font-size:var(--fs-sm); font-weight: 400; color: var(--afims-text-muted, #62657E); white-space: nowrap; }
 #vr-root .vr-ded-label .vr-acct-hint { margin-left: 6px; }
 #vr-root .vje-atc-codefg, #vr-root .vr-ro-atc > .vje-fg:first-child { display: flex; align-items: center; gap: 10px; }
 #vr-root .vje-atc-codefg > input, #vr-root .vr-ro-atc > .vje-fg:first-child > input { flex: 0 1 430px; min-width: 0; }
 /* the Tax Base line only matters when the base is split over several ATC rows */
 #vr-root .vr-ded-section:not(.vr-atc-multi) .vr-ro-atc > .vje-grid3 > .vje-fg:nth-child(2),
 #vr-root #vje-ded-list:not(.vr-atc-multi) .vje-atc-row > .vje-grid3 > .vje-fg:nth-child(2) { display: none; }
-#vr-root .vr-ded-types { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid #E4ECF6; }
-#vr-root .vr-ded-less { font-size: 13px; color: var(--afims-text, #1C1E29); }
+#vr-root .vr-ded-types { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--afims-border); }
+#vr-root .vr-ded-less { font-size:var(--fs-base); color: var(--afims-text, #1C1E29); }
 #vr-root .vr-ded-add-select {
     width: auto; min-width: 190px; padding: 7px 12px; border: 1px dashed var(--afims-border, #B9C4D0); border-radius: 8px;
-    background: transparent; color: var(--afims-text-muted, #62657E); font-size: 13px; font-family: inherit; cursor: pointer;
+    background: transparent; color: var(--afims-text-muted, #62657E); font-size:var(--fs-base); font-family: inherit; cursor: pointer;
 }
 #vr-root .vr-ded-add-select:hover, #vr-root .vr-ded-add-select:focus { border-color: var(--afims-heading-fill, #000E3E); outline: none; }
 #vr-root .vr-ded-type-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 20px; border: 1px solid var(--afims-border, #E4ECF2); background: var(--afims-surface, #FFFFFF);
-    color: var(--afims-heading-fill, #000E3E); font-size: 12px; font-weight: 600; letter-spacing: .02em; cursor: pointer; transition: background .15s, border-color .15s; }
+    color: var(--afims-heading-fill, #000E3E); font-size:var(--fs-sm); font-weight: 600; letter-spacing: .02em; cursor: pointer; transition: background .15s, border-color .15s; }
 #vr-root .vr-ded-type-btn:hover { background: var(--afims-surface-subtle, #F4F7FA); border-color: var(--afims-heading-fill, #000E3E); }
-#vr-root .vr-ledger input, #vr-root .vr-ledger select { width: 100%; font-size: 12.5px; padding: 6px 8px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px; box-sizing: border-box; font-family: inherit; }
+#vr-root .vr-ledger input, #vr-root .vr-ledger select { width: 100%; font-size:var(--fs-sm); padding: 6px 8px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px; box-sizing: border-box; font-family: inherit; }
 #vr-root .vje-section-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-#vr-root .vje-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 3px 9px; border-radius: 999px;
+#vr-root .vje-badge { font-size:var(--fs-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 3px 9px; border-radius: 999px;
     background: var(--afims-success-soft, #DBF2E5); color: var(--afims-success-hover, #0C7539); }
-#vr-root .vje-amt-badge { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 8px; background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-text, #1e293b); }
-#vr-root .vje-auto-tag { display: inline-block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+#vr-root .vje-amt-badge { font-size:var(--fs-xs); font-weight: 700; padding: 4px 10px; border-radius: 8px; background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-text, #1e293b); }
+#vr-root .vje-auto-tag { display: inline-block; font-size:var(--fs-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
     padding: 1px 6px; border-radius: 999px; background: var(--afims-primary-soft, #E6EBF6); color: var(--afims-primary-text, #0035A9); margin-left: 4px; }
 /* Section B mirrors the entry form: RFA Breakdown, then plain deduction / ATC rows (no borders), all in one box. */
 /* Section B as one table-like box (same as the entry form): RFA lines, Gross, "Less:" rows. */
-#vr-root .vr-b-card { padding: 0; overflow: hidden; border-color: #D5E0F0; }
-#vr-root .vr-b-card .vr-ded-section { margin: 0 !important; padding: 0 !important; border-top: 1px solid #E4ECF6 !important; }
+#vr-root .vr-b-card { padding: 0; overflow: hidden; border-color: var(--afims-border); }
+#vr-root .vr-b-card .vr-ded-section { margin: 0 !important; padding: 0 !important; border-top: 1px solid var(--afims-border) !important; }
 #vr-root .vr-b-card > .vr-ded-section:first-child { border-top: 0 !important; }
-#vr-root .vr-bd-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 14px; }
+#vr-root .vr-bd-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size:var(--fs-md); }
 #vr-root .vr-bd-table th:nth-child(2), #vr-root .vr-bd-table td:nth-child(2) { width: 170px; }
 #vr-root .vr-bd-table th:nth-child(3), #vr-root .vr-bd-table td:nth-child(3) { width: 180px; }
 #vr-root .vr-bd-table th:nth-child(4), #vr-root .vr-bd-table td:nth-child(4) { width: 170px; }
 #vr-root .vr-bd-table th:nth-child(5), #vr-root .vr-bd-table td:nth-child(5) { width: 44px; }
-#vr-root .vr-bd-table th { padding: 12px 14px; background: #EEF3FB; color: #0B1B43; font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
-#vr-root .vr-bd-table td { padding: 10px 14px; border-top: 1px solid #E4ECF6; vertical-align: middle; }
+#vr-root .vr-bd-table th { padding: 12px 14px; background: var(--afims-surface-subtle); color: var(--afims-heading); font-size:var(--fs-sm); font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+#vr-root .vr-bd-table td { padding: 10px 14px; border-top: 1px solid var(--afims-border); vertical-align: middle; }
 #vr-root .vr-bd-table tbody td:nth-child(2) { color: var(--afims-text-muted, #62657E); }
 #vr-root .vr-bd-table td:nth-child(3), #vr-root .vr-bd-table td:nth-child(4) { text-align: right; }
 #vr-root .vr-bd-table .vr-bd-amt { padding: 8px 12px; border: 1px solid var(--afims-border, #D7DCE6); border-radius: 8px; display: block; text-align: right; background: var(--afims-surface-subtle, #F4F7FA); }
-#vr-root .vr-bd-gross td { background: #E3EBF8; border-top: 1px solid #D5E0F0; padding: 8px 14px; }
-#vr-root .vr-bd-gross .vr-bd-muted { color: var(--afims-text-muted, #62657E); font-size: 13px; }
+#vr-root .vr-bd-gross td { background: var(--afims-surface-subtle); border-top: 1px solid var(--afims-border); padding: 8px 14px; }
+#vr-root .vr-bd-gross .vr-bd-muted { color: var(--afims-text-muted, #62657E); font-size:var(--fs-base); }
 #vr-root .vr-less { font-weight: 400; margin-right: 4px; }
 /* read-only VAT row: Less: VAT withheld (Inclusive | Exclusive) | rate | amount, VAT computation on a muted line beneath */
-#vr-root .vr-ro-vat { display: grid; grid-template-columns: minmax(0, 1fr) 180px 170px 44px; align-items: center; padding: 10px 14px; border-top: 1px solid #E4ECF6; }
-#vr-root .vr-ro-vat > .vr-ded-label { grid-column: 1; grid-row: 1; margin: 0; font-weight: 400; font-size: 14px; }
-#vr-root .vr-ro-vat .vr-vat-tag { font-size: 12px; margin-left: 10px; padding: 3px 10px; border-radius: 999px; background: #E3EBF8; color: #0B1B43; font-weight: 600; }
+#vr-root .vr-ro-vat { display: grid; grid-template-columns: minmax(0, 1fr) 180px 170px 44px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--afims-border); }
+#vr-root .vr-ro-vat > .vr-ded-label { grid-column: 1; grid-row: 1; margin: 0; font-weight: 400; font-size:var(--fs-md); }
+#vr-root .vr-ro-vat .vr-vat-tag { font-size:var(--fs-sm); margin-left: 10px; padding: 3px 10px; border-radius: 999px; background: var(--afims-surface-subtle); color: var(--afims-heading); font-weight: 600; }
 #vr-root .vr-ro-vat > .vje-fg:nth-of-type(2) { grid-column: 2; grid-row: 1; padding-right: 14px; margin: 0; }
 #vr-root .vr-ro-vat > .vje-fg:nth-of-type(3) { grid-column: 3; grid-row: 1; margin: 0; }
 #vr-root .vr-ro-vat .vje-fg label { display: none; }
 #vr-root .vr-ro-vat input { text-align: right; }
-#vr-root .vr-ro-vat > .vr-vat-info { grid-column: 1 / -1; grid-row: 2; margin-top: 6px; font-size: 12px; color: var(--afims-text-muted, #62657E); }
+#vr-root .vr-ro-vat > .vr-vat-info { grid-column: 1 / -1; grid-row: 2; margin-top: 6px; font-size:var(--fs-sm); color: var(--afims-text-muted, #62657E); }
 /* C. Accounting Entry (auto-generated) */
 #vr-root .vr-ap-card { padding: 0; overflow: hidden; }
-#vr-root .vr-ap-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-#vr-root .vr-ap-table th { padding: 12px 16px; text-align: left; font-size: 12.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; color: var(--afims-text-muted, #475069); background: #F7F9FC; border-bottom: 1px solid #E4ECF6; }
-#vr-root .vr-ap-table td { padding: 10px 16px; border-bottom: 1px solid #EEF2F8; }
-#vr-root .vr-ap-table td:nth-child(1) { font-family: "IBM Plex Mono", monospace; font-size: 13px; letter-spacing: .02em; }
+#vr-root .vr-ap-table { width: 100%; border-collapse: collapse; font-size:var(--fs-md); }
+#vr-root .vr-ap-table th { padding: 12px 16px; text-align: left; font-size:var(--fs-sm); font-weight: 600; text-transform: uppercase; letter-spacing: .02em; color: var(--afims-text-muted, #475069); background: var(--afims-surface-subtle); border-bottom: 1px solid var(--afims-border); }
+#vr-root .vr-ap-table td { padding: 10px 16px; border-bottom: 1px solid var(--afims-border); }
+#vr-root .vr-ap-table td:nth-child(1) { font-family:var(--font-body);font-variant-numeric:tabular-nums; font-size:var(--fs-base); letter-spacing: .02em; }
 #vr-root .vr-ap-table td:nth-child(3), #vr-root .vr-ap-table td:nth-child(4) { text-align: right; }
-#vr-root .vr-ap-sub:not(:empty) { margin-top: 2px; font-size: 12px; color: var(--afims-text-muted, #62657E); }
+#vr-root .vr-ap-sub:not(:empty) { margin-top: 2px; font-size:var(--fs-sm); color: var(--afims-text-muted, #62657E); }
 #vr-root .vr-ap-table tr.vr-ap-total td { font-weight: 700; border-bottom: 0; }
 #vr-root .vr-ap-table tr.vr-ap-bad td:nth-child(3), #vr-root .vr-ap-table tr.vr-ap-bad td:nth-child(4) { color: var(--afims-danger-text, #8F222D); }
 #vr-root .vr-ded-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--afims-border, #E4ECF2); }
@@ -164,53 +165,53 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 #vr-root .vr-ded-section + .vr-ded-section { margin-top: 10px; padding-top: 0; border-top: none; } /* Deductions and ATC read as one list */
 #vr-root .vr-ded-row { margin-bottom: 10px; }
 #vr-root .vr-ded-row:last-child { margin-bottom: 0; }
-#vr-root .vr-ded-label { font-size: 13px; font-weight: 600; color: var(--afims-heading-fill, #000E3E); margin-bottom: 4px; }
+#vr-root .vr-ded-label { font-size:var(--fs-base); font-weight: 600; color: var(--afims-heading-fill, #000E3E); margin-bottom: 4px; }
 /* VAT deduction — Inclusive/Exclusive, VAT Computation (informational) and Withholding VAT (deducted). Same layout as the entry
    form's (form.php .vf-vat-*): editable here while Accounting holds the DV (vje_addVatLine()), plain read-only afterwards (vr_vatBlockHtml()). */
 #vr-root .vje-vat-types { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
-#vr-root .vje-vat-opt { display: flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; border: 1px solid var(--afims-border, #E4ECF2); background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-text-muted, #62657E); }
+#vr-root .vje-vat-opt { display: flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 6px; font-size:var(--fs-sm); font-weight: 600; border: 1px solid var(--afims-border, #E4ECF2); background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-text-muted, #62657E); }
 #vr-root label.vje-vat-opt { cursor: pointer; }
 #vr-root .vje-vat-opt.active { border-color: var(--afims-primary, #0035A9); color: var(--afims-primary-text, #0035A9); }
-#vr-root .vje-vat-opt small { font-size: 10px; font-weight: 400; }
+#vr-root .vje-vat-opt small { font-size:var(--fs-2xs); font-weight: 400; }
 #vr-root .vje-vat-block { margin-top: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--afims-border, #E4ECF2); background: var(--afims-surface-subtle, #F4F7FA); }
-#vr-root .vje-vat-block-title { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 2px; }
+#vr-root .vje-vat-block-title { font-size:var(--fs-xs); font-weight: 700; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 2px; }
 #vr-root .vje-vat-block-title span { font-weight: 400; text-transform: none; letter-spacing: 0; }
 #vr-root .vje-vat-block.info .vje-vat-block-title { color: var(--afims-primary-text, #0035A9); }
 #vr-root .vje-vat-block.real .vje-vat-block-title { color: var(--afims-danger, #DC3545); }
-#vr-root .vje-vat-hint { display: block; margin-top: 6px; font-size: 11px; color: var(--afims-text-muted, #62657E); }
+#vr-root .vje-vat-hint { display: block; margin-top: 6px; font-size:var(--fs-xs); color: var(--afims-text-muted, #62657E); }
 /* One line under the ATC rows: how much of the base their Tax Bases add up to (red when they exceed it). */
-#vr-root .vje-atc-summary { margin: 4px 0 10px; font-size: 11.5px; line-height: 1.5; color: var(--afims-text-muted, #62657E); }
+#vr-root .vje-atc-summary { margin: 4px 0 10px; font-size:var(--fs-xs); line-height: 1.5; color: var(--afims-text-muted, #62657E); }
 #vr-root .vje-atc-summary.over { padding: 6px 10px; border-radius: 6px; color: var(--afims-danger-text, #8F222D); background: var(--afims-danger-soft, #FAE1E3); }
 #vr-root .vr-rfa-list { display: flex; flex-direction: column; gap: 10px; }
 #vr-root .vr-rfa-item { border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; padding: 10px 12px; }
 #vr-root .vr-att-list { display: flex; flex-direction: column; gap: 6px; }
-#vr-root .vr-att-item { display: block; font-size: 13px; color: var(--afims-primary-text, #0035A9); text-decoration: none; }
+#vr-root .vr-att-item { display: block; font-size:var(--fs-base); color: var(--afims-primary-text, #0035A9); text-decoration: none; }
 #vr-root .vr-att-item:hover { text-decoration: underline; }
 
-#vr-root .vje-grp-table { border-collapse: collapse; width: 100%; font-size: 13px; }
-#vr-root .vje-grp-table th { padding: 5px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: var(--afims-text-muted, #62657E); border-bottom: 1px solid var(--afims-border, #E4ECF2); }
+#vr-root .vje-grp-table { border-collapse: collapse; width: 100%; font-size:var(--fs-base); }
+#vr-root .vje-grp-table th { padding: 5px 4px; font-size:var(--fs-xs); text-transform: uppercase; letter-spacing: .03em; color: var(--afims-text-muted, #62657E); border-bottom: 1px solid var(--afims-border, #E4ECF2); }
 #vr-root .vje-grp-table td { padding: 5px 4px; border-bottom: 1px solid var(--afims-surface-subtle, #F4F7FA); }
 #vr-root .vje-grp-hdr td { font-weight: 700; padding-top: 10px; border-bottom: 1px solid var(--afims-border, #E4ECF2); }
 #vr-root .vje-grp-hdr:first-child td { padding-top: 5px; }
 #vr-root .vje-grp-sub td:first-child { padding-left: 20px; color: var(--afims-text, #1e293b); font-weight: 400; }
-#vr-root .vje-grp-amt { text-align: right; font-family: "IBM Plex Mono", monospace; white-space: nowrap; width: 120px; }
-#vr-root .vje-grp-code { text-align: center; font-family: "IBM Plex Mono", monospace; color: var(--afims-text-muted, #62657E); width: 60px; }
+#vr-root .vje-grp-amt { text-align: right; font-family:var(--font-body);font-variant-numeric:tabular-nums; white-space: nowrap; width: 120px; }
+#vr-root .vje-grp-code { text-align: center; font-family:var(--font-body);font-variant-numeric:tabular-nums; color: var(--afims-text-muted, #62657E); width: 60px; }
 
 /* Flat Accounting Entries table */
-#vr-root .vje-edit-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+#vr-root .vje-edit-table { border-collapse: collapse; width: 100%; font-size:var(--fs-base); }
 #vr-root .vje-edit-table td, #vr-root .vje-edit-table th { padding: 6px 4px; border-bottom: 1px solid var(--afims-surface-subtle, #F4F7FA); }
 #vr-root .vje-edit-table th { text-align: left; font-weight: 600; background: var(--afims-surface-subtle, #F4F7FA); }
 /* The picked account's title, inside the Account Code field right after the code ("1-04-01-010 - Due to BIR"). The input keeps only the
    code; this is a click-through label whose left edge vje_renderAcctTitle() sets to the end of the typed text. */
 #vr-root .vje-acct-wrap { position: relative; }
 /* the vendor's SL, read-only under the Accounts Payable GL (see vje_renderSlLine()) */
-#vr-root .vje-sl-line { margin: 6px 0 0 2px; font-size: 12.5px; color: var(--afims-text, #1C1E29); font-family: "IBM Plex Mono", monospace; }
-#vr-root .vje-sl-line > span { font-family: inherit; font-size: 10.5px; font-weight: 700; letter-spacing: .04em; color: var(--afims-text-muted, #62657E); margin-right: 6px; }
+#vr-root .vje-sl-line { margin: 6px 0 0 2px; font-size:var(--fs-sm); color: var(--afims-text, #1C1E29); font-family:var(--font-body);font-variant-numeric:tabular-nums; }
+#vr-root .vje-sl-line > span { font-family: inherit; font-size:var(--fs-xs); font-weight: 700; letter-spacing: .04em; color: var(--afims-text-muted, #62657E); margin-right: 6px; }
 #vr-root .vje-sl-line em { font-style: normal; font-family: var(--font, inherit); color: var(--afims-text-muted, #62657E); }
 
-#vr-root .vje-acct-title { position: absolute; top: 0; bottom: 0; right: 8px; display: none; align-items: center; pointer-events: none; font-size: 12.5px; font-family: inherit; color: var(--afims-text-muted, #62657E); }
+#vr-root .vje-acct-title { position: absolute; top: 0; bottom: 0; right: 8px; display: none; align-items: center; pointer-events: none; font-size:var(--fs-sm); font-family: inherit; color: var(--afims-text-muted, #62657E); }
 #vr-root .vje-acct-title > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#vr-root .vje-edit-table input { width: 100%; font-size: 12.5px; padding: 6px 8px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px; box-sizing: border-box; font-family: inherit; }
+#vr-root .vje-edit-table input { width: 100%; font-size:var(--fs-sm); padding: 6px 8px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px; box-sizing: border-box; font-family: inherit; }
 #vr-root .vje-edit-table tr.vr-l-total td { border-top: 2px solid var(--afims-border, #E4ECF2); border-bottom: none; font-weight: 700; text-align: right; }
 
 /* "Document" layout — lettered sections (A/B/C/D) styled like a printed form, same convention as
@@ -219,20 +220,20 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
    renamed. */
 #vr-root .vr-doc-section { margin-bottom: 22px; }
 #vr-root .vr-doc-section-hdr {
-    font-size: 14px; font-weight: 700; color: #fff; background: #0B1B43;
+    font-size:var(--fs-md); font-weight: 700; color: var(--afims-text-on-dark); background: var(--afims-heading);
     margin: 0 0 12px; padding: 10px 14px; border-radius: 8px;
     text-transform: uppercase; letter-spacing: .02em;
 }
 #vr-root .vr-doc-table { width: 100%; border-collapse: collapse; border: 1px solid var(--afims-border, #D7DCE6); margin-bottom: 14px; }
 #vr-root .vr-doc-table td { border: 1px solid var(--afims-border, #D7DCE6); padding: 10px 14px; vertical-align: top; width: 50%; }
 #vr-root .vr-doc-table td.vr-doc-full { width: 100%; }
-#vr-root .vr-doc-table .vr-doc-k { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--afims-text-muted, #62657E); margin: 0 0 6px; }
+#vr-root .vr-doc-table .vr-doc-k { font-size:var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--afims-text-muted, #62657E); margin: 0 0 6px; }
 #vr-root .vr-doc-summary-table { width: 100%; border-collapse: collapse; border: 1px solid var(--afims-border, #D7DCE6); margin-top: 14px; }
-#vr-root .vr-doc-summary-table td { border: 1px solid var(--afims-border, #D7DCE6); padding: 10px 14px; font-size: 13px; }
+#vr-root .vr-doc-summary-table td { border: 1px solid var(--afims-border, #D7DCE6); padding: 10px 14px; font-size:var(--fs-base); }
 #vr-root .vr-doc-summary-table td:first-child { font-weight: 600; color: var(--afims-text, #1C1E29); }
-#vr-root .vr-doc-summary-table td:last-child { text-align: right; font-family: "IBM Plex Mono", monospace; font-weight: 600; width: 220px; }
-#vr-root .vr-doc-summary-table tr.vr-doc-summary-final td { font-weight: 700; background: #E8EEF9; color: #0B1B43; text-transform: uppercase; font-size: 12.5px; }
-#vr-root .vr-doc-summary-table tr.vr-doc-summary-final td:last-child { text-transform: none; font-size: 14px; }
+#vr-root .vr-doc-summary-table td:last-child { text-align: right; font-family:var(--font-body);font-variant-numeric:tabular-nums; font-weight: 600; width: 220px; }
+#vr-root .vr-doc-summary-table tr.vr-doc-summary-final td { font-weight: 700; background: var(--afims-primary-soft); color: var(--afims-heading); text-transform: uppercase; font-size:var(--fs-sm); }
+#vr-root .vr-doc-summary-table tr.vr-doc-summary-final td:last-child { text-transform: none; font-size:var(--fs-md); }
 
 @media print {
     body * { visibility: hidden; }
@@ -501,7 +502,10 @@ function vr_mayTransition(dv, target) {
         const isHolder = holderRc !== null && VR_RC_ID === holderRc;
         return isCreator || isHolder;
     }
-    if (holderRc === null) return true; // DRAFT -> FOR_FMD_REVIEW: Originating submits, open to anyone.
+    if (holderRc === null) {
+        // DRAFT -> FOR_FMD_REVIEW: Originating submits, open to anyone — except the monthly Remittance DV (DRAFT -> FOR_ACCOUNTING), which only Accounting staff (RC 012) submit.
+        return !(dv.dv_remit && target === 'FOR_ACCOUNTING' && VR_RC_ID !== '012');
+    }
     if (VR_RC_ID !== holderRc) return false;
     // Separation of duties inside Accounting — whoever already acted on an earlier Accounting step of this
     // voucher can't take the next one (mirrors DisbursementVoucherService::authorizeTransition()).
@@ -518,7 +522,8 @@ function vr_renderActions(dv) {
     const btn = (label, status, cls) => `<button type="button" class="nha-btn ${cls}" style="margin-left:8px;" onclick="vr_changeStatus('${status}')">${label}</button>`;
     let html = '';
     if (allowed.includes('FOR_FMD_REVIEW')) html += btn('Submit to FMD', 'FOR_FMD_REVIEW', 'nha-btn-primary');
-    if (allowed.includes('FOR_ACCOUNTING')) html += btn('FMD Approve', 'FOR_ACCOUNTING', 'nha-btn-primary');
+    // DRAFT → FOR_ACCOUNTING is only offered for the monthly Remittance DV, which has no FMD step; from FOR_FMD_REVIEW it is FMD's approval
+    if (allowed.includes('FOR_ACCOUNTING')) html += dv.status === 'DRAFT' ? btn('Submit to Accounting', 'FOR_ACCOUNTING', 'nha-btn-primary') : btn('FMD Approve', 'FOR_ACCOUNTING', 'nha-btn-primary');
     if (allowed.includes('FOR_DIVISION_MANAGER'))   html += btn('Forward to Division Manager', 'FOR_DIVISION_MANAGER', 'nha-btn-primary');
     if (allowed.includes('FOR_DEPARTMENT_MANAGER')) html += btn('Forward to Department Manager', 'FOR_DEPARTMENT_MANAGER', 'nha-btn-primary');
     if (allowed.includes('FOR_TREASURY'))   html += btn('Approve &amp; Forward to Treasury', 'FOR_TREASURY', 'nha-btn-primary');
@@ -532,7 +537,7 @@ function vr_renderActions(dv) {
         if (dv.status === 'FOR_DIVISION_MANAGER' && Number(dv.accounting_processed_by) === me) why = 'You forwarded this voucher to the Division Manager, so you can\'t also approve it. Another Accounting user must do the Division Manager step.';
         else if (dv.status === 'FOR_DEPARTMENT_MANAGER' && [dv.accounting_processed_by, dv.division_reviewed_by].some(u => Number(u) === me)) why = 'You already acted on an earlier Accounting step of this voucher, so the Department Manager approval must be done by a different user.';
     }
-    if (why) html = `<span style="font-size:12px;color:var(--afims-warning-text,#8A6400);max-width:420px;display:inline-block;text-align:left;vertical-align:middle;">${vr_esc(why)}</span>` + html;
+    if (why) html = `<span style="font-size:var(--fs-sm);color:var(--afims-warning-text,#8A6400);max-width:420px;display:inline-block;text-align:left;vertical-align:middle;">${vr_esc(why)}</span>` + html;
     $vr('vr-actions').innerHTML = html;
 }
 
@@ -631,10 +636,10 @@ function vr_codeChip(code) {
     const parts = String(code ?? '').split('-').filter(p => p !== '');
     if (!parts.length) return '';
     const segs = parts.map((p, i) => {
-        const bg     = i === 0 ? '#EEF1F7' : '#EAF1FE';
-        const fg     = i === 0 ? '#1A1B21' : '#2F5FD6';
-        const border = i > 0 ? 'border-left:1px solid rgba(15,32,69,.08);' : '';
-        return `<span style="background:${bg};color:${fg};padding:2px 6px;font-size:11px;font-weight:700;font-family:'IBM Plex Mono',monospace;${border}">${vr_esc(p)}</span>`;
+        const bg     = i === 0 ? 'var(--afims-surface-subtle)' : 'var(--afims-primary-soft)';
+        const fg     = i === 0 ? 'var(--afims-text)' : 'var(--afims-primary-text)';
+        const border = i > 0 ? 'border-left:1px solid var(--afims-border);' : '';
+        return `<span style="background:${bg};color:${fg};padding:2px 6px;font-size:var(--fs-xs);font-weight:700;font-family:var(--font-body);font-variant-numeric:tabular-nums;${border}">${vr_esc(p)}</span>`;
     }).join('');
     return `<span style="display:inline-flex;border:1px solid var(--afims-border, #E4ECF2);border-radius:5px;overflow:hidden;vertical-align:middle;">${segs}</span>`;
 }
@@ -652,14 +657,14 @@ function vje_groupSubLabels(group, dv) {
         const credit = Number(l.credit) || 0;
         let label;
         if (it.isChild) {
-            label = `<span style="font-size:12px;color:var(--afims-text-muted, #62657E);"><span style="margin-right:4px;">SL Code:</span>${vr_codeChip(l.account_code)}<span style="margin-left:6px;">${vr_esc(l.account_title || '—')}</span></span>`;
+            label = `<span style="font-size:var(--fs-sm);color:var(--afims-text-muted, #62657E);"><span style="margin-right:4px;">SL Code:</span>${vr_codeChip(l.account_code)}<span style="margin-left:6px;">${vr_esc(l.account_title || '—')}</span></span>`;
         } else if (dv?.account_code && group.account_code === dv.account_code && debit > 0 && (dv.claimant_name || dv.vendor_name)) {
-            label = `<span style="font-size:13px;color:var(--afims-text, #1e293b);">${vr_esc(dv.claimant_name || dv.vendor_name)}</span>`;
+            label = `<span style="font-size:var(--fs-base);color:var(--afims-text, #1e293b);">${vr_esc(dv.claimant_name || dv.vendor_name)}</span>`;
         } else {
             const atc = (dv?.atc_lines ?? []).find(a => a.account_code === group.account_code && Math.abs((Number(a.withholding_tax) || 0) - credit) < 0.01);
             label = atc
-                ? `<span style="font-size:13px;color:var(--afims-text, #1e293b);"><span style="display:inline-block;width:40px;">${vr_esc(atc.rate)}%</span>${vr_esc(atc.atc_description || atc.atc_code)}</span>`
-                : (l.description ? `<span style="font-size:13px;color:var(--afims-text-muted, #62657E);">${vr_esc(l.description)}</span>` : '');
+                ? `<span style="font-size:var(--fs-base);color:var(--afims-text, #1e293b);"><span style="display:inline-block;width:40px;">${vr_esc(atc.rate)}%</span>${vr_esc(atc.atc_description || atc.atc_code)}</span>`
+                : (l.description ? `<span style="font-size:var(--fs-base);color:var(--afims-text-muted, #62657E);">${vr_esc(l.description)}</span>` : '');
         }
         return label ? `<div style="text-align:left;">${label}</div>` : '';
     }).join('');
@@ -758,7 +763,7 @@ function vje_entriesCard(dv) {
                 <div class="nha-fg" style="max-width:260px;">
                     <label>Book <span class="nha-req">*</span></label>
                     <select id="vje-book"><option value="">Select a book…</option></select>
-                    <span class="vje-err" id="vje-err-book" style="display:none;color:var(--afims-danger,#C0392B);font-size:12px;">Book is required.</span>
+                    <span class="vje-err" id="vje-err-book" style="display:none;color:var(--afims-danger,#C0392B);font-size:var(--fs-sm);">Book is required.</span>
                 </div>
             </div>
             <p class="vr-hint" style="margin:0 0 8px;">Add one line per journal entry.</p>
@@ -782,7 +787,7 @@ function vje_entriesCard(dv) {
             </div>
             <button type="button" class="nha-btn nha-btn-ghost" style="margin-top:8px;" onclick="vje_addNewLine()">+ Add Line</button>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
-                <span id="vje-balance-msg" style="font-weight:600;font-size:13px;"></span>
+                <span id="vje-balance-msg" style="font-weight:600;font-size:var(--fs-base);"></span>
             </div>
         </div>`;
 }
@@ -1423,7 +1428,8 @@ function vje_renderAcctTitle(tr) {
 }
 
 /**
- * A Remittance DV from the Remittance List (dv.dv_remit): the vendor and the voucher-by-voucher schedule of what it pays. '' for any other DV.
+ * The monthly Remittance DV from the Remittance List (dv.dv_remit): what it pays per tax and the voucher-by-voucher schedule behind it, every vendor
+ * of the month together (the vendor is named once at the top only when the whole month came from one vendor). '' for any other DV.
  */
 function vr_remitScheduleHtml(dv) {
     const d = dv.dv_remit;
@@ -1436,30 +1442,34 @@ function vr_remitScheduleHtml(dv) {
         g.total += Number(s.amount || 0);
         g.lines.push(s);
     });
-    // A Remittance DV is for one vendor: its name is shown once at the top (per voucher only if they ever differ)
+    // Every vendor of the month is in the one DV: each voucher names its vendor (shown once at the top only when they are all the same one)
     const oneVendor = groups.length > 0 && groups.every(g => g.vendor === groups[0].vendor);
     const border = '1px solid var(--afims-border,#E4ECF2)';
-    const th = 'padding:9px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--afims-text-muted,#62657E);background:var(--afims-surface-subtle,#F4F7FA);border-bottom:' + border + ';';
-    const td = 'padding:11px 14px;font-size:13px;border-bottom:' + border + ';';
-    const num = "text-align:right;white-space:nowrap;font-family:'IBM Plex Mono',monospace;";
+    const th = 'padding:9px 14px;font-size:var(--fs-xs);font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--afims-text-muted,#62657E);background:var(--afims-surface-subtle,#F4F7FA);border-bottom:' + border + ';';
+    const td = 'padding:11px 14px;font-size:var(--fs-base);border-bottom:' + border + ';';
+    const num = "text-align:right;white-space:nowrap;font-family:var(--font-body);font-variant-numeric:tabular-nums;";
     const sched = groups.map(g => `<div style="margin-top:14px;">
             <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;margin-bottom:8px;">
-                <span><span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--afims-text-muted,#62657E);">DV No.</span> <strong class="nha-mono" style="font-size:14px;">${vr_esc(g.dv_no)}</strong></span>
-                <span><span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--afims-text-muted,#62657E);">Date</span> <strong style="font-size:14px;">${vr_fmtDate(g.dv_date)}</strong></span>
+                <span><span style="font-size:var(--fs-xs);font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--afims-text-muted,#62657E);">DV No.</span> <strong class="nha-mono" style="font-size:14px;">${vr_esc(g.dv_no)}</strong></span>
+                <span><span style="font-size:var(--fs-xs);font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--afims-text-muted,#62657E);">Date</span> <strong style="font-size:14px;">${vr_fmtDate(g.dv_date)}</strong></span>
                 ${oneVendor ? '' : `<span style="font-weight:600;">${vr_esc(g.vendor)}</span>`}
+                ${g.lines.some(s => s.atc_code && !/^WV/i.test(String(s.atc_code)))
+                    // the payee's BIR 2307 belongs to this SOURCE voucher (the remittance DV pays BIR, so it has none of its own): same preview as the voucher's own BIR 2307 button
+                    ? `<a href="#" class="no-print" style="font-size:var(--fs-sm);font-weight:600;" title="Print the BIR 2307 (Certificate of Creditable Tax Withheld at Source) for this payee" onclick="event.preventDefault();prp_open({dv_id:${Number(g.dv_id)}},{type:'BIR2307'})">BIR 2307</a>` : ''}
             </div>
             <div style="overflow-x:auto;border:${border};border-radius:8px;"><table style="width:100%;border-collapse:collapse;">
-                <thead><tr><th style="${th}text-align:left;">ATC</th><th style="${th}text-align:right;">Rate</th><th style="${th}text-align:right;">Tax Base</th><th style="${th}text-align:right;">Withheld</th></tr></thead>
-                <tbody>${g.lines.map(s => `<tr><td style="${td}" class="nha-mono">${vr_esc(s.atc_code || d.type_name)}</td><td style="${td}${num}">${s.rate === null || s.rate === undefined ? '' : vr_esc(Number(s.rate) + '%')}</td><td style="${td}${num}">${vr_peso(s.base)}</td><td style="${td}${num}">${vr_peso(s.amount)}</td></tr>`).join('')}
+                <thead><tr><th style="${th}text-align:left;">Tax / ATC</th><th style="${th}text-align:right;">Rate</th><th style="${th}text-align:right;">Tax Base</th><th style="${th}text-align:right;">Withheld</th></tr></thead>
+                <tbody>${g.lines.map(s => `<tr><td style="${td}" class="nha-mono">${vr_esc(s.atc_code || s.type_name)}</td><td style="${td}${num}">${s.rate === null || s.rate === undefined ? '' : vr_esc(Number(s.rate) + '%')}</td><td style="${td}${num}">${vr_peso(s.base)}</td><td style="${td}${num}">${vr_peso(s.amount)}</td></tr>`).join('')}
                 <tr><td colspan="3" style="${td}border-bottom:0;font-weight:700;">Total</td><td style="${td}${num}border-bottom:0;font-weight:700;">${vr_peso(g.total)}</td></tr></tbody>
             </table></div>
         </div>`).join('');
     return `<div class="vr-card">
         ${oneVendor ? `<div style="padding-bottom:14px;border-bottom:${border};">
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--afims-text-muted,#62657E);margin-bottom:4px;">Vendor</div>
-            <div style="font-size:20px;font-weight:700;line-height:1.25;color:var(--afims-heading,#000E3E);">${vr_esc(groups[0].vendor)}</div>
+            <div style="font-size:var(--fs-xs);font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--afims-text-muted,#62657E);margin-bottom:4px;">Vendor</div>
+            <div style="font-size:var(--fs-2xl);font-weight:700;line-height:1.25;color:var(--afims-heading,#000E3E);">${vr_esc(groups[0].vendor)}</div>
         </div>` : ''}
-        <p class="vr-card-title" style="margin:14px 0 0;">Vouchers paid — ${Number(d.vouchers) || 0} DV(s), ${(d.schedule || []).length} ATC line(s)</p>
+        <p class="vr-card-title" style="margin:${oneVendor ? '14px' : '0'} 0 0;">${vr_esc(d.period_label || '')} — ${(d.taxes || []).map(t => `${vr_esc(t.type_name)} <strong>${vr_peso(t.amount)}</strong>`).join(' · ')}</p>
+        <p class="vr-card-title" style="margin:14px 0 0;">Vouchers paid — ${Number(d.vouchers) || 0} DV(s), ${(d.schedule || []).length} line(s)</p>
         ${sched}
     </div>`;
 }
@@ -1594,7 +1604,7 @@ function vje_updateAcctgEntryPanels(dv) {
             div.onclick = () => vje_selectRfa(r.allocation_number);
             div.innerHTML = `
                 <div style="font-weight:600;color:var(--afims-text,#1e293b);">${r.allocation_number}</div>
-                <div style="font-size:12px;color:var(--afims-text-muted,#62657E);margin-top:2px;">${r.request_referrence_no || ''}</div>
+                <div style="font-size:var(--fs-sm);color:var(--afims-text-muted,#62657E);margin-top:2px;">${r.request_referrence_no || ''}</div>
             `;
             rfaList.appendChild(div);
         });

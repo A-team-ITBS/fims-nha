@@ -383,25 +383,39 @@ Payroll Management, DV Processing → Disbursement Voucher. **Payroll month stat
 | 1 | Payroll officer | Payroll Management → File Template | Follow the steps card; check the readiness banner (every amount column set up in Payroll Setup); look up a column in the amount-columns list (search box); Download Import Form; fill one row per employee (employee no., names and the amounts) | The file has the payroll office's columns and no employee rows |
 | 2 | Payroll officer | Payroll Management → Payroll Imports → Import Payroll | Pick the month and year, choose the file, Preview | Employees, gross, deductions, refunds, net and employer share shown; nothing saved yet |
 | 2a | Payroll officer (alternative) | Import Payroll → Preview | A file with a column not set up in Payroll Setup, a repeated employee no. or a text amount | "Cannot import yet" with the reason — add the item in Payroll Setup / fix the file, then Preview again |
+| 2b | Payroll officer (alternative) | Import Payroll → Preview | A column HR filled in whose Payroll Setup item is INACTIVE, has no account, or posts to an account that is Inactive / not in the Chart of Accounts / not postable (e.g. CORP/SHARE_PFAI → 5-01-03-050) | "Cannot import yet" — "These columns have amounts but no account is assigned to them in Payroll Setup: … (was 5-01-03-050, no longer in the Chart of Accounts). In Payroll Setup, edit each item and assign its account, then import again." Columns left empty are not checked. An item whose account is no longer in the Chart of Accounts counts as **No account** in Payroll Setup (badge, KPI and filter); its Edit form opens with the account empty |
 | 3 | Payroll officer | Import Payroll | Import | Month listed: Import Date, status Imported, Total Payroll Amount = gross |
 | 3a | Payroll officer (alternative) | Import Payroll | Import the same month again | Asked to replace it; Replace Import replaces the month |
 | 4 | Payroll officer | Payroll Management → Year-to-Date Report | Pick the Fiscal Year and Month (Whole Year or one month) — the report loads by itself (no Generate button) | One row per month: employees, gross, deductions, refunds, net pay, employer share, with totals; they agree with the file. The month name in Payroll Imports is plain text (no records window) |
 | 4a | Payroll officer | Year-to-Date Report → **Export CSV** | Export for the same filter | CSV with one row per employee: Emp No., Last / First / Middle name, Department, Months, Gross Pay, Deductions, Refunds, Net Pay, Employer Share, and a TOTAL row |
 | 4b | Payroll officer / Accounting | Payroll Management → **Annualization** | Pick the fiscal year, click **Annualize** (after the year's months are imported; again after any correction) | One row per employee: gross, non-taxable, taxable income, tax due, tax withheld, adjustment and UNDERPAID / OVERPAID / CORRECT; totals; Export CSV. Items without a Tax Treatment are flagged — set them in Payroll Setup |
 | 4c | Accounting | Annualization → **2316** on an employee | Check / fill the Edit Form (TIN, RDO, addresses, previous employer, signatories — CRISALYN T. HUGO prefilled), Form Preview, Download PDF | The employee's BIR 2316: amounts locked to the annualization; with a previous employer, items 23–28 include it |
-| 5 | Requesting office user | Payroll Management → Payroll Imports → **Create DV** on the month | Disbursement Voucher opens a New DV for the month (Vendor or Payroll = "Payroll — month"); pick the RFA; save | Claimant, particulars, amount, deductions and the balanced accounting entry were filled; DV DRAFT; the month shows **DV Created** and its button becomes **View DV**. On save the server re-reads the Amount and deductions from the imported month (edits to them are ignored). On the payroll DV (form, view and at Accounting) each deduction shows its name and amount only — no Rate box (the import has none), no remove / "+ TYPE" buttons |
-| 5d | Requesting office user (alternative) | New DV (payroll) | Pick an RFA that is not Approved, is for another fiscal year than the payroll month, has no Personnel Services line (5-01-…), or whose remaining balance is below the payroll's **gross + employer share** | Not saved — the reason is shown (e.g. "The January 2026 payroll needs 96,850.36 (gross 84,568.00 + employer share 12,282.36) but the selected RFA(s) have only 50,000.00 remaining.") |
+| 5 | Payroll officer | Payroll Management → Payroll Imports → **Create RFA** on the month | The month's RFA is created (Draft) and the memo request form opens on it: a direct COE draw, one line per imported expense account — the earnings accounts (less leave without pay) and the employer share accounts — with the imported amounts, each charged to the fiscal year's approved budget line of that account. Review and submit it | RFA column shows the RR no. and **Draft** (then **For Review** …); the button is **Open RFA** while Draft / Returned, then "Awaiting approval". The RFA's total = the payroll's gross + employer share |
+| 5e | Payroll officer (alternative) | Payroll Imports → Create RFA | The fiscal year's approved budget has no line for one of the accounts, or not enough available on it | No RFA created — each account short is listed (account, amount needed, available) |
+| 5f | Payroll officer (alternative) | Payroll Imports | Replace or delete a month that has its RFA | Refused — "has its RFA … made from this import. Delete that RFA first." |
+| 5g | FMD (Section Chief → Division → Department Manager) | Memo Request → RFA/LAA | Process the payroll RFA as any RFA | Approved; the month's button becomes **Create DV** |
+| 5h | Requesting office user | Payroll Imports → **Create DV** on the month | Disbursement Voucher opens a New DV for the month (Vendor or Payroll = "Payroll — month") with the month's RFA already selected; save | Claimant, particulars, amount, deductions, the balanced accounting entry and the RFA were filled; DV DRAFT; the month shows **DV Created** and its button becomes **View DV**. On save the server re-reads the Amount and deductions from the imported month (edits to them are ignored). On the payroll DV (form, view and at Accounting) each deduction shows its name and amount only — no Rate box (the import has none), no remove / "+ TYPE" buttons |
+| 5d | Requesting office user (alternative) | New DV (payroll) | Choose a month whose RFA is missing or not Approved yet; or save with another RFA than the month's own (or with extra RFAs) | Not filled / not saved — "has no RFA yet. Create it in Payroll Management …", "… must be Approved …" or "must be charged to its own RFA …, and to that RFA only." |
 | 5a | Requesting office user (alternative) | New DV | Change Vendor or Payroll back to None | Every field the payroll filled is cleared |
 | 5b | Payroll officer (alternative) | Payroll Imports | Replace the month while it has a DV | Refused — "used by Disbursement Voucher …". An import cannot be deleted from the page |
 | 5c | Any user | Payroll Imports → **View DV** | Open the month's DV | The DV's view opens in Disbursement Voucher |
 | 6 | (Section 8) | Disbursement Voucher | Submit and process the payroll DV as in Section 8, steps 2–7 | FOR_TREASURY; the payroll entry is posted |
 | 6a | Office holding the DV (alternative) | Disbursement Voucher | Cancel the payroll DV | The month is back to Imported and can be used by a new DV |
 
-The payroll DV's accounting entry: Dr each earnings account (e.g. Salaries and Wages, PERA), Cr each deduction
-account (Due to BIR, GSIS, Pag-IBIG, PhilHealth, other payables), Cr Accounts Payable for the net pay. The
-employer share is not on the payroll DV. The payroll's RFA also covers the government share: the remittance DVs
-(Section 8B) need no RFA of their own — so the RFA's "paid" for a payroll DV is its gross + employer share (for any
-other DV, its gross amount).
+The payroll DV's accounting entry (JEV) — debits first, credits indented below them on the printed JEV: Dr each earnings
+account (e.g. Salaries and Wages, PERA) and Dr each government-share account (5-01-03-010 Retirement and Life Insurance,
+-020 Pag-IBIG, -030 PhilHealth, -040 ECC); Cr each deduction account (Due to BIR, the GSIS / Pag-IBIG / PhilHealth
+sub-ledgers, other payables), Cr the agency's Due to … for the government share (Due to GSIS — also ECC —, Due to Pag-IBIG,
+Due to PhilHealth, Due to PFAI), Cr Accounts Payable for the net pay. The DV's Amount, deductions and net stay the
+employees' (the government share is not paid to them). On the printed JEV each Due to … is one GL line with its
+employee-share sub-ledgers and its "Government share" line under it.
+
+**Payroll Amount = RFA = what the DV uses up.** Payroll Imports shows Gross Pay, Gov't Share and **Total Payroll Amount**
+(gross + government share). Create RFA requests exactly that total; the payroll DV must use that RFA alone and only if
+the RFA is still exactly that total (an RFA edited to another amount is refused: "the payroll RFA must be exactly the
+payroll total"). The DV's This Request = gross + government share, so its Balance is 0.00 and the RFA has nothing left.
+A payroll RFA can't be used by any other DV. The remittance DVs (Section 8B) need no RFA: they Dr the agency's Due to …
+(employee share and government share) and Cr Accounts Payable.
 
 ```mermaid
 flowchart TD
@@ -414,7 +428,8 @@ flowchart TD
     S3 --> S4["STEP 4 — CHECK<br/>Payroll officer — Year-to-Date Report<br/>• Per month totals (loads by itself)<br/>• Export CSV: per employee"]
     S4 -.->|"year end"| A1["STEP 4B — ANNUALIZATION<br/>Payroll / Accounting — Payroll Management, Annualization<br/>• Annualize the fiscal year<br/>• Per employee: taxable income, tax due,<br/>withheld, adjustment<br/>• UNDERPAID / OVERPAID / CORRECT"]
     A1 --> A2["STEP 4C — BIR 2316<br/>Accounting — Annualization, 2316<br/>• Edit Form: employee details,<br/>previous employer, signatories<br/>• Amounts locked to the annualization"]
-    S4 --> S5["STEP 5 — PAYROLL DV<br/>Requesting office — Payroll Imports, Create DV<br/>• New DV filled from the month<br/>• RFA, save — DV DRAFT<br/>• Month: DV Created, button View DV"]
+    S4 --> R5["STEP 5 — PAYROLL RFA<br/>Payroll officer — Payroll Imports, Create RFA<br/>• Draft RFA: imported accounts and amounts<br/>(gross + employer share)<br/>• Review, submit; FMD approves"]
+    R5 --> S5["STEP 5H — PAYROLL DV<br/>Requesting office — Payroll Imports, Create DV<br/>• New DV filled from the month,<br/>its RFA selected<br/>• Save — DV DRAFT<br/>• Month: DV Created, button View DV"]
     S5 --> S6["STEP 6 — DV APPROVALS<br/>Section 8, steps 2 to 7<br/>• Entry posted at FOR_TREASURY"]
     S6 --> D2{"DV cancelled?"}
     D2 -->|"Yes"| X["Month back to Imported<br/>• A new DV can use it"]

@@ -96,7 +96,20 @@ class JevPrintService
                 $rows[$grp]['_d'] += $d;
                 $rows[$grp]['_c'] += $c;
                 $suffix = str_starts_with($code, $info['gl_code'] . '-') ? substr($code, strlen($info['gl_code']) + 1) : $code;
-                $rows[] = ['kind' => 'sl', 'text' => PrintService::text($l['account_title'] ?? '') ?: ($titles[$code] ?? $info['sl_title']), 'sl' => $suffix, 'sl_d' => $money($d), 'sl_c' => $money($c)];
+                $rows[] = ['kind' => 'sl', 'text' => PrintService::text($l['account_title'] ?? '') ?: ($titles[$code] ?? $info['sl_title']), 'sl' => $suffix, 'sl_d' => $money($d), 'sl_c' => $money($c),
+                    'cr' => $d == 0 && $c != 0];
+                $slD += $d;
+                $slC += $c;
+                continue;
+            }
+            if (!$hasSl && $grp !== null && $grpGl === $code) {
+                // A posting to the GL itself right after its sub-ledger lines (e.g. the payroll's government share to Due to GSIS
+                // next to the employee-share SLs): one GL row — its amount adds to the group's, shown as its own indented line
+                // (its description, no SL code) — instead of the same GL title twice.
+                $rows[$grp]['_d'] += $d;
+                $rows[$grp]['_c'] += $c;
+                $rows[] = ['kind' => 'sl', 'text' => trim((string) ($l['description'] ?? '')) ?: ($titles[$code] ?? $code), 'sl' => '', 'sl_d' => $money($d), 'sl_c' => $money($c),
+                    'cr' => $d == 0 && $c != 0];
                 $slD += $d;
                 $slC += $c;
                 continue;
@@ -115,13 +128,14 @@ class JevPrintService
                 'text' => PrintService::text($l['account_title'] ?? '') ?: ($titles[PrintService::text($l['account_code'] ?? '')] ?? ''),
                 'code' => PrintService::text($l['account_code'] ?? ''),
                 'p' => $i === 0 ? 'P' : '', 'gl_d' => $money($d), 'gl_c' => $money($c),
-                'sl_d' => $hasSl ? '' : $money($d), 'sl_c' => $hasSl ? '' : $money($c)];
+                'sl_d' => $hasSl ? '' : $money($d), 'sl_c' => $hasSl ? '' : $money($c), 'cr' => $d == 0 && $c != 0];
             if ($hasSl) {
                 $desc = trim((string) ($l['description'] ?? ''));
                 if ($desc !== '') {
-                    $rows[] = ['kind' => 'desc', 'text' => $desc];
+                    $rows[] = ['kind' => 'desc', 'text' => $desc, 'cr' => $d == 0 && $c != 0];
                 }
-                $rows[] = ['kind' => 'sl', 'text' => $slPath !== '' ? $slPath : ($titles[$slCode] ?? $slCode), 'sl' => $slCode, 'sl_d' => $money($d), 'sl_c' => $money($c)];
+                $rows[] = ['kind' => 'sl', 'text' => $slPath !== '' ? $slPath : ($titles[$slCode] ?? $slCode), 'sl' => $slCode, 'sl_d' => $money($d), 'sl_c' => $money($c),
+                    'cr' => $d == 0 && $c != 0];
             }
         }
 
@@ -129,6 +143,7 @@ class JevPrintService
             if (isset($r['_d'])) {
                 $r['gl_d'] = $money($r['_d']);
                 $r['gl_c'] = $money($r['_c']);
+                $r['cr']   = $r['_d'] == 0 && $r['_c'] != 0;   // a credit GL: its title is indented
                 unset($r['_d'], $r['_c']);
             }
         }
@@ -270,13 +285,15 @@ class JevPrintService
         $count = 0;
         foreach ($m['rows'] as $r) {
             $count++;
+            // credit entries are indented under the debits (journal form): the credit GL title (.cr), its description and SL rows
+            $cr = !empty($r['cr']);
             if ($r['kind'] === 'gl') {
-                $body .= $row([[$e($r['rc']), 'rc'], [$e($r['text']), 'ac b'], ['', 'sl'], [$slDr((string) ($r['sl_d'] ?? '')), 'am'], [$e($r['sl_c'] ?? ''), 'am'],
+                $body .= $row([[$e($r['rc']), 'rc'], [$e($r['text']), 'ac b' . ($cr ? ' cr' : '')], ['', 'sl'], [$slDr((string) ($r['sl_d'] ?? '')), 'am'], [$e($r['sl_c'] ?? ''), 'am'],
                     [$e($r['code']), 'gc'], [$glDr((string) $r['gl_d']), 'am'], [$e($r['gl_c']), 'am']]);
             } elseif ($r['kind'] === 'desc') {
-                $body .= $text($nl($r['text']), 'ac in1');
+                $body .= $text($nl($r['text']), 'ac in1' . ($cr ? ' cr1' : ''));
             } else {
-                $body .= $row([['', 'rc'], [$e($r['text']), 'ac in2'], [$e($r['sl']), 'sl'], [$slDr((string) $r['sl_d']), 'am'], [$e($r['sl_c']), 'am'],
+                $body .= $row([['', 'rc'], [$e($r['text']), 'ac in2' . ($cr ? ' cr2' : '')], [$e($r['sl']), 'sl'], [$slDr((string) $r['sl_d']), 'am'], [$e($r['sl_c']), 'am'],
                     ['', ''], ['', ''], ['', '']]);
             }
         }
@@ -332,6 +349,7 @@ class JevPrintService
             . '.main td.gc{text-align:center;font-family:"Courier New",Courier,monospace;font-weight:bold;}'
             . '.main td.p{text-align:center;font-weight:bold;padding:1.5pt 1pt;}'
             . '.main td.in1{padding-left:12pt;}.main td.in2{padding-left:20pt;font-size:7pt;color:#333;}'
+            . '.main td.cr{padding-left:24pt;}.main td.cr1{padding-left:36pt;}.main td.cr2{padding-left:44pt;}'   // credit entries indented
             . '.main td.ref{color:#444;}.main td.part{padding:3pt;line-height:1.5;}'
             . '.main tr.total td{font-weight:bold;background:#f6f6f6;border-top:1.5pt solid #000;}'
             . '.sigs{border:1.2pt solid #000;border-top:none;}'

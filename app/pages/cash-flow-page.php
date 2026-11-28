@@ -15,37 +15,30 @@ $_cf_api = preg_match('~/api$~', $_cf_api) ? $_cf_api : $_cf_api . '/api';
 
 
 <style>
+    #cf-root :is(.nha-mono, .nha-amt, .u-font-mono, .fims-mono, .amt-cell) { font-family: var(--font-body); font-variant-numeric: tabular-nums; } /* plain zero, no dotted-zero glyph */
     /* Table styling (.fims-report-table*) lives in _shared/css/nha-fims.css. Only page-specific, non-table rules remain here. */
     #cf-root .cf-report-title { text-align: center; margin: 0 0 18px; }
-    #cf-root .cf-report-title div { font-weight: 700; font-size: 14px; line-height: 1.6; }
+    #cf-root .cf-report-title div { font-weight: 700; font-size:var(--fs-md); line-height: 1.6; }
     #cf-root .cf-report-title .cf-report-date { font-weight: 400; }
-    #cf-root .cf-sample { display: none; margin: 0 0 14px; padding: 10px 14px; border-radius: 6px; font-size: 13px; background: #FFF4D6; color: #6B4A00; border: 1px solid #F0D58A; }
+    #cf-root .cf-sample { display: none; margin: 0 0 14px; padding: 10px 14px; border-radius: 6px; font-size:var(--fs-base); background: var(--afims-warning-soft); color: var(--afims-warning-text); border: 1px solid var(--afims-warning); }
 
-    /* Same page-level type scale as the other report pages. _shared/js/custom.js forces
-       `1em * scale !important` on inputs/selects/buttons, so those get the same direct rem + !important. */
-    #cf-root .nha-hdr-tag             { font-size: 0.75rem; }    /* 12px */
-    #cf-root .nha-hdr-title           { font-size: 1.25rem; }    /* 20px */
-    #cf-root .nha-btn-hdr             { font-size: calc(0.875rem * var(--button-scale, 1)) !important; } /* 14px  Refresh / Print */
-    #cf-root .nha-filter-label        { font-size: 0.75rem; }    /* 12px */
-    #cf-root .nha-filter-select       { font-size: calc(0.875rem * var(--input-scale, 1)) !important; }  /* 14px  dropdowns */
-    #cf-root .nha-error               { font-size: 0.875rem; }   /* 14px */
-    #cf-root .nha-hint                { font-size: 0.875rem; padding: 0 16px; margin: 0 0 14px; color: var(--afims-text-muted, #62657E); }   /* 14px; 16px side padding lines it up with the filter card */
+    #cf-root .nha-hint { padding: 0 16px; margin: 0 0 14px; color: var(--afims-text-muted); }
 
 
     html.afims-dark[data-bs-theme="dark"] #cf-root .cf-sample { background: #3A2F10; color: #F5D98A; border-color: #6B5A22; }
     /* Print / Export — one header button → PDF | Excel menu → preview modal (Print / Download on a bar above the preview) */
     #cf-root .cf-menu-item { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; cursor: pointer; font-family: inherit; }
     #cf-root .cf-menu-item:hover, #cf-root .cf-menu-item:focus-visible { background: var(--afims-surface-subtle, #F4F7FA); outline: none; }
-    #cf-root .cf-menu-item strong { display: block; font-size: 13px; color: var(--afims-text, #1e293b); }
-    #cf-root .cf-menu-item small  { display: block; font-size: 11.5px; color: var(--afims-text-muted, #62657E); }
+    #cf-root .cf-menu-item strong { display: block; font-size:var(--fs-base); color: var(--afims-text, #1e293b); }
+    #cf-root .cf-menu-item small  { display: block; font-size:var(--fs-xs); color: var(--afims-text-muted, #62657E); }
     #cf-root .cfx-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
-    #cf-root .cfx-info { font-size: 12.5px; color: var(--afims-text-muted, #62657E); }
+    #cf-root .cfx-info { font-size:var(--fs-sm); color: var(--afims-text-muted, #62657E); }
     #cf-root .cfx-actions { display: flex; gap: 8px; }
     #cf-root .cfx-actions [hidden] { display: none !important; }
-    #cf-root .cfx-stage { position: relative; height: 68vh; overflow: auto; background: #E8ECF2; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; }
-    #cf-root .cfx-frame { display: block; width: 100%; height: 100%; border: 0; background: #E8ECF2; }
-    #cf-root .cfx-msg { padding: 60px 20px; text-align: center; font-size: 13px; color: var(--afims-text-muted, #62657E); }
-    #cf-root .cfx-err { margin-top: 10px; padding: 8px 12px; border-radius: 7px; background: #FDECEC; color: #B42318; font-size: 13px; }
+    #cf-root .cfx-stage { position: relative; height: 68vh; overflow: auto; background: var(--afims-surface-subtle); border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; }
+    #cf-root .cfx-frame { display: block; width: 100%; height: 100%; border: 0; background: var(--afims-surface-subtle); }
+    #cf-root .cfx-msg { padding: 60px 20px; text-align: center; font-size:var(--fs-base); color: var(--afims-text-muted, #62657E); }
+    #cf-root .cfx-err { margin-top: 10px; padding: 8px 12px; border-radius: 7px; background: var(--afims-danger-soft); color: var(--afims-danger-text); font-size:var(--fs-base); }
     #cf-root .cfx-msg[hidden], #cf-root .cfx-err[hidden], #cf-root .cfx-frame[hidden], #cf-root .cfx-sheet[hidden] { display: none; }
     /* the Excel preview: the sheet the .xlsx will contain, with a spreadsheet's column letters / row numbers, centred in the stage */
     #cf-root .cfx-sheet { padding: 14px; }
@@ -68,7 +61,7 @@ $_cf_api = preg_match('~/api$~', $_cf_api) ? $_cf_api : $_cf_api . '/api';
     <!-- same banner as User Access: app-page-header (styled by the global _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
-            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 19V5m4 14v-8m4 8V9m4 10V7m4 12V3"/>
             </svg>
         </div>

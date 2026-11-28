@@ -143,10 +143,10 @@ html.afims-dark[data-bs-theme="dark"] #amp-root .nha-code { color:#FFFFFF;backgr
         .amp-fc { position:relative; min-width:230px; }
         .amp-fc input { width:100%; box-sizing:border-box; padding-right:28px; }
         .amp-fc-clear { position:absolute; right:6px; top:50%; transform:translateY(-50%); border:0; background:none; cursor:pointer; font-size:16px; line-height:1; color:var(--afims-text-secondary,#6b7280); padding:2px 4px; }
-        .amp-fc-list { display:none; position:absolute; z-index:60; top:calc(100% + 4px); left:0; min-width:100%; max-height:260px; overflow:auto;
+        .amp-fc-list { display:none; position:absolute; z-index:60; top:calc(100% + 4px); left:0; min-width:100%; width:max-content; max-width:min(420px, 90vw); max-height:260px; overflow:auto;
                        background:var(--afims-surface,#fff); border:1px solid var(--afims-border,#d1d5db); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); }
         .amp-fc.open .amp-fc-list { display:block; }
-        .amp-fc-opt { padding:8px 12px; font-size:13px; cursor:pointer; white-space:nowrap; }
+        .amp-fc-opt { padding:8px 12px; font-size:13px; cursor:pointer; white-space:normal; word-break:break-word; }
         .amp-fc-opt:hover { background:var(--afims-surface-subtle,#F4F7FA); }
         .amp-fc-opt.active { font-weight:600; color:var(--afims-primary,#1d4ed8); }
         .amp-fc-empty { padding:8px 12px; font-size:13px; color:var(--afims-text-secondary,#6b7280); }
@@ -976,7 +976,7 @@ async function amp_acceptDelivery(i) {
     const ro = field + 'background:#f4f7fa;color:#5b5e73;';
     const res0 = await window.Swal.fire({
         title: 'Delivery Acceptance', width: 520, showCancelButton: true, focusConfirm: false,
-        confirmButtonText: 'Accept Delivery', cancelButtonText: 'Cancel', confirmButtonColor: '#16A34A', cancelButtonColor: '#6B7280',
+        confirmButtonText: 'Submit', cancelButtonText: 'Cancel', confirmButtonColor: '#16A34A', cancelButtonColor: '#6B7280',
         reverseButtons: true, customClass: { container: 'amp-swal' },
         html: '<div style="text-align:left;">'
             + '<label style="font-size:13px;color:#6b7280;">Date</label><input style="' + ro + '" value="' + today + '" readonly tabindex="-1">'

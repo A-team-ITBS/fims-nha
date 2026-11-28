@@ -48,7 +48,7 @@ COE requests and everything else to programs, so the two rules agree on current 
 top, each half a root node (`type: 'bucket'`, key `CO` / `COE`) carrying the sums of what is under it:
 
 ```
-CO    Program → Sub-Program → Originating Unit → Project
+CO    Program → Sub-Program → Region → Project        (the Region is the one attached to the project, fims.project.rc_id; the filing office when the project has none)
 COE   PS | MOOE → Originating Unit → Request        (the leaf is the line's project if it has one, else the request: type 'request', named by its reference no.)
 ```
 
@@ -132,7 +132,7 @@ Unit) and four KPI cards (Approved Requests, Revised Amount, Available for Earma
 
 | View | Shows |
 |---|---|
-| **Per Program** (the one on the page) | Program → Sub-Program → Originating Unit → Project. The Originating Unit row's code is its RC id and its name the office (rows in RC-code order; a request with no office is kept, last, as "No originating unit"). The office is named once, on its unit row, not again under each project |
+| **Per Program** (the one on the page) | Program → Sub-Program → Region → Project. The row under the Sub-Program is the **Region attached to the project** (`fims.project.rc_id`, picked on the Budget Request / Supplemental project card, joined to `fims.responsibility_code`): its code is the RC id and its name the office (rows in RC-code order). A project with no Region (an older one) and a COE line fall back to the office that filed the request (`fims.budget_req.rc_id`), which is what this row used to be for every project; a line with neither is kept, last, as "No originating unit". The office is named once, on its row, not again under each project. The Region filter, the Region drop-down and the Search box use the same office; WHO may see a request (the caller's RC scope) is still the filing office |
 | Per Region, Per Type of Fund, Per Component | Still served by `GET /cob/rollup?layout_by=region\|fund_source\|component` (and their panels are still in the markup, hidden and never loaded), but nothing on the page switches to them |
 
 Behaviour worth knowing:
@@ -197,7 +197,7 @@ A **Supplemental** request (Budget Amendment → the Supplemental tab, `BudgetRe
 project of the filing office's Approved budget request for the SARO's fiscal year, so it appears **in its Program / Sub-Program under CO** — nothing else in the COB changes to show it, and **the SARO number is not
 shown here**. Its budget lines are created with `suggested_amount` 0 and their amount is written to the ledger as `SUPPLEMENTAL` rows, so the amount is in **Revision / Realignment (Amendment)** and the
 **Approved Amount is 0**; Revised Amount = that amount, and it flows into the parents' Revised Amount, Remaining Balance and the TOTAL like any other revision. On the RFA / LAA page the detail row reads
-"Supplemental #id" (code `SUP`). Its budget lines are **tagged** (`fims.budget_line_items.supplemental_revision_id` = the request that created them, `03 - alter_table/63`): COB Monitoring and RFA / LAA Monitoring show them, while the Budget Requirements (proposal) screens — the list, **View Proposal** and its Excel / print export — leave them out, because the project was never part of a proposal (see `app/routes/README.md`, `budget_req.php`). Not done yet: hiding the Originating Unit level for such a project (the tree still shows its office between the Sub-Program and the Project).
+"Supplemental #id" (code `SUP`). Its budget lines are **tagged** (`fims.budget_line_items.supplemental_revision_id` = the request that created them, `03 - alter_table/63`): COB Monitoring and RFA / LAA Monitoring show them, while the Budget Requirements (proposal) screens — the list, **View Proposal** and its Excel / print export — leave them out, because the project was never part of a proposal (see `app/routes/README.md`, `budget_req.php`). The level between the Sub-Program and the Project is the project's Region (see Per Program above), so a supplemental project sits under the Region picked on its card.
 
 ## History
 

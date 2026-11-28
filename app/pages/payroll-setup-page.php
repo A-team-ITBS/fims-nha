@@ -71,7 +71,7 @@ $_pyr_api = Config('API.FIMS_URL');
                 <div class="nha-sc-label">No Account</div>
                 <div class="nha-sc-val" id="pyr-kpi-noaccount">—</div>
             </div></div>
-            <p class="nha-kpi-sub">Not linked to the Chart of Accounts yet</p>
+            <p class="nha-kpi-sub">No account assigned — an import with amounts in these columns is stopped</p>
         </div>
     </div>
 
@@ -115,6 +115,13 @@ $_pyr_api = Config('API.FIMS_URL');
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- ── FROM A BLOCKED IMPORT (?items=…): only the items that file needs fixed ── -->
+    <div id="pyr-items-banner" style="display:none;margin:0 0 12px;padding:10px 14px;border-radius:8px;background:var(--amber-bg, #FFF6E5);color:var(--amber-txt, #92400E);font-size:13px;">
+        <strong>From your payroll import:</strong> these <span id="pyr-items-count"></span> item(s) have amounts in your file but no account.
+        Click <strong>Edit</strong> on each, assign its account and save — then go back to Import Payroll and preview the file again.
+        <a href="#" id="pyr-items-clear" style="margin-left:8px;font-weight:600;">Show all items</a>
     </div>
 
     <!-- ── TABLE ──────────────────────────────────────────── -->
@@ -212,6 +219,8 @@ const PYR_CATEGORY = {             // value → [badge class, label]
 const PYR_SIDE = { EARNING: 'Debit', REFUND: 'Debit', EMPLOYER_SHARE: 'Debit', DEDUCTION: 'Credit' };
 
 let pyr_page = 1;
+// ?items=CODE1,CODE2 — opened from Payroll Management's blocked import: list only the items that file needs fixed
+let pyr_onlyItems = (new URLSearchParams(window.location.search).get('items') || '').split(',').map(s => s.trim()).filter(Boolean);
 
 let pyr_accounts = new Map();      // ALL active accounts: code → { code, title, postable }
 let pyr_postable = [];             // the postable ones in code order — the dropdown list
@@ -261,6 +270,13 @@ function pyr_bind() {
 
     ['pyr-filter-category', 'pyr-filter-account', 'pyr-filter-status'].forEach(id => {
         $pyr(id)?.addEventListener('change', () => { pyr_page = 1; pyr_load(); });
+    });
+    // "Show all items": leave the import's item list (and drop ?items= from the address, so a refresh shows everything)
+    $pyr('pyr-items-clear')?.addEventListener('click', e => {
+        e.preventDefault();
+        pyr_onlyItems = [];
+        const u = new URL(window.location.href); u.searchParams.delete('items'); window.history.replaceState(null, '', u);
+        pyr_page = 1; pyr_load();
     });
     let searchTimer;
     const fs = $pyr('pyr-filter-search'), fc = $pyr('pyr-search-clear');
@@ -335,6 +351,9 @@ async function pyr_load() {
             page     : pyr_page,
             limit    : PYR_PAGE_SIZE,
         });
+        if (pyr_onlyItems.length) params.set('items', pyr_onlyItems.join(','));
+        $pyr('pyr-items-banner').style.display = pyr_onlyItems.length ? '' : 'none';
+        $pyr('pyr-items-count').textContent = pyr_onlyItems.length;
         const res  = await fetch(`${PYR_API}/list?${params}`, { credentials: 'same-origin' });
         let json = null;
         try { json = await res.json(); } catch (_) { /* non-JSON error body */ }
@@ -356,6 +375,10 @@ async function pyr_load() {
     }
 }
 
+/** An item whose account is no longer usable in the Chart of Accounts (Inactive, not postable, or gone) counts as having NO account. */
+function pyr_hasUsableAccount(r) {
+    return !!r.account_code && r.account_status === 'Active' && pyr_truthy(r.account_posting);
+}
 function pyr_categoryBadge(c) {
     const [cls, label] = PYR_CATEGORY[c] || ['nha-bdg-gray', c || '—'];
     return `<span class="nha-bdg ${cls}">${pyr_esc(label)}</span>`;
@@ -389,10 +412,11 @@ function pyr_renderTable(rows, errorMsg = '') {
             ${side ? `<div class="nha-td-sub" style="margin-top:2px;">Posts as ${side}</div>` : ''}
         </td>
         <td>
-            ${r.account_code
+            ${pyr_hasUsableAccount(r)
                 ? `<div style="display:flex;align-items:center;gap:8px;">${pyr_chipHtml(r.account_code)}</div>
                    ${r.account_title ? `<div class="nha-td-sub" style="margin-top:3px;">${pyr_esc(r.account_title)}</div>` : ''}`
-                : '<span class="nha-bdg nha-bdg-amber">No account</span>'}
+                : `<span class="nha-bdg nha-bdg-amber" title="An import with amounts in this column is stopped until the item gets an account (Edit)">No account</span>
+                   ${r.account_code ? `<div class="nha-td-sub" style="margin-top:3px;">Was ${pyr_esc(r.account_code)}${r.account_title ? ' ' + pyr_esc(r.account_title) : ''} — no longer in the Chart of Accounts</div>` : ''}`}
         </td>
         <td>${pyr_statusBadge(r.status)}</td>
         <td>
@@ -810,8 +834,10 @@ async function pyr_openModal(mode, row = null) {
             if (a && a.postable) {
                 pyr_pick(a.code, false);
             } else if (pyr_coaState === 'ready') {
-                pyr_legacyAccount = row.account_code;       // exists on the item but is no longer pickable
-                $pyr('pyr-account-search').placeholder = `Current: ${row.account_code} (no longer postable)`;
+                // the item's account is no longer in the usable Chart of Accounts (inactive / not postable / gone): it counts as
+                // NO account — the field starts empty so one is picked; saving it empty leaves the item without an account
+                pyr_legacyAccount = null;
+                $pyr('pyr-account-search').placeholder = `No account assigned — ${row.account_code} is no longer in the Chart of Accounts. Pick one`;
                 pyr_syncAccountUi();
             }
         }

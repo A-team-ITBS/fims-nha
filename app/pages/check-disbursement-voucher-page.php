@@ -99,7 +99,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                     <input type="text" class="fims-input fims-input-sm" id="prepFilterPayee" placeholder="Payee" style="width:160px">
                     <select class="fims-select fims-input-sm" id="prepFilterBank" style="width:180px"><option value="">All Banks</option></select>
                     <input type="date" class="fims-input fims-input-sm" id="prepFilterDateFrom">
-                    <span style="font-size:11px;color:var(--fims-text-subtle)">–</span>
+                    <span style="font-size:var(--fs-xs);color:var(--fims-text-subtle)">–</span>
                     <input type="date" class="fims-input fims-input-sm" id="prepFilterDateTo">
                     <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="prepFilterBtn"><i class="fas fa-filter mr-1"></i>Filter</button>
                     <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" id="prepResetBtn">Reset</button>
@@ -208,7 +208,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                             <div id="prepLivePreviewBox" style="width:661px;max-width:100%;height:245px;overflow:hidden;border:1px solid var(--fims-border,#dde3ea);border-radius:6px;background:#fff;">
                                 <div id="prepLivePreview" style="transform:scale(0.85);transform-origin:top left;width:777.6px;"></div>
                             </div>
-                            <div style="font-size:11px;color:var(--fims-text-subtle,#8a8f9b);margin-top:4px;text-align:center;">Updates as you fill in the form.</div>
+                            <div style="font-size:var(--fs-xs);color:var(--fims-text-subtle,#8a8f9b);margin-top:4px;text-align:center;">Updates as you fill in the form.</div>
                         </div>
                     </div>
                 </div>
@@ -232,7 +232,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         <div class="fims-modal-dialog u-modal-sm">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
-                    <div><div class="fims-modal-title">Set Check Status</div><p class="fims-modal-subtitle" id="setStatusSubtitle" style="margin:0;font-size:12px;color:var(--fims-text-subtle);"></p></div>
+                    <div><div class="fims-modal-title">Set Check Status</div><p class="fims-modal-subtitle" id="setStatusSubtitle" style="margin:0;font-size:var(--fs-sm);color:var(--fims-text-subtle);"></p></div>
                     <button class="fims-modal-close" data-close="m-set-check-status">&times;</button>
                 </div>
                 <div class="fims-modal-body">
@@ -291,7 +291,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                 <div class="fims-modal-header">
                     <div>
                         <div class="fims-modal-title">Check Disbursement Voucher</div>
-                        <p class="fims-modal-subtitle" id="previewSubtitle" style="margin:0;font-size:12px;color:var(--fims-text-subtle);">Preview</p>
+                        <p class="fims-modal-subtitle" id="previewSubtitle" style="margin:0;font-size:var(--fs-sm);color:var(--fims-text-subtle);">Preview</p>
                     </div>
                     <button class="fims-modal-close" data-close="m-check-preview">&times;</button>
                 </div>
@@ -300,11 +300,11 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                 </div>
                 <div class="fims-modal-footer">
                     <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-check-preview">Close</button>
-                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-left:12px;">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:var(--fs-sm);cursor:pointer;margin-left:12px;">
                         <input type="checkbox" id="chk-pchc-preview">
                         PCHC preview (print mode)
                     </label>
-                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-right:auto;margin-left:14px;">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:var(--fs-sm);cursor:pointer;margin-right:auto;margin-left:14px;">
                         <input type="checkbox" id="chk-show-dv">
                         Show DV No.
                     </label>
@@ -331,7 +331,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                         <div class="fims-form-group">
                             <label class="fims-label">Printer</label>
                             <select class="fims-select" id="pqPrinter"></select>
-                            <span style="font-size:11px;color:var(--fims-text-subtle)" id="pqPrinterStatus"></span>
+                            <span style="font-size:var(--fs-xs);color:var(--fims-text-subtle)" id="pqPrinterStatus"></span>
                         </div>
                         <div class="row g-2">
                             <div class="col-md-6"><label class="fims-label">Copies</label><input type="number" class="fims-input" id="pqCopies" value="1" min="1"></div>
@@ -461,7 +461,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                         <div class="col-md-6"><label class="fims-label">Cancelled Date <span class="text-danger">*</span></label><input type="date" class="fims-input" id="cancelDate"></div>
                         <div class="col-md-12"><label class="fims-label">Reason Description</label><textarea class="fims-input" id="cancelDescription" rows="2"></textarea></div>
                         <div class="col-md-12">
-                            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                            <label style="display:flex;align-items:center;gap:6px;font-size:var(--fs-base);cursor:pointer;">
                                 <input type="checkbox" id="cancelIssueReplacement"> Issue a replacement check immediately
                             </label>
                         </div>
@@ -479,10 +479,11 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         </div>
     </div>
 
-    <div id="cpToast" style="display:none;position:fixed;bottom:20px;right:20px;z-index:2000;padding:10px 16px;border-radius:8px;color:#fff;font-size:13px;"></div>
+    <div id="cpToast" style="display:none;position:fixed;bottom:20px;right:20px;z-index:2000;padding:10px 16px;border-radius:8px;color:#fff;font-size:var(--fs-base);"></div>
 </div>
 
 <style>
+    #cpModule :is(.nha-mono, .nha-amt, .u-font-mono, .fims-mono, .amt-cell) { font-family: var(--font-body); font-variant-numeric: tabular-nums; } /* plain zero, no dotted-zero glyph */
 /* Classes local to this page (not part of the shared fims-treasury.css
    design system) — tab buttons reuse the real .fims-tab-underline look, but
    need no-border/background reset since <button> isn't styled by default
@@ -513,17 +514,17 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
 #cpModule .fims-card-red,
 #cpModule .fims-card-gray,
 #cpModule .fims-card-indigo,
-#cpModule .fims-card-violet { --fims-card-color: #000E3E; }
+#cpModule .fims-card-violet { --fims-card-color: var(--afims-heading-fill); }
 
 /* Buttons: same single dark blue, scoped to this module only (the shared
    .fims-btn-primary/-outline classes stay the lighter brand blue everywhere
    else in the app). .fims-btn-danger is left red on purpose — it marks a
    destructive action (Cancel Check), and that warning color is functional,
    not decorative. */
-#cpModule .fims-btn-primary { background:#000E3E; color:#fff; }
-#cpModule .fims-btn-primary:hover { background:#000a2e; color:#fff; }
-#cpModule .fims-btn-outline { color:#000E3E; border-color:#000E3E; }
-#cpModule .fims-btn-outline:hover { background:#000E3E; color:#fff; }
+#cpModule .fims-btn-primary { background:var(--afims-heading-fill); color:var(--afims-text-on-dark); }
+#cpModule .fims-btn-primary:hover { background:var(--afims-dark-blue-deep); color:var(--afims-text-on-dark); }
+#cpModule .fims-btn-outline { color:var(--afims-heading-fill); border-color:var(--afims-heading-fill); }
+#cpModule .fims-btn-outline:hover { background:var(--afims-heading-fill); color:var(--afims-text-on-dark); }
 
 /* Low-stock alert in the Prepare Check modal — a looping pulse on the
    border/shadow (not the layout, so neighboring fields never shift) to

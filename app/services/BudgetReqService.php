@@ -407,7 +407,7 @@ class BudgetReqService
              FROM {$this->tableBudgetReqProject} brp2
              LEFT JOIN {$this->tableProject} pj ON pj.project_code = brp2.project_code
              LEFT JOIN fims.responsibility_code rc ON rc.rc_id = pj.rc_id
-             WHERE brp2.budget_reference_number IN ({$idList})
+             WHERE brp2.budget_reference_number IN ({$idList}){$noSuppProject}
              ORDER BY brp2.budget_req_project_id ASC",
             'DB'
         ) ?: [];

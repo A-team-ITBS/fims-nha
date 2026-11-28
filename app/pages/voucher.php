@@ -17,14 +17,14 @@ $_vl_view = (int) ($_GET['dv'] ?? 0);
 $_vl_payroll = (int) ($_GET['payroll'] ?? 0); // Payroll Management "Create DV": payroll_period_id to open a new DV for
 $_vl_po = preg_match('/^[A-Za-z0-9 _\-\/.]{1,100}$/', (string) ($_GET['po'] ?? '')) ? (string) $_GET['po'] : ''; // Delivery Acceptance notification (GSD): the PO to open a new DV for — see vf_openForPo()
 $_vl_remittance = (int) ($_GET['remittance'] ?? 0); // Deductions & Remittances "Create Remittance DV": payroll_remittance_id
-$_vl_remit_period = preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', (string) ($_GET['remit_period'] ?? '')) ? (string) $_GET['remit_period'] : ''; // Remittance List "Remit": the month (YYYY-MM) whose withheld EWT / VAT / Penalty Tax to pay to BIR
-$_vl_remit_type = preg_match('/^[A-Za-z_]{1,20}$/', (string) ($_GET['remit_type'] ?? '')) ? strtoupper((string) $_GET['remit_type']) : ''; // EWT | VAT | PENALTY_TAX
+$_vl_remit_period = preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', (string) ($_GET['remit_period'] ?? '')) ? (string) $_GET['remit_period'] : ''; // Remittance List "Create DV": the month (YYYY-MM) whose withheld taxes (EWT + VAT + Penalty Tax, all vendors) to pay to BIR in one DV
 ?>
 
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 <script src="/_shared/js/searchable-select.js?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/js/searchable-select.js') ?>"></script>
 
 <style>
+    #vl-root :is(.nha-mono, .nha-amt, .u-font-mono, .fims-mono, .amt-cell) { font-family: var(--font-body); font-variant-numeric: tabular-nums; } /* plain zero, no dotted-zero glyph */
 </style>
 
 <div id="vl-root" class="nha-root">
@@ -33,7 +33,7 @@ $_vl_remit_type = preg_match('/^[A-Za-z_]{1,20}$/', (string) ($_GET['remit_type'
     <!-- same banner as User Access (app-page-header in _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
-            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
             </svg>
         </div>
@@ -156,8 +156,7 @@ const VL_VIEW = <?= (int) $_vl_view ?>; // dv_id to open in the view modal on lo
 const VL_PAYROLL = <?= (int) $_vl_payroll ?>; // imported payroll month to open a new DV for on load (0 = none) — see vf_openForPayroll()
 const VL_PO = <?= json_encode($_vl_po) ?>; // PO number to open a new DV for on load ("" = none) — see vf_openForPo()
 const VL_REMITTANCE =<?= (int) $_vl_remittance ?>; // payroll remittance to open a new remittance DV for on load (0 = none) — see vf_openForRemittance()
-const VL_REMIT_PERIOD = <?= json_encode($_vl_remit_period) ?>; // month (YYYY-MM) whose withheld tax to remit to BIR on load ("" = none) — see vf_openForDvRemit()
-const VL_REMIT_TYPE = <?= json_encode($_vl_remit_type) ?>; // EWT | VAT | PENALTY_TAX
+const VL_REMIT_PERIOD = <?= json_encode($_vl_remit_period) ?>; // month (YYYY-MM) whose withheld taxes to remit to BIR on load ("" = none) — see vf_openForDvRemit()
 
 const VL_PAGE_SIZE = 15;
 let vl_page = 1;
@@ -187,9 +186,9 @@ async function vl_boot() {
     } else if (VL_REMITTANCE > 0) {
         history.replaceState(null, '', location.pathname);
         vf_openForRemittance(VL_REMITTANCE);
-    } else if (VL_REMIT_PERIOD && VL_REMIT_TYPE) {
+    } else if (VL_REMIT_PERIOD) {
         history.replaceState(null, '', location.pathname); // a refresh after saving must not open another remittance DV
-        vf_openForDvRemit(VL_REMIT_PERIOD, VL_REMIT_TYPE);
+        vf_openForDvRemit(VL_REMIT_PERIOD);
     }
 }
 
@@ -387,26 +386,25 @@ function vl_showError(msg) { $vl('vl-error').style.display = 'flex'; $vl('vl-err
 function vl_hideError()    { $vl('vl-error').style.display = 'none'; }
 
 function vl_toast(msg, type = 'info') {
-    const colors = { success: '#16a34a', error: '#dc2626', warning: '#d97706', info: '#2563eb' };
-    let wrap = document.getElementById('nha-toast-wrap');
+    // shared toast chrome (.nha-toast* in _shared/css/nha-fims.css)
+    let wrap = document.getElementById('nha-toast-container');
     if (!wrap) {
         wrap = document.createElement('div');
-        wrap.id = 'nha-toast-wrap';
-        wrap.style.cssText = 'position:fixed;top:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
+        wrap.id = 'nha-toast-container';
         document.body.appendChild(wrap);
     }
-    const color = colors[type] || colors.info;
     const t = document.createElement('div');
-    t.style.cssText = `display:flex;align-items:flex-start;gap:10px;padding:12px 14px;background:#fff;border-left:4px solid ${color};border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.14);font-size:13px;color:#1e293b;min-width:260px;max-width:340px;pointer-events:auto;`;
-    const span = document.createElement('span');
-    span.style.flex = '1';
-    span.textContent = msg;
+    t.className = 'nha-toast nha-toast-' + (['success', 'error', 'warning', 'info'].includes(type) ? type : 'info');
+    const body = document.createElement('div');
+    body.className = 'nha-toast-body';
+    body.textContent = msg;
     const close = document.createElement('button');
+    close.className = 'nha-toast-close';
     close.innerHTML = '&times;';
-    close.style.cssText = 'border:none;background:none;cursor:pointer;color:#A9AAB8;font-size:18px;line-height:1;padding:0 2px;flex-shrink:0';
     close.onclick = () => t.remove();
-    t.append(span, close);
+    t.append(body, close);
     wrap.appendChild(t);
+    requestAnimationFrame(() => t.classList.add('show'));
     setTimeout(() => t.remove(), 4000);
 }
 </script>

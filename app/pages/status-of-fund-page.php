@@ -8,8 +8,10 @@ namespace PHPMaker2024\FIMS;
  *
  * There is no fund-source master table in FIMS, so a fund source is a group of fims.fund_tracking records:
  * NG Subsidy (SARO + NCA), Trust Funds (Trust Fund + OR) and Supplemental Funds (SARO + NCA of the SUPPLEMENTAL nature). What each
- * figure means is written up in app/services/StatusOfFundService.php. Disbursed = what the RELEASED disbursement vouchers linked
- * to the SAROs have paid; Trust Funds are not linked to vouchers, so theirs is shown as "—", not 0.
+ * figure means is written up in app/services/StatusOfFundService.php. Disbursed = what the RELEASED disbursement vouchers have paid,
+ * each counted once: through the SARO it is linked to, or — with no SARO — through the RFA / LAA it is connected to (by the Type of Fund of the budget line it
+ * drew from; a line a supplemental request created is Supplemental). A Trust Fund has no SARO, so its Disbursed is "—" until an RFA / LAA of the Trust Fund type
+ * of fund has a released voucher. A released voucher that is counted nowhere is said so, above the table (#sof-gap): it needs a SARO, or an RFA / LAA with a Type of Fund.
  *
  * Two views in one page, switched in place (no reload; the URL hash holds the fund source, #NG / #TRUST / #SUPP):
  *   Overview  one row per fund source — Funds available, Disbursed, Balance, Utilization — and the Utilization Report of all of them
@@ -146,6 +148,9 @@ $_sof_api = Config('API.FIMS_URL');
     #sof-root .sof-sig { display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; margin-top: 34px; text-align: center; font-size: 12px; font-weight: 600; color: #000E3E; }
     #sof-root .sof-sig i { display: block; border-top: 1px solid #9AA0B4; margin-bottom: 6px; }
     #sof-root .sof-note { margin-top: 14px; font-size: 11px; color: #62657E; line-height: 1.5; }
+    /* released vouchers that are counted in no fund source: why a voucher may not have changed a figure */
+    #sof-root .sof-gap { margin: 0 0 14px; padding: 10px 14px; border-radius: 10px; border: 1px solid #F5D58A; background: #FFF8E6; color: #7A4B00; font-size: 12.5px; line-height: 1.55; }
+    #sof-root .sof-gap strong { font-weight: 700; }
 </style>
 
 <div id="sof-root" class="nha-root">
@@ -188,6 +193,9 @@ $_sof_api = Config('API.FIMS_URL');
     <!-- ── SUMMARY CARDS ──────────────────────────────────── -->
     <div class="nha-summary" id="sof-cards"></div>
 
+    <!-- ── released vouchers counted in no fund source (sof_renderGap) ── -->
+    <div class="sof-gap no-print" id="sof-gap" style="display:none;"></div>
+
     <!-- ── FILTERS ────────────────────────────────────────── -->
     <div class="nha-filters no-print">
         <div class="nha-filter-row">
@@ -224,7 +232,7 @@ $_sof_api = Config('API.FIMS_URL');
                     <tbody id="sof-tbody"><tr><td colspan="6"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr></tbody>
                 </table>
             </div>
-            <div class="sof-foot"><span id="sof-count"></span><span>Funds available = NCA released (NG Subsidy, Supplemental) or receipts (Trust Funds) · Disbursed = released vouchers of the SAROs</span></div>
+            <div class="sof-foot"><span id="sof-count"></span><span>Funds available = NCA released (NG Subsidy, Supplemental) or receipts (Trust Funds) · Disbursed = released vouchers, through the SARO or through the RFA / LAA</span></div>
         </div>
     </div>
 
@@ -387,6 +395,25 @@ function sof_util(p) {
     return `<div class="sof-ub"><div class="sof-bar"><span style="width:${w}%"></span></div><em>${sof_esc(sof_pct(p))}</em></div>`;
 }
 
+/* ── Released vouchers that no fund source counts ───────────── */
+// The API's `vouchers` (overview or one fund source — the same, over every fiscal year): when something released is counted nowhere, say how much and why, so a voucher
+// that changed nothing explains itself. The vouchers with no link at all (no SARO, no RFA / LAA) are the ones the user can fix; the rest went through a Type of Fund
+// that is not a fund source on this page.
+function sof_renderGap() {
+    const el = $sof('sof-gap');
+    const v = (sof.view === 'detail' ? sof.detail?.vouchers : null) || sof.overview?.vouchers;
+    if (!v || !(v.not_counted > 0.004)) { el.style.display = 'none'; el.innerHTML = ''; return; }
+    const parts = [`<strong>${sof_esc(sof_peso(v.not_counted))}</strong> of the released disbursement vouchers is not counted in any fund source.`];
+    if (v.unlinked_count > 0) {
+        parts.push(`${v.unlinked_count.toLocaleString()} voucher${v.unlinked_count === 1 ? '' : 's'} (${sof_esc(sof_peso(v.unlinked))}) ${v.unlinked_count === 1 ? 'has' : 'have'} no SARO and no RFA / LAA — pick the <strong>SARO</strong> on the voucher, or connect its <strong>RFA / LAA</strong>.`);
+    }
+    if (v.other_fund > 0.004) {
+        parts.push(`${sof_esc(sof_peso(v.other_fund))} went through a Type of Fund that is not a fund source here (e.g. Corporate Receipt).`);
+    }
+    el.innerHTML = parts.join(' ');
+    el.style.display = '';
+}
+
 /* ── Summary cards ──────────────────────────────────────────── */
 function sof_card(cls, label, value, sub) {
     return `<div class="nha-sc ${cls}"><div class="nha-sc-top"><div><div class="nha-sc-label">${sof_esc(label)}</div><div class="nha-sc-val" title="${sof_esc(value)}">${sof_esc(value)}</div></div></div><p class="nha-kpi-sub">${sub}</p></div>`;
@@ -416,7 +443,7 @@ function sof_renderDetailCards() {
     $sof('sof-cards').innerHTML =
         sof_card('nha-sc-navy', 'SARO released', sof_peso(d.saro_released), `${d.saro_count.toLocaleString()} SARO${d.saro_count === 1 ? '' : 's'}`) +
         sof_card('nha-sc-blue', 'NCA released', sof_peso(d.nca_released), (ncaPct === null ? '' : `<strong>${sof_esc(sof_pct(ncaPct))}</strong> of the SARO released · `) + `${d.nca_count.toLocaleString()} NCA${d.nca_count === 1 ? '' : 's'}`) +
-        sof_card('nha-sc-green', 'Disbursed', d.disbursed === null ? '—' : sof_peso(d.disbursed), d.utilization === null ? 'Released vouchers of the SAROs' : `<strong>${sof_esc(sof_pct(d.utilization))}</strong> of the NCA released`) +
+        sof_card('nha-sc-green', 'Disbursed', d.disbursed === null ? '—' : sof_peso(d.disbursed), d.utilization === null ? 'Released vouchers (SARO · RFA / LAA)' : `<strong>${sof_esc(sof_pct(d.utilization))}</strong> of the NCA released`) +
         sof_card('nha-sc-amber', 'Balance', sof_peso(d.balance), 'NCA released less disbursed');
 }
 
@@ -511,7 +538,7 @@ function sof_renderSplit() {
             <tr class="sof-total"><td>TOTAL</td><td class="sof-num">${sof_amtCell(d.saro_released)}</td><td class="sof-num">${sof_amtCell(d.nca_released)}</td><td class="sof-num">${sof_amtCell(d.disbursed)}</td><td class="sof-num">${sof_amtCell(d.disbursed === null ? null : d.nca_released - d.disbursed)}</td><td>${sof_util(d.utilization)}</td></tr>`
             : `<tr><td colspan="6" class="sof-empty">No ${sof_esc(d.name)} records in ${sof_esc(sof_yearLabel())}.</td></tr>`}</tbody>`;
     $sof('sof-split-count').textContent = rows.length + (rows.length === 1 ? ' record' : ' records');
-    $sof('sof-split-note').textContent = 'Disbursed = released vouchers of the SAROs · Undisbursed NCA = NCA released less disbursed';
+    $sof('sof-split-note').textContent = 'Disbursed = released vouchers, through the SARO or the RFA / LAA (by the budget line\'s program) · Undisbursed NCA = NCA released less disbursed';
 }
 
 // ── the SARO → NCA tree (the same rows as saro-registry-page.php, read-only) ──
@@ -685,6 +712,7 @@ async function sof_loadOverview() {
     }
     sof_renderOverviewCards();
     sof_renderOverview();
+    sof_renderGap();
 }
 
 async function sof_loadDetail() {
@@ -704,6 +732,7 @@ async function sof_loadDetail() {
     }
     sof_renderDetailCards();
     sof_renderSplit();
+    sof_renderGap();
 }
 
 // Open a fund source (detail view), or go back to the overview (key = null)
@@ -768,7 +797,7 @@ function sof_buildReport(d) {
             cards: rows.map(s => ({ label: s.name, value: s.key === 'TRUST' ? `${s.trust_count} trust fund${s.trust_count === 1 ? '' : 's'} · ${num(s.trust_total)}` : `${s.saro_count} SARO${s.saro_count === 1 ? '' : 's'} · ${num(s.saro_released)}`,
                 lines: s.key === 'TRUST' ? [`Receipts ${num(s.receipts)} (${s.or_count} OR)`] : [`NCA released ${num(s.nca_released)} (${s.nca_count} NCA)`, `Unreleased ${num(s.unreleased)}`] })),
             sectionB: 'B. Records per fund source',
-            note: 'Funds available = NCA released (NG Subsidy, Supplemental Funds) or receipts (Trust Funds). Disbursed = what the released vouchers of the SAROs have paid; Trust Funds are not tracked against vouchers.',
+            note: 'Funds available = NCA released (NG Subsidy, Supplemental Funds) or receipts (Trust Funds). Disbursed = what the released vouchers have paid, through the SAROs or through the RFAs / LAAs (by the Type of Fund of the budget line); a Trust Fund shows none until an RFA / LAA of that type of fund has a released voucher.',
         };
     }
     if (d.key === 'TRUST') {
@@ -782,7 +811,7 @@ function sof_buildReport(d) {
             total: ['TOTAL', '', num(d.trust_total), num(d.receipts), num(d.trust_total - d.receipts), String(d.or_count)],
             cards: [{ label: 'Trust funds', value: `${d.trust_count} · ${num(d.trust_total)}`, lines: [] }, { label: 'Official receipts', value: `${d.or_count} · ${num(d.receipts)}`, lines: [] }],
             sectionB: 'B. Trust fund and OR summary',
-            note: 'Trust Funds are not tracked against disbursement vouchers, so no disbursed figure is shown.',
+            note: 'A Trust Fund has no SARO, so its disbursed figure comes only from RFAs / LAAs of the Trust Fund type of fund (see the overview); it is not split per trust fund.',
         };
     }
     const rows = d.programs || [];
@@ -798,7 +827,7 @@ function sof_buildReport(d) {
             { label: 'NCA registry', value: `${d.nca_count} NCA${d.nca_count === 1 ? '' : 's'} · ${num(d.nca_released)}`, lines: [`Disbursed ${num(d.disbursed)}`] },
         ],
         sectionB: 'B. SARO and NCA summary',
-        note: 'Disbursed = what the released vouchers of the SAROs have paid. Utilization = disbursed / NCA released.',
+        note: 'Disbursed = what the released vouchers have paid — through the SAROs, or through the RFAs / LAAs of the budget lines of this fund source. Utilization = disbursed / NCA released.',
     };
 }
 

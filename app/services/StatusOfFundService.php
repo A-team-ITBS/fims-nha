@@ -22,9 +22,16 @@ use PHPMaker2024\FIMS as App;
  *   nca_released    the NCAs' amounts (NG / SUPP)
  *   receipts        the ORs' amounts (TRUST) — what has actually come in under the trust funds
  *   available       "Funds available": the NCAs released (NG / SUPP) or the receipts (TRUST)
- *   disbursed       what the DISBURSEMENT VOUCHERS linked to the SAROs have paid — a SARO points at the one voucher it funds
- *                   (fims.fund_tracking.dv_id, "03 - alter_table/61"), and only a RELEASED voucher counts, at its gross amount.
- *                   Trust Funds are not linked to vouchers, so their disbursed is null (unknown), not 0.
+ *   disbursed       what the RELEASED disbursement vouchers have paid — each voucher counted ONCE, at its gross amount, by the first link it has:
+ *                     1. a SARO: a SARO points at the one voucher it funds (fims.fund_tracking.dv_id, "03 - alter_table/61") — NG / SUPP, under that SARO's
+ *                        program;
+ *                     2. an RFA / LAA: the voucher is connected to it (fims.budget_allocation.dv_id) and the RFA / LAA drew from budget lines — the voucher's
+ *                        gross is spread over those lines in proportion to what each drew (the way the RFA / LAA Monitoring page does), and each line says where
+ *                        its share goes: a line a supplemental request created (budget_line_items.supplemental_revision_id) → SUPP; else its Type of Fund —
+ *                        NG SUPPORT … → NG, TRUST FUND → TRUST; any other (CORPORATE RECEIPT, or none) is not a fund source on this page. The share is under the
+ *                        budget line's own program and the fiscal year of its budget request.
+ *                   A voucher with neither link is counted nowhere — `vouchers` (see reconciliation()) says how much, so the page can tell the user why.
+ *                   Trust Funds have no SARO, so theirs is null (unknown) until an RFA / LAA of the Trust Fund type of fund has a released voucher.
  *   balance         available - disbursed
  *   utilization     disbursed / available, in percent (null when there is nothing available or nothing known)
  *
@@ -42,8 +49,16 @@ class StatusOfFundService
     private string $tableProgram = 'fims.program';
     private string $tableDv = 'fims.disbursement_vouchers';
     private string $tableStatus = 'fims.settings_status';
+    private string $tableEarmark = 'fims.budget_line_item_earmark';
+    private string $tableAllocation = 'fims.budget_allocation';
+    private string $tableLines = 'fims.budget_line_items';
+    private string $tableBudgetReq = 'fims.budget_req';
+    private string $tableBudgetReqProject = 'fims.budget_req_project';
+    private string $tableBudgetReqProgram = 'fims.budget_req_program';
+    private string $tableTypeOfFund = 'fims.type_of_fund';
 
     private static ?bool $hasDvLink = null;
+    private static ?bool $hasSuppTag = null;
 
     /** Whether fund_tracking.dv_id exists ("03 - alter_table/61"); without it nothing is known about disbursements (they come back null). */
     private function hasDvLink(): bool
@@ -56,6 +71,115 @@ class StatusOfFundService
         }
 
         return self::$hasDvLink;
+    }
+
+    /** Whether budget_line_items.supplemental_revision_id exists ("03 - alter_table/63"): the tag of a line a supplemental request created. */
+    private function hasSuppTag(): bool
+    {
+        if (self::$hasSuppTag === null) {
+            self::$hasSuppTag = (int) App\ExecuteScalar(
+                "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'fims' AND table_name = 'budget_line_items' AND column_name = 'supplemental_revision_id'",
+                'DB'
+            ) > 0;
+        }
+
+        return self::$hasSuppTag;
+    }
+
+    /** "AND NOT EXISTS (a live SARO points at this voucher)" — a voucher with a SARO is counted there, not again through its RFA / LAA. '' without fund_tracking.dv_id. */
+    private function notSaroLinkedSql(): string
+    {
+        return $this->hasDvLink() ? "AND NOT EXISTS (SELECT 1 FROM {$this->tableFt} fl WHERE fl.dv_id = dv.dv_id AND fl.deleted_at IS NULL)" : '';
+    }
+
+    private function releasedJoinSql(): string
+    {
+        return "JOIN {$this->tableStatus} rst ON rst.id = dv.status_id AND UPPER(rst.name) = 'RELEASED'";
+    }
+
+    /**
+     * The RELEASED vouchers that reach a fund source through an RFA / LAA and not a SARO, as one row per (fiscal year, program, fund source): `amount` is the
+     * share of the voucher's gross_amount on that group's budget lines (every share adds back up to the voucher's gross). source_key NG / TRUST / SUPP, or OTHER
+     * (a Type of Fund that is not a fund source on this page).
+     */
+    private function loadRfaDisbursed(): array
+    {
+        $supp = $this->hasSuppTag() ? 'li.supplemental_revision_id IS NOT NULL' : 'FALSE';
+
+        return App\ExecuteRows(
+            "SELECT br.fiscal_yr, brpg.program_code, pg.program_name,
+                    CASE WHEN {$supp} THEN 'SUPP'
+                         WHEN UPPER(COALESCE(tof.name, '')) LIKE 'NG SUPPORT%' OR UPPER(COALESCE(tof.name, '')) LIKE 'NG SUBSIDY%' THEN 'NG'
+                         WHEN UPPER(COALESCE(tof.name, '')) LIKE 'TRUST FUND%' THEN 'TRUST'
+                         ELSE 'OTHER' END AS source_key,
+                    SUM(COALESCE(dv.gross_amount, 0) * e.amount / NULLIF(tot.total, 0)) AS amount
+             FROM {$this->tableEarmark} e
+             JOIN {$this->tableAllocation} a ON a.allocation_id = e.allocation_id AND a.deleted_at IS NULL AND UPPER(a.allocation_type) IN ('RFA', 'LAA')
+             JOIN {$this->tableDv} dv ON dv.dv_id = a.dv_id
+             {$this->releasedJoinSql()}
+             JOIN (SELECT a2.dv_id, SUM(e2.amount) AS total
+                     FROM {$this->tableEarmark} e2
+                     JOIN {$this->tableAllocation} a2 ON a2.allocation_id = e2.allocation_id AND a2.deleted_at IS NULL AND UPPER(a2.allocation_type) IN ('RFA', 'LAA')
+                    WHERE e2.status = 'converted' AND a2.dv_id IS NOT NULL
+                    GROUP BY a2.dv_id) tot ON tot.dv_id = a.dv_id
+             JOIN {$this->tableLines} li ON li.budget_line_item_id = e.budget_line_item_id
+             JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = li.budget_reference_number
+             LEFT JOIN {$this->tableBudgetReqProject} brpj ON brpj.budget_req_project_id = li.budget_req_project_id
+             LEFT JOIN {$this->tableBudgetReqProgram} brpg ON brpg.budget_req_program_id = brpj.budget_req_program_id
+             LEFT JOIN {$this->tableProgram} pg ON pg.program_code = brpg.program_code
+             LEFT JOIN {$this->tableTypeOfFund} tof ON tof.type_of_fund_id = li.type_of_fund_id
+             WHERE e.status = 'converted'
+               {$this->notSaroLinkedSql()}
+             GROUP BY br.fiscal_yr, brpg.program_code, pg.program_name, 4",
+            'DB'
+        ) ?: [];
+    }
+
+    /**
+     * Where the RELEASED vouchers stand, whatever the fiscal year: how many and how much there are in all, how much of it is counted in a fund source (by a SARO
+     * or by an RFA / LAA), and what is not — split into the vouchers with no link at all (no SARO, no RFA / LAA: the user can fix those) and what went through a
+     * Type of Fund that is not a fund source here. The page shows it when something is not counted, so a voucher that "changed nothing" explains itself.
+     *
+     * @param list<array> $rfaRows loadRfaDisbursed()
+     */
+    private function reconciliation(array $rfaRows): array
+    {
+        $total = App\ExecuteRow("SELECT COUNT(*) AS c, COALESCE(SUM(dv.gross_amount), 0) AS amt FROM {$this->tableDv} dv {$this->releasedJoinSql()}", 'DB') ?: [];
+        $viaSaro = $this->hasDvLink()
+            ? (App\ExecuteRow(
+                "SELECT COUNT(*) AS c, COALESCE(SUM(dv.gross_amount), 0) AS amt FROM {$this->tableDv} dv {$this->releasedJoinSql()}
+                  WHERE EXISTS (SELECT 1 FROM {$this->tableFt} fl WHERE fl.dv_id = dv.dv_id AND fl.deleted_at IS NULL)",
+                'DB'
+            ) ?: [])
+            : [];
+        $unlinked = App\ExecuteRow(
+            "SELECT COUNT(*) AS c, COALESCE(SUM(dv.gross_amount), 0) AS amt FROM {$this->tableDv} dv {$this->releasedJoinSql()}
+              WHERE NOT EXISTS (SELECT 1 FROM {$this->tableAllocation} a WHERE a.dv_id = dv.dv_id AND a.deleted_at IS NULL AND UPPER(a.allocation_type) IN ('RFA', 'LAA'))
+                {$this->notSaroLinkedSql()}",
+            'DB'
+        ) ?: [];
+
+        $viaRfa = 0.0;
+        $other = 0.0;
+        foreach ($rfaRows as $r) {
+            if ($r['source_key'] === 'OTHER') {
+                $other += (float) $r['amount'];
+            } else {
+                $viaRfa += (float) $r['amount'];
+            }
+        }
+        $released = (float) ($total['amt'] ?? 0);
+        $counted = (float) ($viaSaro['amt'] ?? 0) + $viaRfa;
+
+        return [
+            'released_count' => (int) ($total['c'] ?? 0),
+            'released' => round($released, 2),
+            'counted' => round($counted, 2),
+            'not_counted' => round(max(0.0, $released - $counted), 2),
+            'unlinked_count' => (int) ($unlinked['c'] ?? 0),
+            'unlinked' => round((float) ($unlinked['amt'] ?? 0), 2),
+            'other_fund' => round($other, 2),
+        ];
     }
 
     /** Every live fund_tracking record with what the figures need — filtered by fiscal year in PHP, because an NCA looks up its SARO whatever year that is. */
@@ -98,14 +222,16 @@ class StatusOfFundService
             'trust_count' => 0, 'trust_total' => 0.0,
             'or_count' => 0, 'receipts' => 0.0,
             'disbursed' => 0.0,
+            'disbursed_rfa' => 0.0,   // the part of `disbursed` that came through an RFA / LAA rather than a SARO
             'programs' => [],
             'trust_funds' => [],
         ];
     }
 
     /** The three fund sources with their sums for a fiscal year (null = every year), figures derived, `programs` / `trust_funds` still keyed. */
-    private function compute(?int $fiscalYear): array
+    private function compute(?int $fiscalYear, ?array $rfaRows = null): array
     {
+        $rfaRows ??= $this->loadRfaDisbursed();
         $rows = $this->loadRecords();
         $byId = [];
         foreach ($rows as $r) {
@@ -185,10 +311,35 @@ class StatusOfFundService
             }
         }
 
+        // the RELEASED vouchers that reach a fund source through an RFA / LAA (not through a SARO): by the budget line's fiscal year, program and fund source
+        foreach ($rfaRows as $r) {
+            $key = (string) $r['source_key'];
+            if (!isset($src[$key]) || ($fiscalYear !== null && (int) $r['fiscal_yr'] !== $fiscalYear)) {
+                continue;
+            }
+            $amount = (float) $r['amount'];
+            $src[$key]['disbursed'] += $amount;
+            $src[$key]['disbursed_rfa'] += $amount;
+            if ($key !== 'TRUST') {
+                $code = (string) ($r['program_code'] ?? '');
+                if (!isset($src[$key]['programs'][$code])) {
+                    $src[$key]['programs'][$code] = [
+                        'program_code' => $code !== '' ? $code : null,
+                        'program_name' => $code !== '' ? (string) $r['program_name'] : 'No program',
+                        'saro_released' => 0.0, 'nca_released' => 0.0, 'disbursed' => 0.0,
+                    ];
+                }
+                $src[$key]['programs'][$code]['disbursed'] += $amount;
+            }
+        }
+
         foreach ($src as $k => &$s) {
             $trust = $k === 'TRUST';
             $s['available'] = round($trust ? $s['receipts'] : $s['nca_released'], 2);
-            $s['disbursed'] = $trust || !$this->hasDvLink() ? null : round($s['disbursed'], 2);
+            // known when a SARO can carry a voucher (NG / SUPP, once fund_tracking.dv_id exists) or when an RFA / LAA voucher was attributed to it; a Trust Fund has no SARO
+            $known = (!$trust && $this->hasDvLink()) || $s['disbursed_rfa'] > 0;
+            $s['disbursed'] = $known ? round($s['disbursed'], 2) : null;
+            $s['disbursed_rfa'] = round($s['disbursed_rfa'], 2);
             $s['balance'] = round($s['available'] - (float) ($s['disbursed'] ?? 0), 2);
             $s['utilization'] = ($s['disbursed'] !== null && $s['available'] > 0) ? round($s['disbursed'] / $s['available'] * 100, 1) : null;
             $s['unreleased'] = $trust ? null : round($s['saro_released'] - $s['nca_released'], 2);
@@ -202,7 +353,7 @@ class StatusOfFundService
             foreach ($programs as &$p) {
                 $p['saro_released'] = round($p['saro_released'], 2);
                 $p['nca_released'] = round($p['nca_released'], 2);
-                $p['disbursed'] = $this->hasDvLink() ? round($p['disbursed'], 2) : null;
+                $p['disbursed'] = $known ? round($p['disbursed'], 2) : null;
                 $p['undisbursed'] = round($p['nca_released'] - (float) ($p['disbursed'] ?? 0), 2);
                 $p['utilization'] = ($p['disbursed'] !== null && $p['nca_released'] > 0) ? round($p['disbursed'] / $p['nca_released'] * 100, 1) : null;
             }
@@ -227,7 +378,8 @@ class StatusOfFundService
     public function fetchOverview(?int $fiscalYear): array
     {
         try {
-            $src = $this->compute($fiscalYear);
+            $rfa = $this->loadRfaDisbursed();
+            $src = $this->compute($fiscalYear, $rfa);
             $rows = [];
             $available = 0.0;
             $disbursed = 0.0;
@@ -241,6 +393,7 @@ class StatusOfFundService
                 'success' => true,
                 'data' => [
                     'fiscal_years' => $this->fiscalYears(),
+                    'vouchers' => $this->reconciliation($rfa),
                     'sources' => $rows,
                     'totals' => [
                         'sources' => count($rows),
@@ -266,9 +419,10 @@ class StatusOfFundService
             return ['success' => false, 'message' => 'Unknown fund source. Use one of: '.implode(', ', array_keys(self::SOURCES)).'.', 'status' => 404];
         }
         try {
-            $src = $this->compute($fiscalYear);
+            $rfa = $this->loadRfaDisbursed();
+            $src = $this->compute($fiscalYear, $rfa);
 
-            return ['success' => true, 'data' => $src[$key] + ['fiscal_year' => $fiscalYear]];
+            return ['success' => true, 'data' => $src[$key] + ['fiscal_year' => $fiscalYear, 'vouchers' => $this->reconciliation($rfa)]];
         } catch (\Throwable $e) {
             App\LogError('StatusOfFundService::fetchSource '.$e->getMessage());
 

@@ -146,13 +146,14 @@ const am = (v) => [p([run(v, { font: MONO })], { align: R })];
 let count = 0;
 (m.rows || []).forEach(function (r) {
     count++;
+    // credit entries are indented under the debits (r.cr — JevPrintService::model()), as in the HTML / PDF
     if (r.kind === 'gl') {
-        rows.push(bodyRow([[p([run(r.rc, { size: SZ_SM })], { align: C })], [p([run(r.text)])], null, null, null,
+        rows.push(bodyRow([[p([run(r.rc, { size: SZ_SM })], { align: C })], [p([run(r.text)], r.cr ? { indent: { left: 480 } } : {})], null, null, null,
             [p([run(r.code, { font: MONO, bold: true })], { align: C })], [p([run(r.p, { bold: true })], { align: C })], am(r.gl_d), am(r.gl_c)]));
     } else if (r.kind === 'desc') {
-        rows.push(txt(lines(r.text, { indent: { left: 240 } })));
+        rows.push(txt(lines(r.text, { indent: { left: r.cr ? 720 : 240 } })));
     } else {
-        rows.push(bodyRow([null, [p([run(r.text, { size: SZ_SM, color: '333333' })], { indent: { left: 400 } })],
+        rows.push(bodyRow([null, [p([run(r.text, { size: SZ_SM, color: '333333' })], { indent: { left: r.cr ? 880 : 400 } })],
             [p([run(r.sl)], { align: C })], am(r.sl_d), am(r.sl_c), null, null, null, null]));
     }
 });

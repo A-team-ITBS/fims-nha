@@ -137,6 +137,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -238,6 +239,11 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -1501,6 +1507,7 @@
                 '/IarModule[/{params:.*}]',
                 '/IdGenerator[/{params:.*}]',
                 '/IncomeStatementPage[/{params:.*}]',
+                '/InvestmentPropertyPage[/{params:.*}]',
                 '/JournalEntryVoucher[/{params:.*}]',
                 '/JournalsPage[/{params:.*}]',
                 '/JwtSessionsList[/{session_id}]',
@@ -1736,6 +1743,7 @@
                 'PHPMaker2024\\FIMS\\IarModuleController:custom',
                 'PHPMaker2024\\FIMS\\IdGeneratorController:custom',
                 'PHPMaker2024\\FIMS\\IncomeStatementPageController:custom',
+                'PHPMaker2024\\FIMS\\InvestmentPropertyPageController:custom',
                 'PHPMaker2024\\FIMS\\JournalEntryVoucherController:custom',
                 'PHPMaker2024\\FIMS\\JournalsPageController:custom',
                 'PHPMaker2024\\FIMS\\JwtSessionsController:list',
@@ -1871,6 +1879,9 @@
                 'PHPMaker2024\\FIMS\\WorkInProcessPageController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -2670,6 +2681,7 @@
                 'custom.IARModule',
                 'custom.IDGenerator',
                 'custom.income_statement_page',
+                'custom.investment_property_page',
                 'custom.JournalEntryVoucher',
                 'custom.journals_page',
                 'list.jwt_sessions',
@@ -2805,6 +2817,7 @@
                 'custom.work_in_process_page',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -3275,6 +3288,7 @@
         $o[230],
         $o[231],
         $o[232],
+        $o[233],
     ],
     []
 );

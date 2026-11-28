@@ -53,7 +53,8 @@ $app->get('/fmd/budget_req/list', function ($request, $response, $args) use ($Fm
             GlobalService::CENTRAL_REVIEW_RC_CODE_FROM,           // … that is a Regional / District office …
             $userId,                                              // strips 'programs' if THIS caller turns out to be a
                                                                    // plain originating-office user (see fetchAlls' own doc)
-            $ownRcId                                              // … plus the caller's own RC (FMD's own requests)
+            $ownRcId,                                             // … plus the caller's own RC (FMD's own requests)
+            excludeSupplemental: true                             // the proposal list: the projects added by approved SUPPLEMENTAL revisions are not in it
         );
         if ($result['success']) {
             // where each row stands in the review chain (For Review -> Budget Officer -> For Endorsement -> Budget Head -> Approved)

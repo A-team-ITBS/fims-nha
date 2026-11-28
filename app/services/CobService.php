@@ -81,8 +81,8 @@ use PHPMaker2024\FIMS\DataType;
  * CO and COE. A budget line is told apart by its chart-of-accounts code (expenseClassSql()): 1… is CO (capital outlay), 5-01… is PS and 5-02… is MOOE — and
  * PS and MOOE together are the COE. A line with no program is COE too: a COE budget request carries line items of its own, with no Program, Sub-Program or
  * Project (budget_line_items.budget_req_project_id is NULL), and they were the "No program" / "No project" rows of the tree. With
- * rollup(..., $splitCoe = true) — both monitoring pages ask — the tree starts with two root nodes, 'CO' (Program > Sub-Program > Originating Unit >
- * Project, over the lines that have a program) and 'COE' (PS / MOOE > Originating Unit > the request; type 'class' then 'request'), see splitCoe().
+ * rollup(..., $splitCoe = true) — both monitoring pages ask — the tree starts with two root nodes, 'CO' (Program > Sub-Program > Region (the office level: the
+ * project's Region, else the filing office) > Project, over the lines that have a program) and 'COE' (PS / MOOE > Originating Unit > the request; type 'class' then 'request'), see splitCoe().
  * fetchById() gives every line item its `expense_class` ('CO' / 'PS' / 'MOOE' / null) and the programless ones come back in `unassigned_line_items` — the COE.
  *
  * Views:
@@ -168,6 +168,27 @@ class CobService
                 GROUP BY e.budget_line_item_id";
     }
 
+    private static ?bool $projectHasRc = null;
+
+    /**
+     * The office (RC) a line is shown under — the Originating Unit / Region of the trees, the Region filter, the Search box: the REGION attached to its project
+     * (fims.project.rc_id, picked on the Budget Request / Supplemental project card) and, when the line has no project or its project has no region (a COE
+     * request's own lines, an older project), the office that filed the request (fims.budget_req.rc_id). It is the `rc` of fromSql(), so rc.rc_code / rc_name /
+     * office_type / parent_rc_id are the region's. A database without fims.project.rc_id ("03 - alter_table/54") has no region on a project: the filing office then.
+     * The caller's RC SCOPE (conditions()) is still the filing office, br.rc_id: who may see a request does not change.
+     */
+    private function effectiveRcSql(): string
+    {
+        if (self::$projectHasRc === null) {
+            self::$projectHasRc = (int) App\ExecuteScalar(
+                "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'fims' AND table_name = 'project' AND column_name = 'rc_id'",
+                'DB'
+            ) > 0;
+        }
+
+        return self::$projectHasRc ? "COALESCE(NULLIF(pj.rc_id, ''), br.rc_id)" : 'br.rc_id';
+    }
+
     /**
      * The joins every COB query shares. One row = one budget line item of a request that has a status; the project /
      * program joins are LEFT, so a line item of an older request that never got its program block still counts (it just
@@ -186,7 +207,7 @@ class CobService
                 LEFT JOIN fims.type_of_fund tof ON tof.type_of_fund_id = li.type_of_fund_id
                 LEFT JOIN fims.component_type ct ON ct.component_type_id = li.component_id
                 LEFT JOIN fims.chart_of_accounts coa ON coa.account_id = li.account_id
-                LEFT JOIN fims.responsibility_code rc ON rc.rc_id = br.rc_id
+                LEFT JOIN fims.responsibility_code rc ON rc.rc_id = {$this->effectiveRcSql()}
                 LEFT JOIN fims.responsibility_code prc ON prc.rc_id = rc.parent_rc_id
                 LEFT JOIN ({$this->earmarkSql()}) ear ON ear.budget_line_item_id = li.budget_line_item_id
                 LEFT JOIN ({$this->disbursementSql()}) dvl ON dvl.budget_line_item_id = li.budget_line_item_id
@@ -336,15 +357,15 @@ class CobService
         return App\QuotedValue($v, DataType::STRING, 'DB');
     }
 
-    /** "rc_id IN (...)" for an RC and everything below it, or null when $rcId is empty (no restriction). */
-    private function rcInSql(string $rcId): ?string
+    /** "rc_id IN (...)" for an RC and everything below it, or null when $rcId is empty (no restriction). $col = the column compared: the filing office by default (the scope), effectiveRcSql() for the Region filter. */
+    private function rcInSql(string $rcId, string $col = 'br.rc_id'): ?string
     {
         if (trim($rcId) === '') {
             return null;
         }
         $ids = GlobalService::getRcIdsInScope($rcId) ?: [$rcId];
 
-        return 'br.rc_id IN ('.implode(', ', array_map(fn ($id) => $this->str((string) $id), $ids)).')';
+        return $col.' IN ('.implode(', ', array_map(fn ($id) => $this->str((string) $id), $ids)).')';
     }
 
     /**
@@ -378,10 +399,10 @@ class CobService
             $where[] = 'li.account_id = '.$this->str($f['account_id']);
         }
         if ($f['region_id'] !== '') {
-            // 'central' = every office that is not a Regional / District one; otherwise the region's RC and its districts.
+            // 'central' = every office that is not a Regional / District one; otherwise the region's RC and its districts — of the office the line is shown under (effectiveRcSql()).
             $where[] = $f['region_id'] === 'central'
                 ? "LOWER(COALESCE(rc.office_type, '')) NOT IN ('regional', 'district')"
-                : $this->rcInSql($f['region_id']);
+                : $this->rcInSql($f['region_id'], $this->effectiveRcSql());
         }
         if ($f['search'] !== '') {
             $s = $this->str('%'.$f['search'].'%');
@@ -440,6 +461,57 @@ class CobService
     }
 
     // -------------------------------------------------------------------------
+    // Figures of chosen COB lines — the printed RFA's Part II
+    // -------------------------------------------------------------------------
+
+    /**
+     * What the printed RFA (RfaPrintService, Part II) reads off the COB lines it draws on, summed over those lines — the same figures the COB and the
+     * RFA / LAA Monitoring pages show for them, because they come from the same expressions (lineAmountExprs()):
+     *   fund_balance     the COB's current balance — its Remaining Balance (Revised - CBA Requested - RFA / LAA drawn)
+     *   account_payable  RFA / LAA Amount - Disbursement: what RFAs / LAAs have drawn from the line that has not been disbursed yet
+     *   disbursement     what the disbursement vouchers of the line's RFAs / LAAs have disbursed
+     * A line counts once however many times it is listed (an RFA with several project blocks can name the same COB twice). Unlike the COB pages,
+     * no 'Approved request' or office filter is applied: the ids are the ones the RFA itself drew on, and printing is FMD's.
+     *
+     * @param array<int, int|string> $budgetLineItemIds fims.budget_line_items ids
+     * @return array{lines: int, fund_balance: float, account_payable: float, disbursement: float}|null null when no id is given or none is found
+     */
+    public function figuresForLines(array $budgetLineItemIds): ?array
+    {
+        $ids = array_values(array_unique(array_filter(
+            array_map('intval', array_filter($budgetLineItemIds, 'is_scalar')),
+            static fn (int $id): bool => $id > 0
+        )));
+        if (!$ids) {
+            return null;
+        }
+
+        try {
+            $row = App\ExecuteRow(
+                'SELECT '.$this->sumsSql().'
+                 '.$this->fromSql().'
+                 WHERE li.budget_line_item_id IN ('.implode(', ', $ids).')',
+                'DB'
+            ) ?: [];
+        } catch (\Throwable $e) {
+            App\LogError('CobService::figuresForLines '.$e->getMessage());
+
+            return null;
+        }
+        if ((int) ($row['line_count'] ?? 0) === 0) {
+            return null;
+        }
+        $a = $this->amountsOf($row);
+
+        return [
+            'lines' => (int) $row['line_count'],
+            'fund_balance' => $a['remaining_balance'],
+            'account_payable' => $a['account_payable'],
+            'disbursement' => $a['disbursement'],
+        ];
+    }
+
+    // -------------------------------------------------------------------------
     // Roll-ups — the tree tabs
     // -------------------------------------------------------------------------
 
@@ -471,7 +543,7 @@ class CobService
                 'SELECT tof.type_of_fund_id, tof.name AS type_of_fund_name,
                         ct.component_type_id, ct.name AS component_name,
                         br.budget_reference_number, br.fiscal_yr,
-                        br.rc_id, rc.rc_code, rc.rc_name, rc.office_type AS rc_office_type,
+                        '.$this->effectiveRcSql().' AS rc_id, rc.rc_code, rc.rc_name, rc.office_type AS rc_office_type,
                         rc.parent_rc_id, prc.rc_code AS parent_rc_code, prc.rc_name AS parent_rc_name,
                         brpg.budget_req_program_id, brpg.program_code, pg.program_name,
                         brpg.sub_program_code, sp.sub_program_name,
@@ -483,7 +555,7 @@ class CobService
                  WHERE '.implode(' AND ', $this->conditions($f, $scopeRcId)).'
                  GROUP BY tof.type_of_fund_id, tof.name, ct.component_type_id, ct.name,
                           br.budget_reference_number, br.fiscal_yr,
-                          br.rc_id, rc.rc_code, rc.rc_name, rc.office_type, rc.parent_rc_id, prc.rc_code, prc.rc_name,
+                          '.$this->effectiveRcSql().', rc.rc_code, rc.rc_name, rc.office_type, rc.parent_rc_id, prc.rc_code, prc.rc_name,
                           brpg.budget_req_program_id, brpg.program_code, pg.program_name, brpg.sub_program_code, sp.sub_program_name,
                           brpj.project_code, pj.project_name, brpj.location, att.attachment_count, '.$this->expenseClassSql(),
                 'DB'
@@ -839,8 +911,9 @@ class CobService
     }
 
     /**
-     * An Originating Unit is the office (RC) that requested the budget — fims.budget_req.rc_id. Like a Region node it shows its RC id as its
-     * code and is ordered by its RC code ('sort'). A request with no RC is kept, as 'No originating unit', and sorted last.
+     * The office level under a Sub-Program: the REGION attached to the project (fims.project.rc_id — effectiveRcSql()), else the office that requested the budget
+     * (fims.budget_req.rc_id: a COE request's own lines, or a project with no region). Like a Region node it shows its RC id as its code and is ordered by its RC
+     * code ('sort'). A line with no RC is kept, as 'No originating unit', and sorted last.
      */
     private function unitLevel(): array
     {
