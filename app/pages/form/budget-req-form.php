@@ -96,8 +96,16 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 
     #bgr-body { flex:1;min-height:0;overflow-y:auto;padding:22px; }
     .bgr-row { display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px; }
+    /* Fiscal Year / Region / Grand Total — the request-level row (#bgr-top-row). COE mode has no
+       Region (see bgr_openModal), so it switches down to the plain two-column .bgr-row layout via
+       the .bgr-coe-row modifier below instead. */
+    .bgr-row-3 { display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:16px; }
+    #bgr-top-row.bgr-coe-row { grid-template-columns:1fr 1fr; }
+    #bgr-top-row.bgr-coe-row #bgr-region-group { display:none; }
     /* A Project's own Type of Fund/Component/Sub-Component/Proposed Amount row — four fields. */
     .bgr-row-4 { display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;margin-bottom:16px; }
+    /* Same row, plus Source of Fund and Program Source (both before Proposed Amount) — six fields. */
+    .bgr-row-6 { display:grid;grid-template-columns:repeat(6, 1fr);gap:14px;margin-bottom:16px; }
     .bgr-group { display:flex;flex-direction:column;gap:5px; }
     .bgr-group.full { margin-bottom:16px; }
     .bgr-label { font-size:11px;font-weight:700;color:var(--afims-text, #1A1B21);
@@ -148,7 +156,6 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
         border-bottom:1px solid color-mix(in srgb, var(--afims-border, #E4ECF2) 55%, var(--afims-text-disabled, #A9AAB8)); }
     .bgr-block.bgr-collapsed .bgr-block-hd { padding-bottom:0;margin-bottom:0;border-bottom:none; }
     .bgr-block-project-wrap { flex:1;min-width:0; }
-    .bgr-block-region-wrap { flex:0 0 220px;min-width:0; }
     .bgr-block-project-code-wrap { flex:0 0 260px;min-width:0; }
     .bgr-block-project-code-display { font-family:'IBM Plex Mono',monospace;background:var(--afims-surface, #FFFFFF);
         border-style:dashed;color:var(--afims-text-muted, #62657E);cursor:default; }
@@ -275,10 +282,18 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     /* ── Project typeahead (twitter typeahead.js) ──────────────────────── */
     /* The library wraps the input in a plain inline-block span by default —
        force it to behave like every other full-width field in this form. */
-    .bgr-block-project-wrap .twitter-typeahead { display:block !important;width:100%; }
+    .bgr-block-project-wrap .twitter-typeahead,
+    .bgr-block-program-source-wrap .twitter-typeahead { display:block !important;width:100%; }
     .tt-menu { width:100%;background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2);
         border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.14);margin-top:4px;z-index:10000;
         max-height:260px;overflow-y:auto;overflow-x:hidden; }
+    /* Program Source's own column is one of six in its row (.bgr-row-6) — far too narrow for its
+       entries (full sentences), which wrapped onto 3-4 lines each at 100% width. Widened past the
+       input's own width (anchored to its left edge, extending right over whatever sits next to it) —
+       #bgr-body has no horizontal clipping, and the modal itself (.u-modal-2xl) is comfortably wider
+       than this, so there's room for it to float over neighboring fields while open, same as the
+       Project field's own suggestion menu already does when it overlaps sibling blocks. */
+    .bgr-block-program-source-wrap .tt-menu { width:420px;max-width:min(420px, 90vw); }
     .tt-suggestion { padding:8px 12px;font-size:13px;color:var(--afims-text, #1A1B21);cursor:pointer;transition:background .1s,color .1s; }
     .tt-suggestion:hover, .tt-suggestion.tt-cursor { background:var(--afims-heading-fill, #000E3E);color:var(--afims-pure-white, #FFFFFF); }
     .tt-not-found { padding:8px 12px;font-size:12px;color:var(--afims-text-disabled, #A9AAB8);font-style:italic; }
@@ -313,6 +328,10 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 
     @media (max-width: 520px) { .bgr-row { grid-template-columns:1fr; } }
     @media (max-width: 760px) { .bgr-row-4 { grid-template-columns:1fr; } }
+    @media (max-width: 640px) { .bgr-row-3 { grid-template-columns:1fr; } }
+    @media (max-width: 1100px) { .bgr-row-6 { grid-template-columns:1fr 1fr 1fr; } }
+    @media (max-width: 760px) { .bgr-row-6 { grid-template-columns:1fr 1fr; } }
+    @media (max-width: 480px) { .bgr-row-6 { grid-template-columns:1fr; } }
 
     /* ── Dark mode ──────────────────────────────────────────────────────
        --afims-heading-fill stays NAVY in dark mode (it is a fill colour for white text), so every place above that
@@ -364,11 +383,21 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
                 <input type="hidden" id="bgr-mode" value="add">
                 <input type="hidden" id="bgr-id" value="">
 
-                <div class="bgr-row">
+                <div class="bgr-row-3" id="bgr-top-row">
                     <div class="bgr-group">
                         <label class="bgr-label">Fiscal Year <span class="req">*</span></label>
                         <select class="bgr-select" id="bgr-fiscal-yr" required>
                             <option value="">— Select fiscal year —</option>
+                        </select>
+                    </div>
+                    <!-- Request-level now — one Region for the WHOLE budget request (every Program/Project in
+                         it), not picked per-project anymore; see bgr_openModal/bgr_buildProgramPayload. Hidden
+                         in COE mode (#bgr-top-row.bgr-coe-row above) — a COE request has no Program/Project at
+                         all, so there's nothing for a Region to scope. -->
+                    <div class="bgr-group" id="bgr-region-group">
+                        <label class="bgr-label">Region <span class="req">*</span></label>
+                        <select class="bgr-select" id="bgr-region">
+                            <option value="">— Select region —</option>
                         </select>
                     </div>
                     <div class="bgr-group">
@@ -458,6 +487,7 @@ const BGR_RC_API                = '<?php echo $_bgr_api; ?>' + '/responsibility-
 const BGR_TYPE_OF_FUND_API      = '<?php echo $_bgr_api; ?>' + '/type_of_fund';
 const BGR_COMPONENT_TYPE_API    = '<?php echo $_bgr_api; ?>' + '/component_type';
 const BGR_SUB_COMPONENT_TYPE_API = '<?php echo $_bgr_api; ?>' + '/sub_component_type';
+const BGR_PROGRAM_SOURCE_API    = '<?php echo $_bgr_api; ?>' + '/program_source';
 
 // Cached option lists — Program/Sub-Program are prefetched in full and
 // filtered client-side (same cascade style as pof_fillProjects() in
@@ -468,9 +498,11 @@ let BGR_PROGRAMS = [];
 let BGR_SUB_PROGRAMS = [];
 let BGR_COA_OPTIONS = [];
 // Regional offices only (office_type 'Regional' — excludes District offices, same office_type
-// convention readone/budget-req-readone.php's bgrv_rcDeptType() uses) — a Project's own Region
-// (fims.project.rc_id), manually picked on the Project field now that Program-based origination
-// belongs to FMD, not the region itself. Prefetched once at bootstrap, same as Programs/Sub-Programs.
+// convention readone/budget-req-readone.php's bgrv_rcDeptType() uses) — the WHOLE request's own Region
+// (#bgr-region, request-level), manually picked now that Program-based origination belongs to FMD,
+// not the region itself. One Region governs every Program/Project in the request (and becomes the
+// budget_req header's own rc_id — see BudgetReqService::fetchHeaderByFiscalYearAndRc()), not picked
+// per-project anymore. Prefetched once at bootstrap, same as Programs/Sub-Programs.
 let BGR_REGIONS = [];
 // A Project's single line item now picks its own Type of Fund up front too (historically only ever
 // set later, by Budget Processing — see BudgetLineItemService::create()'s own doc comment).
@@ -480,6 +512,10 @@ let BGR_TYPES_OF_FUND = [];
 let BGR_COMPONENTS = [];
 // A flat classification list, independent of Component (fims.sub_component_type) — also optional.
 let BGR_SUB_COMPONENTS = [];
+// "Program (Source)" — a flat list of specific named source programs/projects (fims.program_source),
+// independent of the Program/Sub-Program fields above (which only hold the two broad categories) —
+// also optional.
+let BGR_PROGRAM_SOURCES = [];
 let bgr_liSeq = 0;
 let bgr_blockSeq = 0;
 let bgr_coeSubCompSeq = 0;
@@ -496,7 +532,7 @@ let bgr_formReadyResolve;
 window.bgrFormReady = new Promise(resolve => { bgr_formReadyResolve = resolve; });
 async function bgr_formBootstrap() {
     try {
-        await Promise.all([bgr_loadPrograms(), bgr_loadSubPrograms(), bgr_loadFiscalYears(), bgr_loadRegions(), bgr_loadTypesOfFund(), bgr_loadComponents(), bgr_loadSubComponents()]);
+        await Promise.all([bgr_loadPrograms(), bgr_loadSubPrograms(), bgr_loadFiscalYears(), bgr_loadRegions(), bgr_loadTypesOfFund(), bgr_loadComponents(), bgr_loadSubComponents(), bgr_loadProgramSources()]);
         bgr_bindFormEvents();
         bgr_bindCoeDocSection();
     } finally {
@@ -519,6 +555,7 @@ function bgr_bindFormEvents() {
     $bgr('bgr-fiscal-yr')?.addEventListener('change', () => {
         document.querySelectorAll('#bgr-pblocks-wrap .bgr-pblock').forEach(bgr_refreshAllProjectCodeFields);
     });
+    $bgr('bgr-region')?.addEventListener('change', bgr_onRequestRegionChange);
     $bgr('bgr-add-program-block')?.addEventListener('click', () => bgr_addProgramBlock());
     $bgr('bgr-coe-add-sub-component')?.addEventListener('click', () => bgr_addCoeSubComponentBlock());
 
@@ -527,7 +564,7 @@ function bgr_bindFormEvents() {
     $bgr('bgr-pblocks-wrap')?.addEventListener('change', (ev) => {
         if (ev.target.matches('.bgr-pblock-program')) bgr_onProgramChange(ev.target.closest('.bgr-pblock'));
         else if (ev.target.matches('.bgr-pblock-sub-program')) bgr_refreshAllProjectCodeFields(ev.target.closest('.bgr-pblock'));
-        else if (ev.target.matches('.bgr-block-region')) bgr_onBlockRegionChange(ev.target);
+        else if (ev.target.matches('.bgr-block-component')) bgr_onBlockComponentChange(ev.target);
     });
     $bgr('bgr-pblocks-wrap')?.addEventListener('click', (ev) => {
         if (ev.target.closest('.bgr-pblock-add-project')) {
@@ -587,37 +624,43 @@ async function bgr_loadSubPrograms() {
     }
 }
 
+// Builds #bgr-region's own <option> list ONCE (not rebuilt per block/open — there's only ever the
+// one select now) — same static-population style bgr_loadFiscalYears() uses for #bgr-fiscal-yr.
+// bgr_openModal sets its value/disabled per mode on each open instead.
 async function bgr_loadRegions() {
     try {
         const res  = await fetch(`${BGR_RC_API}/all`, { credentials: 'same-origin' });
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to load regions.');
         BGR_REGIONS = (json.data ?? []).filter(rc => rc.office_type === 'Regional');
+
+        const optsHtml = BGR_REGIONS.map(rc =>
+            `<option value="${bgr_escHtmlAttr(rc.rc_id)}">${bgr_esc(rc.rc_name)}</option>`
+        ).join('');
+        $bgr('bgr-region')?.insertAdjacentHTML('beforeend', optsHtml);
     } catch (e) {
         bgr_toast(e.message, 'error');
     }
 }
 
-// Fills one block's Region select — `keep` is the rc_id to preselect (an existing project's own
-// region when editing/prefilling; '' for a brand-new block).
-function bgr_fillBlockRegions(selectEl, keep = '') {
-    if (!selectEl) return;
-    selectEl.innerHTML = '<option value="">— Select region —</option>' + BGR_REGIONS.map(rc =>
-        `<option value="${bgr_escHtmlAttr(rc.rc_id)}">${bgr_esc(rc.rc_name)}</option>`
-    ).join('');
-    selectEl.value = BGR_REGIONS.some(rc => String(rc.rc_id) === String(keep)) ? String(keep) : '';
+// Enables/disables every project block's own Project field based on whether a request-level Region
+// has been picked yet — a brand-new project can't be resolved/created without one (its code's own RC
+// segment needs it; see bgr_updateProjectCodeField), and the typeahead itself is filtered to that
+// Region (see bgr_initProjectTypeahead), so there's nothing valid to search/type until then.
+function bgr_syncProjectInputsRegionState() {
+    const hasRegion = !!$bgr('bgr-region')?.value;
+    document.querySelectorAll('#bgr-pblocks-wrap .bgr-block-project-name').forEach(inp => {
+        inp.disabled = !hasRegion;
+        inp.placeholder = hasRegion ? 'Type to search or add a new project…' : 'Select a region first';
+    });
 }
 
-// Keeps a block's Region select in sync with its Project field as the typeahead resolves/unresolves
-// a match — locked (disabled) to the matched existing project's own region, or cleared and unlocked
-// once that match is lost (typing a new name again), mirroring bgr_setProjectCode's own "existing
-// vs. new" distinction. COE mode has no Region select at all, so this is a no-op there.
-function bgr_setBlockRegion($input, rcId, lock) {
-    const block = $input.closest('.bgr-block')[0];
-    const sel = block?.querySelector('.bgr-block-region');
-    if (!sel) return;
-    sel.value = BGR_REGIONS.some(rc => String(rc.rc_id) === String(rcId)) ? String(rcId) : '';
-    sel.disabled = lock;
+// The request-level Region changed — every project block's code preview depends on it (its RC
+// segment), and the Project typeahead itself is filtered by it, so refresh both across every Program
+// block (not just one — this field isn't scoped to a single block anymore).
+function bgr_onRequestRegionChange() {
+    document.querySelectorAll('#bgr-pblocks-wrap .bgr-pblock').forEach(bgr_refreshAllProjectCodeFields);
+    bgr_syncProjectInputsRegionState();
 }
 
 async function bgr_loadTypesOfFund() {
@@ -663,13 +706,18 @@ async function bgr_loadComponents() {
 
 // Fills one block's Component select — optional, unlike Region/Type of Fund, so the placeholder
 // doubles as a valid "none" choice. `keep` is the component_type_id to preselect (editing an existing
-// project's own line item; '' for a brand-new block or one with none set).
-function bgr_fillBlockComponents(selectEl, keep = '') {
+// project's own line item; '' for a brand-new block or one with none set). `excludeNames` drops
+// entries that don't belong in THIS mode's own list (case-insensitive, compared against BGR_COMPONENTS'
+// own name) — a regular CO Project's own Component excludes "COE" (that's a separate request type
+// entirely — see #bgr-coe-root), and a COE request's own Component (#bgr-coe-component) excludes
+// "CAPITAL OUTLAY"/"OTHER-CAPITAL OUTLAY" (those belong to a CO Project instead) — see both call sites.
+function bgr_fillBlockComponents(selectEl, keep = '', excludeNames = []) {
     if (!selectEl) return;
-    selectEl.innerHTML = '<option value="">— None —</option>' + BGR_COMPONENTS.map(c =>
+    const options = BGR_COMPONENTS.filter(c => !excludeNames.includes((c.name ?? '').trim().toUpperCase()));
+    selectEl.innerHTML = '<option value="">— None —</option>' + options.map(c =>
         `<option value="${bgr_escHtmlAttr(c.component_type_id)}">${bgr_esc(c.name)}</option>`
     ).join('');
-    selectEl.value = BGR_COMPONENTS.some(c => String(c.component_type_id) === String(keep)) ? String(keep) : '';
+    selectEl.value = options.some(c => String(c.component_type_id) === String(keep)) ? String(keep) : '';
 }
 
 async function bgr_loadSubComponents() {
@@ -683,15 +731,109 @@ async function bgr_loadSubComponents() {
     }
 }
 
-// Fills one block's Sub-Component select — optional, flat (independent of which Component is picked
-// — see bgr_fillBlockComponents' sibling doc comment). `keep` is the sub_component_type_id to
-// preselect (editing an existing project's own line item; '' for a brand-new block or one with none set).
-function bgr_fillBlockSubComponents(selectEl, keep = '') {
+// Fills one block's Sub-Component select — optional, flat classification list. `keep` is the
+// sub_component_type_id to preselect (editing an existing project's own line item; '' for a brand-new
+// block or one with none set). `options` narrows WHICH entries are offered — defaults to the full
+// list (COE's own Sub-Component block, #bgr-coe-subcomp-select, always gets this: it has no sibling
+// Component field of its own to narrow by). A regular CO Project's own Sub-Component (paired with
+// .bgr-block-component in the same block) instead passes a list fetched SERVER-SIDE, already narrowed
+// to that Component's own bucket — see bgr_fetchSubComponentsForComponent()/bgr_onBlockComponentChange().
+function bgr_fillBlockSubComponents(selectEl, keep = '', options = null) {
     if (!selectEl) return;
-    selectEl.innerHTML = '<option value="">— None —</option>' + BGR_SUB_COMPONENTS.map(c =>
+    const list = options ?? BGR_SUB_COMPONENTS;
+    selectEl.innerHTML = '<option value="">— None —</option>' + list.map(c =>
         `<option value="${bgr_escHtmlAttr(c.sub_component_type_id)}">${bgr_esc(c.name)}</option>`
     ).join('');
-    selectEl.value = BGR_SUB_COMPONENTS.some(c => String(c.sub_component_type_id) === String(keep)) ? String(keep) : '';
+    selectEl.value = list.some(c => String(c.sub_component_type_id) === String(keep)) ? String(keep) : '';
+}
+
+function bgr_componentNameById(componentId) {
+    return BGR_COMPONENTS.find(c => String(c.component_type_id) === String(componentId))?.name ?? '';
+}
+
+// Component -> Sub-Component narrowing for a regular CO Project block's own pair, filtered SERVER-SIDE
+// (?component= on /sub_component_type/all — see SubComponentTypeService::fetchAlls()'s own doc
+// comment for the actual Other-Capital-Outlay/Capital-Outlay split) rather than against the cached
+// BGR_SUB_COMPONENTS array — that cache stays reserved for COE's own Sub-Component block, which has
+// no sibling Component field of its own to filter by (bgr_loadSubComponents, #bgr-coe-subcomp-select).
+// '' (nothing picked yet) returns the full list too — same as every other unrecognized value.
+async function bgr_fetchSubComponentsForComponent(componentName) {
+    const params = new URLSearchParams();
+    if (componentName) params.set('component', componentName);
+    const res  = await fetch(`${BGR_SUB_COMPONENT_TYPE_API}/all?${params}`, { credentials: 'same-origin' });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Failed to load sub-components.');
+
+    return json.data ?? [];
+}
+
+// A Project block's own Component changed — its paired Sub-Component (same block) narrows to match
+// (see bgr_fetchSubComponentsForComponent); a previously-picked Sub-Component that's no longer offered
+// under the new Component is cleared back to "— None —" automatically (bgr_fillBlockSubComponents'
+// own `keep` guard).
+async function bgr_onBlockComponentChange(selectEl) {
+    const block = selectEl.closest('.bgr-block');
+    const subSel = block?.querySelector('.bgr-block-sub-component');
+    if (!subSel) return;
+    const keep = subSel.value;
+    try {
+        const list = await bgr_fetchSubComponentsForComponent(bgr_componentNameById(selectEl.value));
+        bgr_fillBlockSubComponents(subSel, keep, list);
+    } catch (e) {
+        bgr_toast(e.message, 'error');
+    }
+}
+
+async function bgr_loadProgramSources() {
+    try {
+        const res  = await fetch(`${BGR_PROGRAM_SOURCE_API}/all`, { credentials: 'same-origin' });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load program sources.');
+        BGR_PROGRAM_SOURCES = json.data ?? [];
+    } catch (e) {
+        bgr_toast(e.message, 'error');
+    }
+}
+
+// Type-to-search picker for Program (Source) — same typeahead.js widget bgr_initProjectTypeahead
+// uses for Project, but filtered locally against the already-fully-loaded BGR_PROGRAM_SOURCES (a
+// flat ~26-entry list, each a full sentence) rather than fetched per keystroke; there's no server
+// endpoint call here at all. The visible input IS the search box; minLength:0 means focusing it
+// lists every entry immediately, still filterable by typing. Picking a suggestion fills the paired
+// hidden .bgr-block-program-source with its real program_source_id — optional, so clearing the text
+// (or never picking one) just leaves that hidden field empty.
+function bgr_initProgramSourceTypeahead($input) {
+    $input.typeahead(
+        { hint: false, highlight: true, minLength: 0 },
+        {
+            name: 'bgr-program-sources',
+            display: 'name',
+            limit: 50,
+            source: (query, syncResults) => {
+                const q = query.trim().toLowerCase();
+                syncResults(q ? BGR_PROGRAM_SOURCES.filter(p => p.name.toLowerCase().includes(q)) : BGR_PROGRAM_SOURCES);
+            },
+            templates: {
+                suggestion: item => `<div>${bgr_esc(item.name)}</div>`,
+                notFound: '<div class="tt-not-found">No matching program source.</div>',
+            },
+        }
+    );
+
+    const $hidden = () => $input.closest('.bgr-block-program-source-wrap').find('.bgr-block-program-source');
+    $input.on('typeahead:select', (ev, item) => {
+        $input.data('bgr-syncing', true);
+        $input.data('bgr-matched-text', item.name);
+        $hidden().val(item.program_source_id);
+        setTimeout(() => $input.removeData('bgr-syncing'), 0);
+    });
+    $input.on('input', () => {
+        if ($input.data('bgr-syncing')) return;
+        if ($input.val() !== $input.data('bgr-matched-text')) {
+            $hidden().val('');
+            $input.removeData('bgr-matched-text');
+        }
+    });
 }
 
 /* ── COE mode's own Sub-Component blocks (#bgr-coe-blocks-wrap) ────────────────────────────────
@@ -738,7 +880,17 @@ function bgr_addCoeSubComponentBlock(prefill = null) {
     `;
     $bgr('bgr-coe-blocks-wrap').appendChild(block);
 
-    bgr_fillBlockSubComponents(block.querySelector('.bgr-coe-subcomp-select'), prefill?.sub_component_id ?? '');
+    // COE's own Component is fixed ("COE" — see #bgr-coe-component, which excludes the other two —
+    // so this always asks the backend for that bucket specifically: Personnel Services/MOOE, not the
+    // full list (same SERVER-SIDE filter the regular CO flow's bgr_onBlockComponentChange() uses, see
+    // SubComponentTypeService::fetchAlls()'s own doc comment for the actual three-way split). Not
+    // awaited — this block (and its Line Items) render immediately; the select starts on its plain
+    // "— None —" placeholder until this resolves.
+    const subCompSel = block.querySelector('.bgr-coe-subcomp-select');
+    const keepSubComp = prefill?.sub_component_id ?? '';
+    bgr_fetchSubComponentsForComponent('COE')
+        .then(list => bgr_fillBlockSubComponents(subCompSel, keepSubComp, list))
+        .catch(e => bgr_toast(e.message, 'error'));
     block.querySelector('.bgr-block-remove').addEventListener('click', () => bgr_removeCoeSubComponentBlock(block));
     block.querySelector('.bgr-block-add-li').addEventListener('click', () => bgr_addLineItemRow(block, {}, true));
 
@@ -944,10 +1096,11 @@ function bgr_updatePblockRemoveVisibility() {
 }
 
 /* ── Project blocks — one per "Project line item" (fims.budget_req_project) ────────────────────
-   The regular Program/Project flow simplifies a Project down to ONE Region (fims.project.rc_id —
-   manually picked here now that Program-based origination belongs to FMD, not the region itself)
-   and ONE Proposed Amount, posted at save time as a single budget_line_items row against a fixed
-   account (chart-of-accounts id 214, "Work-in-Process Inventory" — see bgr_save()). `wrapEl` is the
+   The regular Program/Project flow simplifies a Project down to ONE Proposed Amount, posted at save
+   time as a single budget_line_items row against a fixed account (chart-of-accounts id 214, "Work-
+   in-Process Inventory" — see bgr_save()). Its own Region (fims.project.rc_id) is no longer picked
+   per block — the whole request now shares the ONE Region picked at #bgr-region (see
+   bgr_buildProgramPayload) — so a brand-new project here simply inherits it. `wrapEl` is the
    container this block is appended to — a Program block's own .bgr-pblock-projects-wrap. COE mode
    has no Project at all — see #bgr-coe-blocks-wrap/bgr_addCoeSubComponentBlock() instead, which
    keeps the flexible chart-of-accounts line-items table this used to also build in coeMode. */
@@ -962,10 +1115,6 @@ function bgr_addProjectBlock(wrapEl, prefillBlock = null) {
             <button type="button" class="bgr-block-toggle" title="Collapse">
                 <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
             </button>
-            <div class="bgr-block-region-wrap">
-                <label class="bgr-label">Region <span class="req">*</span></label>
-                <select class="bgr-select bgr-block-region"><option value="">— Select region —</option></select>
-            </div>
             <div class="bgr-block-project-wrap">
                 <label class="bgr-label">Project <span class="req">*</span></label>
                 <input type="text" class="bgr-input bgr-block-project-name" placeholder="Type to search or add a new project…" autocomplete="off">
@@ -982,7 +1131,7 @@ function bgr_addProjectBlock(wrapEl, prefillBlock = null) {
             <button type="button" class="bgr-block-remove" title="Remove project">&times;</button>
         </div>
         <div class="bgr-block-body">
-            <div class="bgr-row-4">
+            <div class="bgr-row-6">
                 <div class="bgr-group">
                     <label class="bgr-label">Type of Fund <span class="req">*</span></label>
                     <select class="bgr-select bgr-block-type-of-fund"><option value="">— Select type of fund —</option></select>
@@ -994,6 +1143,29 @@ function bgr_addProjectBlock(wrapEl, prefillBlock = null) {
                 <div class="bgr-group">
                     <label class="bgr-label">Sub-Component</label>
                     <select class="bgr-select bgr-block-sub-component"><option value="">— None —</option></select>
+                </div>
+                <!-- Fixed 3-option list, plain text (fims.budget_line_items.source_of_fund) — no lookup
+                     table/loader, unlike Type of Fund/Component/Sub-Component above (see
+                     BudgetLineItemService::SOURCE_OF_FUND_OPTIONS). -->
+                <div class="bgr-group">
+                    <label class="bgr-label">Source of Fund <span class="req">*</span></label>
+                    <select class="bgr-select bgr-block-source-of-fund">
+                        <option value="">— Select source of fund —</option>
+                        <option value="BEGINNING BALANCE">Beginning Balance</option>
+                        <option value="NEW FUNDS">New Funds</option>
+                        <option value="ACCOUNTS PAYABLE">Accounts Payable</option>
+                    </select>
+                </div>
+                <!-- Flat list (fims.program_source — specific named source programs/projects), optional,
+                     independent of the header's own Program/Sub-Program. A plain <select> here listed
+                     all 26+ entries (full sentences) with no search — a type-to-search typeahead
+                     instead, same widget Project uses (bgr_initProjectTypeahead), but filtered locally
+                     against BGR_PROGRAM_SOURCES (already fully loaded at bootstrap — see
+                     bgr_loadProgramSources) rather than fetched per keystroke. -->
+                <div class="bgr-group bgr-block-program-source-wrap">
+                    <label class="bgr-label">Program Source</label>
+                    <input type="text" class="bgr-input bgr-block-program-source-name" placeholder="Type to search…" autocomplete="off">
+                    <input type="hidden" class="bgr-block-program-source" value="">
                 </div>
                 <div class="bgr-group">
                     <label class="bgr-label">Proposed Amount <span class="req">*</span></label>
@@ -1027,25 +1199,41 @@ function bgr_addProjectBlock(wrapEl, prefillBlock = null) {
     const $nameInput = $(block.querySelector('.bgr-block-project-name'));
     bgr_initProjectTypeahead($nameInput);
 
-    const regionSel = block.querySelector('.bgr-block-region');
-    bgr_fillBlockRegions(regionSel, prefillBlock?.rc_id ?? '');
-
     // Editing an existing project under the old multi-account model: there is no longer a single
     // "the" Type of Fund/Component once it had more than one line item — the first one's own is
     // as good a starting point as any (saving replaces them all with the one simplified line item
     // anyway).
     const existingTypeOfFund = (prefillBlock?.line_items ?? []).find(li => li.type_of_fund_id)?.type_of_fund_id ?? '';
     bgr_fillBlockTypeOfFund(block.querySelector('.bgr-block-type-of-fund'), existingTypeOfFund);
+    const componentSel = block.querySelector('.bgr-block-component');
     const existingComponent = (prefillBlock?.line_items ?? []).find(li => li.component_id)?.component_id ?? '';
-    bgr_fillBlockComponents(block.querySelector('.bgr-block-component'), existingComponent);
+    bgr_fillBlockComponents(componentSel, existingComponent, ['COE']);
     const existingSubComponent = (prefillBlock?.line_items ?? []).find(li => li.sub_component_id)?.sub_component_id ?? '';
-    bgr_fillBlockSubComponents(block.querySelector('.bgr-block-sub-component'), existingSubComponent);
+    // componentSel.value (not existingComponent) — bgr_fillBlockComponents may have reset it to '' if
+    // existingComponent wasn't actually offered (e.g. stale "COE" data on an old CO row). Fetched from
+    // the backend (not awaited — bgr_addProjectBlock stays synchronous, same "briefly empty until it
+    // resolves" tradeoff the Project Code preview already makes elsewhere in this form), so the select
+    // starts on its plain "— None —" placeholder until this resolves.
+    bgr_fetchSubComponentsForComponent(bgr_componentNameById(componentSel.value))
+        .then(list => bgr_fillBlockSubComponents(block.querySelector('.bgr-block-sub-component'), existingSubComponent, list))
+        .catch(e => bgr_toast(e.message, 'error'));
+    // Source of Fund is a fixed, static <option> list (no loader to call) — just preselect it directly.
+    const existingSourceOfFund = (prefillBlock?.line_items ?? []).find(li => li.source_of_fund)?.source_of_fund ?? '';
+    const sourceOfFundSel = block.querySelector('.bgr-block-source-of-fund');
+    if (existingSourceOfFund) sourceOfFundSel.value = existingSourceOfFund;
+    const $programSourceInput = $(block.querySelector('.bgr-block-program-source-name'));
+    bgr_initProgramSourceTypeahead($programSourceInput);
+    const existingProgramSourceId = (prefillBlock?.line_items ?? []).find(li => li.program_source_id)?.program_source_id ?? '';
+    const existingProgramSource = BGR_PROGRAM_SOURCES.find(p => String(p.program_source_id) === String(existingProgramSourceId));
+    if (existingProgramSource) {
+        $programSourceInput.val(existingProgramSource.name).data('bgr-matched-text', existingProgramSource.name);
+        block.querySelector('.bgr-block-program-source').value = existingProgramSource.program_source_id;
+    }
 
     if (prefillBlock && prefillBlock.project_code) {
         const label = `${prefillBlock.project_code} — ${prefillBlock.project_name || ''}`;
         $nameInput.val(label).data('bgr-matched-text', label);
         bgr_setProjectCode($nameInput, prefillBlock.project_code);
-        regionSel.disabled = true; // an existing project's region isn't reassigned from here
     } else {
         // A brand-new block with nothing picked yet already WOULD create a
         // new project if saved as-is — preview its code immediately, rather
@@ -1069,6 +1257,7 @@ function bgr_addProjectBlock(wrapEl, prefillBlock = null) {
 
     bgr_wireDocSection(block, prefillBlock);
 
+    bgr_syncProjectInputsRegionState(); // this new block's own Project field needs its disabled state set too
     bgr_updateGrandTotal();
     return block;
 }
@@ -1343,12 +1532,13 @@ function bgr_setProjectCode($input, code) {
 // Fiscal Year) combination, then handed out locally (prefix + nextSeries++) to every subsequent "new
 // project" block that shares that SAME combination — the database would otherwise keep reporting the
 // exact same "next available" series to each of them, since none of them are actually saved yet. The
-// code's own RC segment is now the Project's own manually-picked Region (not a Program block's,
-// since two Projects under the same Program can each pick a different one — see
-// GlobalService::generateProjectCode()'s own doc comment), so the cache is keyed by that whole
-// combination as a string, not by a single Program block. Stale entries (a changed Program/
-// Sub-Program/Region/Fiscal Year) are simply never looked up again — a fresh Map each time the modal
-// opens (see bgr_openModal, which rebuilds every block) means they never accumulate across sessions.
+// code's own RC segment is the request-level Region (#bgr-region) — the SAME one for every Program/
+// Project in this request now (see GlobalService::generateProjectCode()'s own doc comment), so in
+// practice every block under one Program/Sub-Program shares one cache entry; it's still keyed by the
+// full combination (not just Program/Sub-Program) because Region/Fiscal Year can still change the
+// code's own prefix. Stale entries (a changed Program/Sub-Program/Region/Fiscal Year) are simply
+// never looked up again — a fresh Map each time the modal opens (see bgr_openModal, which rebuilds
+// every block) means they never accumulate across sessions.
 const BGR_PROJECT_CODE_CACHE = new Map(); // "program|subprogram|rc_id|fiscal_yr" -> { prefix: string, nextSeries: number }
 function bgr_projectCodeCacheKey(programCode, subProgramCode, rcId, fiscalYr) {
     return `${programCode}|${subProgramCode}|${rcId}|${fiscalYr}`;
@@ -1360,12 +1550,12 @@ function bgr_projectCodeCacheKey(programCode, subProgramCode, rcId, fiscalYr) {
 // creating a new one (no existing project resolved) — pure UI; the real
 // code (possibly different, if another project was created in the
 // meantime) is resolved by the backend only when the whole request is
-// actually saved. Shown as soon as the block has no resolved project AND a
-// Region has been picked for it (the code's own RC segment needs one) —
+// actually saved. Shown as soon as the block has no resolved project AND the
+// request-level Region has been picked (the code's own RC segment needs it) —
 // the preview depends on the enclosing Program block's own Program/
-// Sub-Program plus THIS block's own Region, never on the typed name.
+// Sub-Program plus #bgr-region, never on the typed name.
 // Fetched once per "new project" state per that combination, not on every
-// keystroke — see bgr_refreshAllProjectCodeFields()/bgr_onBlockRegionChange()
+// keystroke — see bgr_refreshAllProjectCodeFields()/bgr_onRequestRegionChange()
 // for what clears that so a change re-fetches.
 function bgr_updateProjectCodeField($input) {
     // .bgr-block-project-code-display is a sibling of .bgr-block-project-wrap
@@ -1388,7 +1578,7 @@ function bgr_updateProjectCodeField($input) {
         display.val('').attr('placeholder', 'Select a program first').removeData('bgr-fetched');
         return; // not marked "fetched" — tries again once a Program is picked
     }
-    const rcId = block.find('.bgr-block-region').val() || '';
+    const rcId = $bgr('bgr-region').value || '';
     if (!rcId) {
         display.val('').attr('placeholder', 'Select a region first').removeData('bgr-fetched');
         return; // not marked "fetched" — tries again once a Region is picked
@@ -1424,17 +1614,6 @@ function bgr_updateProjectCodeField($input) {
             display.val(fullCode);
         })
         .catch(() => display.attr('placeholder', 'Code unavailable'));
-}
-
-// Region changing on ONE project block only re-previews that block's own code (its own RC segment
-// depends on it) — unlike a Program/Sub-Program change (bgr_refreshAllProjectCodeFields), which is
-// shared by every Project under that same Program block.
-function bgr_onBlockRegionChange(selectEl) {
-    const block = selectEl.closest('.bgr-block');
-    const nameInput = block?.querySelector('.bgr-block-project-name');
-    if (!nameInput) return;
-    $(block.querySelector('.bgr-block-project-code-display')).removeData('bgr-fetched');
-    bgr_updateProjectCodeField($(nameInput));
 }
 
 // Re-previews every project block's code UNDER ONE Program block — needed because the preview
@@ -1481,6 +1660,9 @@ function bgr_initProjectTypeahead($input) {
                             search: query,
                             program_code: $input.closest('.bgr-pblock').find('.bgr-pblock-program').val(),
                             sub_program_code: $input.closest('.bgr-pblock').find('.bgr-pblock-sub-program').val(),
+                            // The request-level Region (#bgr-region) — a project from any other region is
+                            // filtered out server-side (ProjectService::fetchAlls), not just hidden here.
+                            rc_id: $bgr('bgr-region').value || '',
                         });
                         const res  = await fetch(`${BGR_PROJECT_BASE_API}/all?${params}`, { credentials: 'same-origin' });
                         const json = await res.json();
@@ -1490,7 +1672,6 @@ function bgr_initProjectTypeahead($input) {
                             .map(p => ({
                                 project_code: p.project_code,
                                 label: `${p.project_code} — ${p.project_name}`,
-                                rc_id: p.rc_id ?? '',
                             })));
                     } catch (e) {
                         asyncResults([]);
@@ -1519,20 +1700,12 @@ function bgr_initProjectTypeahead($input) {
         $input.data('bgr-syncing', true);
         $input.data('bgr-matched-text', item.label);
         bgr_setProjectCode($input, item.project_code);
-        bgr_setBlockRegion($input, item.rc_id || '', true);
         setTimeout(() => $input.removeData('bgr-syncing'), 0);
     });
     $input.on('input', () => {
         if ($input.data('bgr-syncing')) return;
         if ($input.val() !== $input.data('bgr-matched-text')) {
             bgr_setProjectCode($input, '');
-            // Only clear/unlock the Region if it's actually locked to a previously-matched existing
-            // project (sel.disabled) — a Region the user picked manually for a brand-new project was
-            // never locked in the first place, and typing the rest of that new project's name should
-            // not wipe out a choice that has nothing to do with any match.
-            const block = $input.closest('.bgr-block')[0];
-            const regionSel = block?.querySelector('.bgr-block-region');
-            if (regionSel?.disabled) bgr_setBlockRegion($input, '', false);
         }
     });
 }
@@ -1550,20 +1723,23 @@ function bgr_initProjectTypeahead($input) {
 // backdrop) doesn't move focus anywhere, so 'focusin' never fires there.
 // The 'mousedown' listener below (which fires on literally any click)
 // handles that case.
-document.addEventListener('focusin', (ev) => {
-    document.querySelectorAll('#bgr-pblocks-wrap .bgr-block-project-name').forEach((el) => {
-        if (!el.closest('.bgr-block-project-wrap').contains(ev.target)) {
-            $(el).typeahead('close');
-        }
+// Project (.bgr-block-project-wrap) and Program Source (.bgr-block-program-source-wrap) both use
+// this same typeahead.js widget and the same "close on focus/click elsewhere" behavior.
+const BGR_TYPEAHEAD_FIELDS = [
+    ['.bgr-block-project-name', '.bgr-block-project-wrap'],
+    ['.bgr-block-program-source-name', '.bgr-block-program-source-wrap'],
+];
+function bgr_closeOtherTypeaheads(ev) {
+    BGR_TYPEAHEAD_FIELDS.forEach(([fieldSel, wrapSel]) => {
+        document.querySelectorAll(`#bgr-pblocks-wrap ${fieldSel}`).forEach((el) => {
+            if (!el.closest(wrapSel).contains(ev.target)) {
+                $(el).typeahead('close');
+            }
+        });
     });
-});
-document.addEventListener('mousedown', (ev) => {
-    document.querySelectorAll('#bgr-pblocks-wrap .bgr-block-project-name').forEach((el) => {
-        if (!el.closest('.bgr-block-project-wrap').contains(ev.target)) {
-            $(el).typeahead('close');
-        }
-    });
-});
+}
+document.addEventListener('focusin', bgr_closeOtherTypeaheads);
+document.addEventListener('mousedown', bgr_closeOtherTypeaheads);
 
 /* ── Line items — repeatable rows nested inside a project block ─────── */
 function bgr_addLineItemRow(blockEl, prefill = {}, coeMode = false) {
@@ -1784,6 +1960,8 @@ async function bgr_openModal(mode, data = null) {
     $bgr('bgr-card').classList.toggle('bgr-mode-coe', isCoe);
     $bgr('bgr-coe-root').style.display = isCoe ? '' : 'none';
     $bgr('bgr-pblocks-root').style.display = isCoe ? 'none' : '';
+    // COE has no Region at all (no Program/Project for it to scope — see #bgr-top-row.bgr-coe-row).
+    $bgr('bgr-top-row').classList.toggle('bgr-coe-row', isCoe);
 
     // Lazy-loaded here rather than at page load — the Account Code picker
     // (built inside bgr_addProjectBlock below) needs BGR_COA_OPTIONS already
@@ -1794,6 +1972,7 @@ async function bgr_openModal(mode, data = null) {
 
     $bgr('bgr-mode').value = mode;
     $bgr('bgr-fiscal-yr').disabled = false;
+    $bgr('bgr-region').disabled = false;
 
     bgr_cleanupAccountMenus($bgr('bgr-coe-root'));
     $bgr('bgr-coe-blocks-wrap').innerHTML = '';
@@ -1817,7 +1996,7 @@ async function bgr_openModal(mode, data = null) {
             ? (coeLineItems[0]?.component_id ?? '')
             : bgr_lookupIdByName(BGR_COMPONENTS, 'component_type_id', 'COE');
         bgr_fillBlockTypeOfFund($bgr('bgr-coe-type-of-fund'), defaultTypeOfFundId);
-        bgr_fillBlockComponents($bgr('bgr-coe-component'), defaultComponentId);
+        bgr_fillBlockComponents($bgr('bgr-coe-component'), defaultComponentId, ['CAPITAL OUTLAY', 'OTHER-CAPITAL OUTLAY']);
     }
 
     if (mode === 'edit-program') {
@@ -1827,6 +2006,15 @@ async function bgr_openModal(mode, data = null) {
 
         $bgr('bgr-fiscal-yr').value = data.fiscal_yr || '';
         $bgr('bgr-fiscal-yr').disabled = true;
+
+        // The request's own Region isn't reassigned from here (it's the header's own rc_id — changing
+        // it would move this Program to a different budget_req header entirely) — prefilled from the
+        // existing header and locked, same as Fiscal Year just above. bgr_editProgram (budget-req-page.php)
+        // passes it along as data.rc_id. Must happen BEFORE bgr_addProgramBlock below builds this
+        // Program's own Project blocks — their code preview/typeahead both read #bgr-region.
+        $bgr('bgr-region').value = data.rc_id || '';
+        $bgr('bgr-region').disabled = true;
+        bgr_syncProjectInputsRegionState();
 
         const ctx = $bgr('bgr-program-context');
         ctx.textContent = `Editing a program under Budget Request ${data.budget_reference_number} (FY ${data.fiscal_yr}).`;
@@ -1870,6 +2058,10 @@ async function bgr_openModal(mode, data = null) {
             bgr_addCoeSubComponentBlock();
             bgr_resetCoeDocSection('');
         } else {
+            // No good default for a brand-new request — force a fresh pick every time (the previous
+            // modal session's Region, if any, must not leak in).
+            $bgr('bgr-region').value = '';
+            bgr_syncProjectInputsRegionState();
             $bgr('bgr-add-program-block').style.display = '';
             bgr_addProgramBlock();
         }
@@ -1886,6 +2078,7 @@ function bgr_closeModal() {
     $bgr('bgr-pblocks-wrap').innerHTML = '';
     $bgr('bgr-form').reset();
     $bgr('bgr-fiscal-yr').disabled = false;
+    $bgr('bgr-region').disabled = false;
     bgr_hideErr();
 }
 
@@ -1923,6 +2116,10 @@ function bgr_buildProgramPayload(pblock, label) {
     const subProgramCode = pblock.querySelector('.bgr-pblock-sub-program').value;
     if (!programCode) return `${label}: select a program.`;
 
+    // The whole request's own Region — every project in it (new or existing) shares this one value
+    // now (see #bgr-region/bgr_save, which already requires it before this is ever called).
+    const rcId = $bgr('bgr-region').value;
+
     const projects = [];
     const docFiles = []; // one flat list across every project block under THIS Program — see bgr_getProjectDocPayload()
     const blocks = pblock.querySelectorAll('.bgr-pblock-projects-wrap .bgr-block');
@@ -1936,14 +2133,16 @@ function bgr_buildProgramPayload(pblock, label) {
         const location    = block.querySelector('.bgr-block-location').value.trim();
         if (!projectCode && !projectName) return `${label}, project ${pi + 1}: select or enter a project.`;
 
-        const rcId = block.querySelector('.bgr-block-region').value;
-        if (!projectCode && !rcId) return `${label}, project ${pi + 1}: select a region for this new project.`;
-
         const typeOfFundId = block.querySelector('.bgr-block-type-of-fund').value;
         if (!typeOfFundId) return `${label}, project ${pi + 1}: select a type of fund.`;
 
         const componentId = block.querySelector('.bgr-block-component').value; // optional — '' = none
         const subComponentId = block.querySelector('.bgr-block-sub-component').value; // optional — '' = none
+
+        const sourceOfFund = block.querySelector('.bgr-block-source-of-fund').value;
+        if (!sourceOfFund) return `${label}, project ${pi + 1}: select a source of fund.`;
+
+        const programSourceId = block.querySelector('.bgr-block-program-source').value; // optional — '' = none
 
         const amount = bgr_unformatAmount(block.querySelector('.bgr-block-amount').value);
         if (!amount || Number(amount) <= 0) return `${label}, project ${pi + 1}: proposed amount is required.`;
@@ -1951,7 +2150,7 @@ function bgr_buildProgramPayload(pblock, label) {
         // One line item, always against the same chart-of-accounts entry (id 214, "Work-in-Process
         // Inventory") — see bgr_addProjectBlock's own doc comment for why the per-line Account Code
         // picker was dropped from this flow.
-        const lineItems = [{ account_id: '214', type_of_fund_id: typeOfFundId, component_id: componentId, sub_component_id: subComponentId, particulars: projectName || projectCode, proposed_amount: amount }];
+        const lineItems = [{ account_id: '214', type_of_fund_id: typeOfFundId, component_id: componentId, sub_component_id: subComponentId, source_of_fund: sourceOfFund, program_source_id: programSourceId, particulars: projectName || projectCode, proposed_amount: amount }];
 
         const supportingDocuments = bgr_getProjectDocPayload(block, docFiles);
 
@@ -1972,6 +2171,12 @@ async function bgr_save(ev) {
     if (!fiscalYr) { bgr_showErr('Select a fiscal year.'); return; }
 
     if (mode === 'add-coe' || mode === 'edit-coe') { await bgr_saveCoe(mode, id, fiscalYr); return; }
+
+    // 'add'/'edit-program' only — COE has no Region at all (see #bgr-top-row.bgr-coe-row). This is
+    // the one Region the whole request (every Program/Project in it) shares — for 'add' it also
+    // becomes the budget_req header's own rc_id (see the POST /budget_req/add body below).
+    const regionId = $bgr('bgr-region').value;
+    if (!regionId) { bgr_showErr('Select a region.'); return; }
 
     if (mode === 'edit-program') {
         const pblock  = document.querySelector('#bgr-pblocks-wrap .bgr-pblock');
@@ -1998,10 +2203,11 @@ async function bgr_save(ev) {
     }
 
     // 'add' — one or more Program blocks (see "+ Add Program"), each its own POST /budget_req/add
-    // call, run SEQUENTIALLY (not Promise.all): every call targets the same fiscal year, and the
-    // first one may need to CREATE that header (BudgetReqService::addProgram) before the next can
-    // append another Program to it. Validate every block BEFORE saving any of them, so a mistake in
-    // block 3 doesn't leave blocks 1-2 already saved while block 3 is rejected.
+    // call, run SEQUENTIALLY (not Promise.all): every call targets the same (fiscal year, Region) —
+    // the first one may need to CREATE that header (BudgetReqService::addProgram, now keyed by the
+    // chosen Region's own rc_id, not FMD's own account) before the next can append another Program to
+    // it. Validate every block BEFORE saving any of them, so a mistake in block 3 doesn't leave
+    // blocks 1-2 already saved while block 3 is rejected.
     const pblocks  = document.querySelectorAll('#bgr-pblocks-wrap .bgr-pblock');
     const payloads = [];
     for (let i = 0; i < pblocks.length; i++) {
@@ -2016,7 +2222,7 @@ async function bgr_save(ev) {
     try {
         let lastJson = null;
         for (const payload of payloads) {
-            const body = { fiscal_yr: fiscalYr, program_code: payload.programCode, sub_program_code: payload.subProgramCode, projects: payload.projects };
+            const body = { fiscal_yr: fiscalYr, rc_id: regionId, program_code: payload.programCode, sub_program_code: payload.subProgramCode, projects: payload.projects };
             lastJson = await bgr_postBody(`${BGR_API}/add`, 'POST', body, payload.docFiles);
             if (!lastJson.success) {
                 // Every Program before this one already committed server-side (each call is its own
