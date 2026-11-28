@@ -298,7 +298,7 @@ class GeneralLedgerPrintService
      * under it (its bottom-level children — the General Ledger page rolls their postings into it too), for the book
      * (every book when none is given), signed on the normal side. 0 when none / unreadable.
      */
-    private static function openingBalance(string $code, int $year, $bookId, int $sign): float
+    public static function openingBalance(string $code, int $year, $bookId, int $sign): float
     {
         if ($code === '' || $year <= 0) {
             return 0.0;

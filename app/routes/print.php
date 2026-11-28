@@ -92,6 +92,32 @@ $app->get('/print/gl-sheets', function ($request, $response, $args) {
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
+// Opening balances for the General Ledger page's Detailed print — ?codes=a,b,c&fiscal_yr=2025[&book_id=1][&sign=1|-1]
+// → { success, data: { code: opening } }, each signed on the account's normal side (sign 1 = debit-normal, -1 = credit-normal;
+// GeneralLedgerPrintService::openingBalance — the account's own Opening Balance plus its SL accounts', for the book).
+$app->get('/print/gl-opening', function ($request, $response, $args) {
+    try {
+        $params = $request->getQueryParams();
+        $year   = isset($params['fiscal_yr']) && ctype_digit((string) $params['fiscal_yr']) ? (int) $params['fiscal_yr'] : 0;
+        $book   = isset($params['book_id']) && ctype_digit((string) $params['book_id']) ? (int) $params['book_id'] : null;
+        $sign   = ((string) ($params['sign'] ?? '1')) === '-1' ? -1 : 1;
+        $codes  = array_slice(array_values(array_unique(array_filter(array_map('trim', explode(',', (string) ($params['codes'] ?? '')))))), 0, 200);
+        if (!$codes || $year <= 0) {
+            return $response->withJson(['success' => false, 'message' => 'codes and fiscal_yr are required.'], 400);
+        }
+        $out = [];
+        foreach ($codes as $code) {
+            $out[$code] = Service\GeneralLedgerPrintService::openingBalance($code, $year, $book, $sign);
+        }
+
+        return $response->withJson(['success' => true, 'data' => $out]);
+    } catch (\Throwable $e) {
+        LogError('GET /print/gl-opening ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
 // The BIR 2307 of a DV, prefilled for the print preview's edit panel (Bir2307PrintService::prefill()):
 // { success, data: { editable: { payee_*, signatory_* }, locked: { dv_no, period, payor_*, rows } } } — 400 when the DV
 // has no EWT / percentage-tax line to certify.

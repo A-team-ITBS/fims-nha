@@ -124,8 +124,11 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
                 </button>
             </span>
             <div id="gl-printall-menu" role="menu" class="no-print" style="display:none;position:fixed;z-index:1060;min-width:250px;background:var(--afims-surface,#fff);border:1px solid var(--afims-border,#E4ECF2);border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.18);padding:6px;">
-                <button type="button" role="menuitem" class="gl-printall-opt" data-mode="gl">Print GL<small>General Ledger of every account — all transactions</small></button>
-                <button type="button" role="menuitem" class="gl-printall-opt" data-mode="sl">Print SL<small>Subsidiary Ledger of every GL that has SLs</small></button>            </div>
+                <button type="button" role="menuitem" class="gl-printall-opt" data-mode="gl-detail">Print GL<small>General Ledger of every account — every transaction, JEV / DV # and check</small></button>
+                <button type="button" role="menuitem" class="gl-printall-opt" data-mode="sl-detail">Print SL<small>Subsidiary Ledger of every GL that has SLs — every transaction</small></button>
+                <button type="button" role="menuitem" class="gl-printall-opt" data-mode="gl">Print GL — Ledger card<small>NHA ledger card of every account, in yearly blocks</small></button>
+                <button type="button" role="menuitem" class="gl-printall-opt" data-mode="sl">Print SL — Ledger card<small>NHA ledger card of every SL, in yearly blocks</small></button>
+            </div>
             <span id="gl-print-wrap" style="position:relative;display:none;">
                 <button id="gl-print" type="button" class="nha-btn-hdr" title="Print this account — General Ledger or Subsidiary Ledger" aria-haspopup="true" aria-expanded="false">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
@@ -133,6 +136,15 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
             </button>
             </span>
             <div id="gl-print-menu" role="menu" class="no-print" style="display:none;position:fixed;z-index:1060;min-width:280px;background:var(--afims-surface,#fff);border:1px solid var(--afims-border,#E4ECF2);border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.18);padding:6px;">
+                <div style="padding:6px 10px 6px;">
+                    <strong style="font-size:var(--fs-base);color:var(--afims-text,#1e293b);">Format</strong>
+                    <div id="gl-print-fmt" style="display:flex;flex-direction:column;gap:2px;margin-top:4px;font-size:var(--fs-sm);color:var(--afims-text,#1e293b);">
+                        <label style="cursor:pointer;"><input type="radio" name="gl-print-fmt" value="detail" checked> Detailed <span style="color:var(--afims-text-muted,#62657E);">— every transaction, JEV / DV #, check</span></label>
+                        <label style="cursor:pointer;"><input type="radio" name="gl-print-fmt" value="monthly"> Monthly <span style="color:var(--afims-text-muted,#62657E);">— Form 11 / books sheet</span></label>
+                        <label style="cursor:pointer;"><input type="radio" name="gl-print-fmt" value="card"> Ledger card <span style="color:var(--afims-text-muted,#62657E);">— yearly blocks</span></label>
+                    </div>
+                </div>
+                <div style="height:1px;background:var(--afims-border,#E4ECF2);margin:4px 2px;"></div>
                 <div style="padding:6px 10px 4px;">
                     <strong style="font-size:var(--fs-base);color:var(--afims-text,#1e293b);">General Ledger</strong>
                     <div style="font-size:var(--fs-xs);color:var(--afims-text-muted,#62657E);">NHA Form No. 11 — pick the book and year to print</div>
@@ -350,7 +362,7 @@ function gl_bindEvents() {
         const b = e.target.closest('.gl-print-sheet');
         if (!b) return;
         gl_togglePrintMenu(false);
-        gl_print(gl_printCode, { book_id: b.dataset.book, fund: b.dataset.fund, fiscal_year: b.dataset.year });
+        gl_dispatchPrint('gl', gl_printCode, { book_id: b.dataset.book, fund: b.dataset.fund, fiscal_year: b.dataset.year });
     });
     $gl('gl-print-menu')?.addEventListener('click', e => e.stopPropagation());
     $gl('gl-print-sl-sheets')?.addEventListener('click', e => {
@@ -358,7 +370,7 @@ function gl_bindEvents() {
         const b = e.target.closest('.gl-print-sheet');
         if (!b) return;
         gl_togglePrintMenu(false);
-        gl_printSl(gl_printCode, { book_id: b.dataset.book, fund: b.dataset.fund, fiscal_year: b.dataset.year });
+        gl_dispatchPrint('sl', gl_printCode, { book_id: b.dataset.book, fund: b.dataset.fund, fiscal_year: b.dataset.year });
     });
     document.addEventListener('click', () => gl_togglePrintMenu(false));
     $gl('gl-sched-go')?.addEventListener('click', e => {
@@ -851,7 +863,7 @@ function gl_fund() {
 const gl_slCards = (gl, secs, fund) => secs.map(sec => ({ title: 'SUBSIDIARY LEDGER', left: sec.title, right: [gl.account_title, sec.code, fund], rows: sec.rows }));
 const gl_glCard = (gl, led, fund) => ({ title: 'GENERAL LEDGER', left: gl.account_title, right: ['NATIONAL HOUSING AUTHORITY', gl.account_code, fund], rows: led.rows });
 function gl_reportCards(d) {
-    const fund = gl_fund() || 'All books';
+    const fund = d.fund || gl_fund() || 'All books';
     if (d.kind === 'allsl') return d.items.flatMap(it => gl_slCards(it.gl, it.secs, fund));
     if (d.kind === 'allgl') return d.items.map(it => gl_glCard(it.gl, it.ledger, fund));
     if (d.kind === 'sl') return gl_slCards(d.gl, gl_slSections(d), fund);
@@ -879,6 +891,7 @@ function gl_sheet(o, excel, brk) {
 </table>`;
 }
 function gl_reportTable(excel, d = gl_txnData) {
+    if (d.kind === 'detail') return gl_detailHtml(d.cards, excel);
     const warn = d.failed && d.failed.length ? `<p style="font:12px Arial;color:#b00020">Could not load ${d.failed.length} GL account${d.failed.length === 1 ? '' : 's'} ? left out: ${gl_esc(d.failed.join(', '))}</p>` : '';
     const cards = gl_reportCards(d);
     if (!cards.length) return warn + `<p style="font:14px Arial">${d.kind === 'allsl' || d.kind === 'sl' ? 'No postings under the subsidiary ledgers.' : 'No posted transactions.'}</p>`;
@@ -899,7 +912,7 @@ const GL_REPORT_CSS = `*{box-sizing:border-box} body{margin:0;font-family:"Times
  tr.gap td{height:12px}
  tr{page-break-inside:avoid;break-inside:avoid}
  table.gl-top.pb{page-break-before:always;break-before:page}`;
-const gl_reportName = (d = gl_txnData) => d.kind === 'allsl' ? 'Subsidiary-Ledger_All-GL' : d.kind === 'allgl' ? 'General-Ledger_All' : d.kind === 'sl' ? `Subsidiary-Ledger_${d.gl.account_code}` : `General-Ledger_${d.gl.account_code}`;
+const gl_reportName = (d = gl_txnData) => d.kind === 'detail' ? d.name : d.kind === 'allsl' ? 'Subsidiary-Ledger_All-GL' : d.kind === 'allgl' ? 'General-Ledger_All' : d.kind === 'sl' ? `Subsidiary-Ledger_${d.gl.account_code}` : `General-Ledger_${d.gl.account_code}`;
 // Preview → a report window with an Excel button and a Print button in its toolbar. The SL list popup fetches its postings first.
 async function gl_previewTxns() {
     if (!gl_txnData) return;
@@ -918,7 +931,11 @@ async function gl_previewTxns() {
             if (!res.ok || !json.success) throw new Error(json.message || 'Failed to load the postings.');
             gl_txnData.json = json;
         }
-        gl_writePreview(w, gl_reportTable(false), gl_reportName(), 'gl_excelTxns');
+        // the popups' Preview defaults to the Detailed format (every transaction, JEV / DV #, check)
+        const isSl = gl_txnData.kind === 'sl';
+        const cards = await gl_detailCards(isSl ? 'sl' : 'gl', gl_txnData.json, gl_printOpts(), isSl ? gl_txnData.sls : null);
+        gl_menuData = { kind: 'detail', cards, name: `${isSl ? 'Subsidiary' : 'General'}-Ledger-Detailed_${gl_txnData.gl.account_code}` };
+        gl_writePreview(w, gl_reportTable(false, gl_menuData), gl_menuData.name, 'gl_excelMenu');
     } catch (e) {
         w.close();
         gl_showError('Could not prepare the preview: ' + e.message);
@@ -1036,7 +1053,7 @@ async function gl_excelWorkbook(d) {
     }
 }
 function gl_excelTxns(d = gl_txnData) {
-    if (!d || !(d.json || d.items)) return;
+    if (!d || !(d.json || d.items || d.cards)) return;
     if (d.kind === 'allsl' || d.kind === 'allgl') return gl_excelWorkbook(d);   // every GL → one tab each (.xlsx)
     const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><style>${GL_REPORT_CSS}</style></head><body>${gl_reportTable(true, d)}</body></html>`;
     const url = URL.createObjectURL(new Blob(['\ufeff' + html], { type: 'application/vnd.ms-excel;charset=utf-8' }));
@@ -1045,6 +1062,169 @@ function gl_excelTxns(d = gl_txnData) {
     a.download = gl_reportName(d) + '.xls';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* ── Print ▾ format choice: Detailed (every transaction) and Ledger card ─────────────────────────────────────────────────
+   Detailed = DATE | PARTICULARS | REF | JEV / DV # | CHECK NO. / CHECK DATE | DEBIT | CREDIT | BALANCE, a running balance per
+   posting, yearly blocks (Beginning Balance … Ending Balance). Ledger card = the NHA card the list view's Print GL / SL uses.
+   Both come from GET /general_ledger/ledger; the Detailed beginning balance is the book's Opening Balance for the year
+   (GET /print/gl-opening), only when one fiscal year is picked. */
+const gl_fmt = () => document.querySelector('input[name="gl-print-fmt"]:checked')?.value || 'detail';
+let gl_menuData = null;   // the single-account Detailed / Ledger-card preview now open — what its Excel button exports
+function gl_excelMenu() { gl_excelTxns(gl_menuData); }
+const gl_chkDate = iso => { const [y, m, d] = String(iso || '').slice(0, 10).split('-').map(Number); return y ? `${GL_MON[m - 1]} ${d}, ${y}` : ''; };
+function gl_dispatchPrint(kind, code, pick) {
+    const f = gl_fmt();
+    if (f === 'detail') return gl_printDetail(kind, code, pick);
+    if (f === 'card') return gl_printCard(kind, code, pick);
+    return kind === 'sl' ? gl_printSl(code, pick) : gl_print(code, pick);
+}
+async function gl_openings(codes, year, bookId, sign) {
+    if (!year || !codes.length) return {};
+    try {
+        const p = new URLSearchParams({ codes: codes.join(','), fiscal_yr: year, sign });
+        if (bookId) p.set('book_id', bookId);
+        const json = await gl_authFetch(`${GL_BASE.replace(/\/$/, '')}/print/gl-opening?${p}`).then(r => r.json());
+        return json.success ? (json.data || {}) : {};
+    } catch (e) { return {}; }   // no opening → the sheet starts from its first posting
+}
+// the account's ledger rows (GL with its SLs rolled in, journal / check fields included)
+async function gl_fetchLedger(code, opts) {
+    const p = new URLSearchParams({ account_code: code });
+    if (opts.fiscal_year) p.set('fiscal_yr', opts.fiscal_year);
+    if (opts.book_id) p.set('book_id', opts.book_id);
+    const res = await gl_authFetch(`${GL_API}/ledger?${p}`);
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.message || 'Failed to load the account ledger.');
+    return json;
+}
+// the SL nodes under a GL for the reports — from the page's list when it has them, else from the postings themselves
+function gl_slNodesOf(code, rows) {
+    const glNode = gl_list.find(n => n.kind === 'gl' && n.account_code === code);
+    const fromList = glNode ? gl_slsUnder(glNode.account_id).filter(n => !n.direct) : [];
+    if (fromList.length) return fromList;
+    const seen = {};
+    rows.forEach(r => { if (r.sl_account_code && !seen[r.sl_account_code]) seen[r.sl_account_code] = { account_code: r.sl_account_code, account_title: r.sl_name || r.sl_account_code }; });
+    return Object.keys(seen).sort().map(c => seen[c]);
+}
+// yearly blocks of a Detailed sheet: [{ year, beg, lines[{date, part, ref, jd, chk, d, c, bal}], td, tc, end }]; `open` signed on the normal side
+function gl_detailBlocks(rows, dn, open, year) {
+    const sg = dn ? 1 : -1, r2 = v => Math.round(v * 100) / 100;
+    const byYear = new Map();
+    rows.forEach(r => { const y = String(r.posting_date || '').slice(0, 4); if (!byYear.has(y)) byYear.set(y, []); byYear.get(y).push(r); });
+    if (!byYear.size && Math.abs(open) >= 0.005 && year) byYear.set(String(year), []);
+    let bal = r2(open || 0);
+    return [...byYear.keys()].sort().map(y => {
+        const beg = bal;
+        let td = 0, tc = 0;
+        const lines = byYear.get(y).map(r => {
+            const d = Number(r.debit) || 0, c = Number(r.credit) || 0, ds = String(r.posting_date).slice(0, 10);
+            td += d; tc += c; bal = r2(bal + sg * (d - c));
+            return { date: `${GL_MON[Number(ds.slice(5, 7)) - 1].toUpperCase()} ${Number(ds.slice(8, 10))}`,
+                part: r.jev_particulars || r.description || '', ref: r.journal || '',
+                jd: [r.jev_no, r.dv_no].filter(Boolean).join(' / '),
+                chk: r.check_no ? r.check_no + (r.check_date ? ' / ' + gl_chkDate(r.check_date) : '') : '',
+                d, c, bal };
+        });
+        return { year: y, beg, lines, td: r2(td), tc: r2(tc), end: bal };
+    });
+}
+// the Detailed cards of one /ledger response: kind 'gl' → one card; 'sl' → one per SL with postings (or an opening balance)
+async function gl_detailCards(kind, json, opts, sls) {
+    const dn = json.debit_normal !== false, gl = json.account, rows = json.data ?? [], sign = dn ? 1 : -1;
+    const meta = { dn, gl, fund: opts.fund || 'All books', fy: opts.fiscal_year || 'All years', book: opts.fund || 'All books' };
+    if (kind === 'gl') {
+        const op = (await gl_openings([gl.account_code], opts.fiscal_year, opts.book_id, sign))[gl.account_code] || 0;
+        const blocks = gl_detailBlocks(rows, dn, op, opts.fiscal_year);
+        return blocks.length ? [{ ...meta, kind: 'GL', blocks }] : [];
+    }
+    const byCode = {};
+    rows.forEach(r => { if (r.sl_account_code) (byCode[r.sl_account_code] ||= []).push(r); });
+    const list = (sls && sls.length ? sls : gl_slNodesOf(gl.account_code, rows)).map(n => ({ code: n.account_code, title: n.account_title }));
+    const ops = await gl_openings(list.map(o => o.code), opts.fiscal_year, opts.book_id, sign);
+    return list
+        .filter(o => byCode[o.code] || Math.abs(ops[o.code] || 0) >= 0.005)
+        .map(o => ({ ...meta, kind: 'SL', sl: o, blocks: gl_detailBlocks(byCode[o.code] || [], dn, ops[o.code] || 0, opts.fiscal_year) }));
+}
+// a balance as the Detailed sheet prints it: "-" for zero, else the amount with the side it sits on
+const gl_dBal = (v, dn) => Math.abs(v) < 0.005 ? '-' : gl_num(Math.abs(v)) + ((v > 0) === !!dn ? ' Dr' : ' Cr');
+const GL_DETAIL_CSS = `<style>
+.gd-wrap{font-family:Arial,Helvetica,sans-serif;color:#000;margin-bottom:26px} .gd-wrap.pb{page-break-before:always;break-before:page}
+.gd-form{font-size:11px;font-weight:bold;min-height:13px} .gd-title{text-align:center;font-size:26px;font-weight:bold;margin:2px 0}
+.gd-ag{text-align:center;font-weight:bold;font-size:13px;text-decoration:underline} .gd-agl{text-align:center;font-size:9px;font-style:italic}
+table.gd-meta{width:100%;border-collapse:collapse;margin:12px 0 6px;font-size:13px} table.gd-meta td{padding:2px 0;vertical-align:top} table.gd-meta td.r{width:34%}
+.gd-sm{font-size:9px;color:#444;font-style:italic} .gd-sl{font-size:13px;margin:16px 0 4px}
+table.gd-t{width:100%;border-collapse:collapse;table-layout:fixed;border:2px solid #000}
+table.gd-t th{border:1px solid #000;padding:6px 4px;font-size:12px}
+table.gd-t td{padding:3px 6px;vertical-align:top;border-left:1px solid #000;border-right:1px solid #000;border-bottom:1px dotted #777;font-size:11.5px}
+table.gd-t td.n{text-align:right;white-space:nowrap} table.gd-t td.c{text-align:center} table.gd-t td.d{white-space:nowrap}
+table.gd-t tr.end td{font-weight:bold;border-top:2px solid #000;border-bottom:2px solid #000} table.gd-t tr{page-break-inside:avoid;break-inside:avoid}
+</style>`;
+function gl_detailCard(c, brk, excel) {
+    const dn = c.dn, isGl = c.kind === 'GL';
+    const xf = v => excel && v ? ' style="mso-number-format:\'#,##0.00\'"' : '';
+    const show = v => v ? (excel ? v : gl_num(v)) : '';
+    const dashAmt = v => `<td class="n"${xf(v)}>${v ? show(v) : '-'}</td>`;
+    const body = c.blocks.map(b => {
+        const begD = Math.abs(b.beg) >= 0.005 && (b.beg > 0) === !!dn ? Math.abs(b.beg) : 0;
+        const begC = Math.abs(b.beg) >= 0.005 && !begD ? Math.abs(b.beg) : 0;
+        return `<tr><td class="d"><b>${gl_esc(b.year)}</b></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td class="d">JAN 1</td><td>Beginning Balance</td><td></td><td></td><td></td>${dashAmt(begD)}${dashAmt(begC)}<td class="n">${gl_dBal(b.beg, dn)}</td></tr>`
+            + b.lines.map(l => `<tr><td class="d">${gl_esc(l.date)}</td><td>${gl_esc(l.part)}</td><td class="c">${gl_esc(l.ref)}</td><td>${gl_esc(l.jd)}</td><td>${gl_esc(l.chk)}</td>`
+                + `<td class="n"${xf(l.d)}>${show(l.d)}</td><td class="n"${xf(l.c)}>${show(l.c)}</td><td class="n">${gl_dBal(l.bal, dn)}</td></tr>`).join('')
+            + `<tr class="end"><td class="d">DEC 31</td><td>Ending Balance</td><td></td><td></td><td></td>${dashAmt(b.td)}${dashAmt(b.tc)}<td class="n">${gl_dBal(b.end, dn)}</td></tr>`;
+    }).join('');
+    return `<div class="gd-wrap${brk ? ' pb' : ''}">
+<div class="gd-form">${isGl ? 'NHA Form No. 11' : ''}</div>
+<div class="gd-title">${isGl ? 'GENERAL LEDGER' : 'SUBSIDIARY LEDGER'}</div>
+<div class="gd-ag">NATIONAL HOUSING AUTHORITY</div><div class="gd-agl">Agency</div>
+<table class="gd-meta"><tr><td><b>Fund:</b> ${gl_esc(c.fund)}</td><td class="r"><b>${isGl ? '' : 'GL '}Account Code:</b> ${gl_esc(c.gl.account_code)}</td></tr>
+ <tr><td><b>${isGl ? '' : 'GL '}Account Title:</b> <i>${gl_esc(c.gl.account_title)}</i></td><td class="r"><b>Sheet No.</b></td></tr>
+ <tr><td class="gd-sm">Fiscal year: ${gl_esc(c.fy)} &nbsp;|&nbsp; Book: ${gl_esc(c.book)}</td><td></td></tr></table>
+${isGl ? '' : `<div class="gd-sl"><b>SL Account Code:</b> ${gl_esc(c.sl.code)} &nbsp; <b>SL Account Title:</b> <i>${gl_esc(c.sl.title)}</i></div>`}
+<table class="gd-t"><colgroup><col style="width:7%"><col style="width:28%"><col style="width:7%"><col style="width:15%"><col style="width:12%"><col style="width:10%"><col style="width:10%"><col style="width:11%"></colgroup>
+<tr><th>Date</th><th>Particulars</th><th>REF</th><th>JEV / DV #</th><th>Check No. / Check Date</th><th>DEBIT</th><th>CREDIT</th><th>BALANCE</th></tr>
+${body || '<tr><td></td><td>No postings.</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>'}
+</table></div>`;
+}
+function gl_detailHtml(cards, excel) {
+    if (!cards.length) return '<p style="font:14px Arial">No posted transactions.</p>';
+    return GL_DETAIL_CSS + cards.map((c, i) => gl_detailCard(c, i > 0, excel)).join('');
+}
+// Print ▾ → Detailed, one account (the preview window is opened inside the click, before any await)
+async function gl_printDetail(kind, code, pick = null) {
+    const w = window.open('', '_blank', 'width=1100,height=800');
+    if (!w) { gl_showError('Allow pop-ups for this site to open the preview.'); return; }
+    w.document.write('<p style="font-family:Arial;padding:24px">Preparing the report…</p>');
+    try {
+        gl_hideError();
+        const opts = pick ? { book_id: String(pick.book_id), fund: pick.fund || '', fiscal_year: String(pick.fiscal_year || '') } : gl_printOpts();
+        const json = await gl_fetchLedger(code, opts);
+        const cards = await gl_detailCards(kind, json, opts, null);
+        gl_menuData = { kind: 'detail', cards, name: `${kind === 'sl' ? 'Subsidiary' : 'General'}-Ledger-Detailed_${code}` };
+        gl_writePreview(w, gl_reportTable(false, gl_menuData), gl_menuData.name, 'gl_excelMenu');
+    } catch (e) {
+        w.close();
+        gl_showError('Could not prepare the preview: ' + e.message);
+    }
+}
+// Print ▾ → Ledger card, one account (the NHA card, same as the list view's Print GL / SL)
+async function gl_printCard(kind, code, pick = null) {
+    const w = window.open('', '_blank', 'width=1100,height=800');
+    if (!w) { gl_showError('Allow pop-ups for this site to open the preview.'); return; }
+    w.document.write('<p style="font-family:Arial;padding:24px">Preparing the report…</p>');
+    try {
+        gl_hideError();
+        const opts = pick ? { book_id: String(pick.book_id), fund: pick.fund || '', fiscal_year: String(pick.fiscal_year || '') } : gl_printOpts();
+        const json = await gl_fetchLedger(code, opts);
+        gl_menuData = kind === 'sl'
+            ? { kind: 'sl', gl: json.account, sls: gl_slNodesOf(code, json.data ?? []), json, fund: opts.fund }
+            : { kind: 'txn', gl: json.account, json, fund: opts.fund };
+        gl_writePreview(w, gl_reportTable(false, gl_menuData), gl_reportName(gl_menuData), 'gl_excelMenu');
+    } catch (e) {
+        w.close();
+        gl_showError('Could not prepare the preview: ' + e.message);
+    }
 }
 
 /* ── Schedule (header Print ▾ → Schedule) — the NHA "SCHEDULE OF …" of the account shown, as of a date ──────────────────
@@ -1188,12 +1368,14 @@ async function gl_excelSchedule(s = gl_schedData) {
      SL : the SUBSIDIARY LEDGER report (what the account-description click's Preview shows) of every GL that has SLs.
    Each GL costs one GET /general_ledger/ledger (a few in parallel), so it is slow: a loading modal on the page shows
    "Loading GL 3/50" first, and only then does the preview window open. Each GL sheet starts on its own printed page. */
-let gl_allData = { sl: null, gl: null };   // last result per kind ({ kind, items, failed }) — what that preview's Excel button exports
+let gl_allData = { sl: null, gl: null, 'gl-detail': null, 'sl-detail': null };   // last result per kind ({ kind, items, failed }) — what that preview's Excel button exports
 let gl_allBusy = false;
 let gl_allCancel = false;
 let gl_allReady = null;   // a finished report waiting for the user's click when the browser blocked the automatic pop-up
 function gl_excelAllSl() { gl_excelTxns(gl_allData.sl); }
 function gl_excelAllGl() { gl_excelTxns(gl_allData.gl); }
+function gl_excelAllGlDetail() { gl_excelTxns(gl_allData['gl-detail']); }
+function gl_excelAllSlDetail() { gl_excelTxns(gl_allData['sl-detail']); }
 function gl_loadModal(show) { $gl('gl-load-overlay')?.classList.toggle('open', !!show); }
 function gl_loadProgress(done, total, last) {
     $gl('gl-load-txt').textContent = `Loading GL ${done}/${total}`;
@@ -1219,9 +1401,10 @@ function gl_openReport(rep) {
     return true;
 }
 
-async function gl_printAll(mode) {   // mode: 'gl' | 'sl'
+async function gl_printAll(mode) {   // mode: 'gl' | 'sl' | 'gl-detail' | 'sl-detail'
     if (gl_allBusy) return;
-    const isSl = mode === 'sl';
+    const isDetail = mode.endsWith('-detail');
+    const isSl = mode.startsWith('sl');
     const targets = gl_list.filter(n => n.kind === 'gl')
         .map(gl => ({ gl, sls: gl_slsUnder(gl.account_id).filter(n => !n.direct) }))
         .filter(t => !isSl || t.sls.length);   // SL: only GLs that have subsidiary ledgers
@@ -1258,7 +1441,10 @@ async function gl_printAll(mode) {   // mode: 'gl' | 'sl'
                 const json = await res.json();
                 if (!res.ok || !json.success) throw new Error(json.message || 'HTTP ' + res.status);
                 // keep only what the report needs, not the whole response
-                if (isSl) {
+                if (isDetail) {
+                    const cards = await gl_detailCards(isSl ? 'sl' : 'gl', json, { fiscal_year: fy, book_id: book, fund: gl_fund() }, isSl ? sls : null);
+                    if (cards.length) results[i] = { gl, cards };
+                } else if (isSl) {
                     const secs = gl_slSectionsOf(json, sls);
                     if (secs.length) results[i] = { gl, secs };
                 } else if ((json.data ?? []).length) {
@@ -1275,9 +1461,11 @@ async function gl_printAll(mode) {   // mode: 'gl' | 'sl'
     try {
         await Promise.all(Array.from({ length: Math.min(3, total) }, worker));
         if (gl_allCancel) { gl_loadModal(false); return; }
-        const data = { kind: isSl ? 'allsl' : 'allgl', items: results.filter(Boolean), failed };
+        const data = isDetail
+            ? { kind: 'detail', cards: results.filter(Boolean).flatMap(x => x.cards), failed, name: (isSl ? 'Subsidiary-Ledger-Detailed' : 'General-Ledger-Detailed') + '_All' }
+            : { kind: isSl ? 'allsl' : 'allgl', items: results.filter(Boolean), failed };
         gl_allData[mode] = data;
-        const rep = { html: gl_reportTable(false, data), name: gl_reportName(data), excelFn: isSl ? 'gl_excelAllSl' : 'gl_excelAllGl' };
+        const rep = { html: gl_reportTable(false, data), name: gl_reportName(data), excelFn: isDetail ? (isSl ? 'gl_excelAllSlDetail' : 'gl_excelAllGlDetail') : isSl ? 'gl_excelAllSl' : 'gl_excelAllGl' };
         if (gl_openReport(rep)) {
             gl_loadModal(false);
         } else {
