@@ -14,17 +14,45 @@ class SubComponentTypeService
 {
     private string $table = 'fims.sub_component_type';
 
+    // A strict three-way partition of every Sub-Component across the three Components — not a stored
+    // relationship (fims.sub_component_type has no component_type_id column; see the class doc
+    // comment), just this fixed split. Used by the $component filter below. "Capital Outlay" has no
+    // entry here — it's whatever's left over after OTHER_CAPITAL_OUTLAY_NAMES and COE_NAMES are
+    // excluded (see the filter logic), so a newly-added Sub-Component with no bucket of its own
+    // defaults to Capital Outlay rather than silently vanishing from every list.
+    private const OTHER_CAPITAL_OUTLAY_NAMES = ['EQUIPMENT OUTLAY', 'NHA BUILDING CONSTRUCTION AND REPAIR'];
+    private const COE_NAMES = ['PERSONNEL SERVICES', 'MOOE'];
+
     // -----------------------------------------------------------------------
     // Fetch all — no pagination (for /sub_component_type/all, e.g. dropdowns)
     // Fetch with pagination (for /sub_component_type/list) when $page is provided
+    // $component narrows the list to one Component's own bucket (case-insensitive) — 'Other-Capital
+    // Outlay' returns only OTHER_CAPITAL_OUTLAY_NAMES, 'COE' returns only COE_NAMES, 'Capital Outlay'
+    // returns everything else, and anything else (blank, or a name this split doesn't recognize)
+    // returns the full list unfiltered — see form/budget-req-form.php's bgr_onBlockComponentChange()
+    // (the regular CO flow) and bgr_addCoeSubComponentBlock() (COE mode, always passes 'COE' — its own
+    // Component is fixed, see #bgr-coe-component), the only two callers that pass this.
     // -----------------------------------------------------------------------
-    public function fetchAlls(?int $page = null, int $limit = 10, string $search = ''): array
+    public function fetchAlls(?int $page = null, int $limit = 10, string $search = '', string $component = ''): array
     {
         try {
             $where = 'deleted_at IS NULL';
             if ($search !== '') {
                 $s      = App\QuotedValue('%' . $search . '%', DataType::STRING, 'DB');
                 $where .= " AND name ILIKE {$s}";
+            }
+            $component = strtoupper(trim($component));
+            $quote = fn (array $names) => implode(', ', array_map(
+                fn ($n) => App\QuotedValue($n, DataType::STRING, 'DB'),
+                $names
+            ));
+            if ($component === 'OTHER-CAPITAL OUTLAY') {
+                $where .= ' AND UPPER(name) IN (' . $quote(self::OTHER_CAPITAL_OUTLAY_NAMES) . ')';
+            } elseif ($component === 'COE') {
+                $where .= ' AND UPPER(name) IN (' . $quote(self::COE_NAMES) . ')';
+            } elseif ($component === 'CAPITAL OUTLAY') {
+                $excluded = array_merge(self::OTHER_CAPITAL_OUTLAY_NAMES, self::COE_NAMES);
+                $where .= ' AND UPPER(name) NOT IN (' . $quote($excluded) . ')';
             }
 
             if ($page === null) {

@@ -143,6 +143,9 @@ class BudgetReqService
         // (non-COE) flow now collects the office's own initial pick up front too (see
         // form/budget-req-form.php's Type of Fund select), so it's required here like every other field.
         $typeOfFundId = trim((string) ($lineItem['type_of_fund_id'] ?? ''));
+        // Required here too, same form — a fixed short list (BudgetLineItemService::SOURCE_OF_FUND_OPTIONS),
+        // not a lookup table (see migration "65 - budget_line_items_add_source_of_fund.sql").
+        $sourceOfFund = trim((string) ($lineItem['source_of_fund'] ?? ''));
         $label = 'Project '.($projectIndex + 1).', line item '.($index + 1).': ';
 
         if ($accountId === '') {
@@ -156,6 +159,12 @@ class BudgetReqService
         }
         if ($typeOfFundId === '') {
             return $label.'select a type of fund.';
+        }
+        if ($sourceOfFund === '') {
+            return $label.'select a source of fund.';
+        }
+        if (!in_array($sourceOfFund, BudgetLineItemService::SOURCE_OF_FUND_OPTIONS, true)) {
+            return $label."source of fund '{$sourceOfFund}' is not valid.";
         }
 
         $account = App\ExecuteRow(
@@ -893,9 +902,16 @@ class BudgetReqService
             return ['success' => false, 'message' => $err];
         }
         if ($rcId === '') {
-            // Defense in depth — the route is expected to have already resolved this
-            // from the caller's own uac.users.rc_id (GlobalService::getUserRcId()).
+            // Defense in depth — the route is expected to have already required this
+            // (the form's own #bgr-region picks which Region the request is FOR).
             return ['success' => false, 'message' => 'rc_id is required.'];
+        }
+        $rcExists = (int) App\ExecuteScalar(
+            'SELECT COUNT(*) FROM fims.responsibility_code WHERE rc_id = '.App\QuotedValue($rcId, DataType::STRING, 'DB'),
+            'DB'
+        );
+        if ($rcExists === 0) {
+            return ['success' => false, 'message' => "Region '{$rcId}' does not exist."];
         }
 
         try {

@@ -13,6 +13,13 @@ use PHPMaker2024\FIMS\DataType;
  */
 class BudgetLineItemService
 {
+    // Source of Fund — a fixed short list, plain text (no lookup table; see migration
+    // "65 - budget_line_items_add_source_of_fund.sql"), same convention this codebase already uses
+    // for fund-source-like fields with no admin-managed list (fims.disbursement_vouchers.fund_source,
+    // fims.bank_accounts.fund_source). Required on the Budget Request form's regular (non-COE) flow
+    // (see BudgetReqService::validateLineItem()).
+    public const SOURCE_OF_FUND_OPTIONS = ['BEGINNING BALANCE', 'NEW FUNDS', 'ACCOUNTS PAYABLE'];
+
     private string $table = 'fims.budget_line_items';
     private string $tableBudgetReq = 'fims.budget_req';
     private string $tableBudgetReqProject = 'fims.budget_req_project';
@@ -21,6 +28,7 @@ class BudgetLineItemService
     private string $tableTypeOfFund = 'fims.type_of_fund';
     private string $tableComponentType = 'fims.component_type';
     private string $tableSubComponentType = 'fims.sub_component_type';
+    private string $tableProgramSource = 'fims.program_source';
     private string $tableBudgetReqProgram = 'fims.budget_req_program';
     private string $tableStatus = 'fims.settings_status';
     private string $tableEarmark = 'fims.budget_line_item_earmark';
@@ -975,9 +983,21 @@ class BudgetLineItemService
             // see its own doc comment); the Budget Request form's regular flow collects it alongside
             // Component. Has a real DB-level FK (migration "59 - budget_line_items_add_sub_component_id.sql").
             $subComponentId = trim((string) ($body['sub_component_id'] ?? ''));
+            // Optional here (same "shared by callers that don't collect it" reasoning as Type of
+            // Fund/Component above) — required by the Budget Request form's regular flow instead (see
+            // BudgetReqService::validateLineItem()). Fixed list, not FK'd (see SOURCE_OF_FUND_OPTIONS).
+            $sourceOfFund = trim((string) ($body['source_of_fund'] ?? ''));
+            // Optional, flat classification (fims.program_source — "Program (Source)", a list of
+            // specific named source programs/projects, independent of type_of_fund_id/component_id/
+            // sub_component_id/source_of_fund). Has a real DB-level FK (migration
+            // "66 - budget_line_items_add_program_source_id.sql").
+            $programSourceId = trim((string) ($body['program_source_id'] ?? ''));
 
             if ($budgetReferenceNumber === '' || $accountId === '' || $amount === '' || !is_numeric($amount) || $particulars === '') {
                 return ['success' => false, 'message' => 'budget_reference_number, account_id, a numeric proposed_amount, and particulars are required.'];
+            }
+            if ($sourceOfFund !== '' && !in_array($sourceOfFund, self::SOURCE_OF_FUND_OPTIONS, true)) {
+                return ['success' => false, 'message' => "Source of fund '{$sourceOfFund}' is not valid."];
             }
             if ($typeOfFundId !== '') {
                 $typeOfFundExists = (int) App\ExecuteScalar(
@@ -1004,6 +1024,15 @@ class BudgetLineItemService
                 );
                 if ($subComponentExists === 0) {
                     return ['success' => false, 'message' => "Sub-component '{$subComponentId}' does not exist."];
+                }
+            }
+            if ($programSourceId !== '') {
+                $programSourceExists = (int) App\ExecuteScalar(
+                    "SELECT COUNT(*) FROM {$this->tableProgramSource} WHERE program_source_id = ".App\QuotedValue($programSourceId, DataType::NUMBER, 'DB')." AND deleted_at IS NULL",
+                    'DB'
+                );
+                if ($programSourceExists === 0) {
+                    return ['success' => false, 'message' => "Program source '{$programSourceId}' does not exist."];
                 }
             }
 
@@ -1035,7 +1064,7 @@ class BudgetLineItemService
                 return ['success' => false, 'message' => "Chart of accounts entry '{$accountId}' does not exist or is not postable."];
             }
 
-            $sql = "INSERT INTO {$this->table} (budget_reference_number, budget_req_project_id, account_id, proposed_amount, particulars, type_of_fund_id, component_id, sub_component_id)
+            $sql = "INSERT INTO {$this->table} (budget_reference_number, budget_req_project_id, account_id, proposed_amount, particulars, type_of_fund_id, component_id, sub_component_id, source_of_fund, program_source_id)
                     VALUES (".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB').', '
                         .($budgetReqProjectId !== '' ? (int) $budgetReqProjectId : 'NULL').', '
                         .App\QuotedValue($accountId, DataType::STRING, 'DB').', '
@@ -1043,7 +1072,9 @@ class BudgetLineItemService
                         .App\QuotedValue($particulars, DataType::STRING, 'DB').', '
                         .($typeOfFundId !== '' ? (int) $typeOfFundId : 'NULL').', '
                         .($componentId !== '' ? (int) $componentId : 'NULL').', '
-                        .($subComponentId !== '' ? (int) $subComponentId : 'NULL').')
+                        .($subComponentId !== '' ? (int) $subComponentId : 'NULL').', '
+                        .($sourceOfFund !== '' ? App\QuotedValue($sourceOfFund, DataType::STRING, 'DB') : 'NULL').', '
+                        .($programSourceId !== '' ? (int) $programSourceId : 'NULL').')
                     RETURNING budget_line_item_id';
 
             $row = App\ExecuteRow($sql, 'DB');

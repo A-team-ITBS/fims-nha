@@ -166,7 +166,7 @@ $_bgr_canModify = !$_bgr_isBudgetOfficer;
     <div class="nha-tabs no-print" id="bgr-tabs" role="tablist">
         <button type="button" class="nha-tab active" data-tab="requests" role="tab">
             <svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 7h6m-6 4h6m-6 4h3M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z"/></svg>
-            Budget Requests
+            Budget Proposal
         </button>
         <button type="button" class="nha-tab" data-tab="bur" role="tab">
             <svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
@@ -321,16 +321,18 @@ $_bgr_canModify = !$_bgr_isBudgetOfficer;
                             <th style="width:280px;">Expense Classification (NGAS)</th>
                             <th style="width:110px;">Acct. Code</th>
                             <th class="text-end">Approved Budget</th>
+                            <!-- hidden per request — revert by uncommenting these <th>s and the matching BGRBUR_COLS keys / colspans below
                             <th class="text-end">Realigned Budget</th>
                             <th class="text-end">Increase (Decrease)</th>
                             <th class="text-end">Utilization</th>
                             <th class="text-end">Balance</th>
                             <th class="text-end">Payment</th>
                             <th class="text-end">Accounts Payable</th>
+                            -->
                         </tr>
                     </thead>
                     <tbody id="bgrbur-tbody">
-                        <tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                        <tr><td colspan="3"><!-- was colspan="9" --><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                     </tbody>
                 </table>
             </div>
@@ -895,6 +897,9 @@ function bgr_editProgram(idx) {
         ...program,
         fiscal_yr: header.fiscal_yr,
         budget_reference_number: header.budget_reference_number,
+        // The request's own Region (budget_req.rc_id) — form/budget-req-form.php prefills and locks
+        // #bgr-region with this in 'edit-program' mode; it isn't reassigned from here.
+        rc_id: header.rc_id,
     });
 }
 
@@ -975,29 +980,20 @@ function bgr_updateSubmitButton(headers) {
 
 /* ── Header "+ Add COE Budget Request" — at most one shared budget_req header per fiscal
    year per office already (fims.budget_req's own UNIQUE (fiscal_yr, rc_id) — see
-   migration 45), which that header's own COE line items (if any) live on. Disabled here
-   too, as soon as the Fiscal Year filter narrows the list down to one specific year whose
-   header already has COE line items, pointing the user at that row's own Edit action
-   instead of silently appending more via Add. Left enabled when "All Years" is selected
-   (ambiguous which year to restrict) or the
-   Program filter is active (a COE row never matches it, so this view can't tell either
-   way) — the server-side constraint still catches an actual collision regardless. ──── */
+   migration 45), which that header's own COE line items (if any) live on. Left enabled
+   regardless of the current filters: BudgetReqService::addCoeRequest() already handles
+   the existing-header case server-side — it appends to a Draft/Returned header, or
+   returns a clear error message when the header has moved past that (e.g. Approved) —
+   so there's no need to preemptively grey this out client-side. ──────────────────── */
 function bgr_updateAddCoeButton(headers) {
     const btn = $bgr('bgr-add-coe');
     if (!btn) return;
 
-    const fiscalYr    = $bgr('bgr-filter-fiscal-yr')?.value || '';
-    const programCode = $bgr('bgr-filter-program')?.value || '';
-    if (!fiscalYr || programCode) {
-        btn.disabled = false;
-        btn.title = 'Add a COE budget request — each line item has no Program/Project, just chart-of-accounts allocations';
-        return;
-    }
-
-    const existing = headers.find(h => (h.coe_line_items ?? []).length);
-    btn.disabled = !!existing;
+    const fiscalYr = $bgr('bgr-filter-fiscal-yr')?.value || '';
+    const existing = fiscalYr ? headers.find(h => (h.coe_line_items ?? []).length) : null;
+    btn.disabled = false;
     btn.title = existing
-        ? `Fiscal year ${fiscalYr} already has a COE budget request (${existing.budget_reference_number}) — use its own Edit action to add more line items.`
+        ? `Fiscal year ${fiscalYr} already has a COE budget request (${existing.budget_reference_number}) — adding more will append to it if still Draft/Returned.`
         : 'Add a COE budget request — each line item has no Program/Project, just chart-of-accounts allocations';
 }
 
@@ -1213,7 +1209,8 @@ function bgr_switchTab(tab) {
    since this is a different page, not an iframe of that one.
 ═══════════════════════════════════════════════════════════════ */
 const BGRBUR_API = '<?php echo $_bgr_api; ?>' + '/bur';
-const BGRBUR_COLS = ['approved_amount', 'revised_amount', 'revision_amount', 'utilization', 'balance', 'payment', 'account_payable'];
+// hidden per request — revert by restoring the full list: ['approved_amount', 'revised_amount', 'revision_amount', 'utilization', 'balance', 'payment', 'account_payable']
+const BGRBUR_COLS = ['approved_amount'];
 
 let bgrbur_loaded = false;   // true once the tab has been opened at least once (lazy load)
 let bgrbur_rows = [];
@@ -1235,21 +1232,23 @@ function bgrbur_amountCells(o) {
 }
 
 async function bgrbur_loadFilterOptions() {
-    const res = await fetch(`${BGRBUR_API}/filters`, { credentials: 'same-origin' });
+    const res = await fetch(`<?php echo $_bgr_api; ?>/fiscal_year/all`, { credentials: 'same-origin' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
-    if (!json.success) throw new Error(json.message || 'Failed to load filters.');
+    if (!json.success) throw new Error(json.message || 'Failed to load fiscal years.');
 
-    const years = json.data?.fiscal_years ?? [];
+    const years = (json.data ?? []).map(r => r.fiscal_yr).filter(y => y !== null && y !== undefined && y !== '');
     const sel = $bgr('bgrbur-f-fy');
     sel.innerHTML = '<option value="">All Years</option>' + years.map(y => `<option value="${y}">${y}</option>`).join('');
-    sel.value = years.length ? String(years[0]) : '';
+    // default to today's actual year when it's on file; otherwise fall back to the latest one available (years is DESC-sorted)
+    const currentYear = String(new Date().getFullYear());
+    sel.value = years.map(String).includes(currentYear) ? currentYear : (years.length ? String(years[0]) : '');
     bgrbur_fiscalYr = sel.value;
 }
 
 async function bgrbur_load() {
     window.PagePreloader?.show();
-    $bgr('bgrbur-tbody').innerHTML = '<tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>';
+    $bgr('bgrbur-tbody').innerHTML = '<tr><td colspan="3"><!-- was colspan="9" --><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>';
     try {
         const qs = bgrbur_fiscalYr ? `?${new URLSearchParams({ fiscal_yr: bgrbur_fiscalYr })}` : '';
         const res = await fetch(`${BGRBUR_API}/rollup${qs}`, { credentials: 'same-origin' });
@@ -1262,7 +1261,7 @@ async function bgrbur_load() {
         bgrbur_render();
     } catch (e) {
         bgrbur_rows = []; bgrbur_totals = null;
-        $bgr('bgrbur-tbody').innerHTML = `<tr><td colspan="9"><div class="nha-error">${bgr_esc(e.message)}</div></td></tr>`;
+        $bgr('bgrbur-tbody').innerHTML = `<tr><td colspan="3"><!-- was colspan="9" --><div class="nha-error">${bgr_esc(e.message)}</div></td></tr>`;
     } finally {
         window.PagePreloader?.hide();
     }
@@ -1297,7 +1296,7 @@ function bgrbur_render() {
     const totalRow = `<tr class="bgrbur-row-total"><td>TOTAL</td><td></td>${bgrbur_amountCells(bgrbur_totals)}</tr>`;
 
     if (!bgrbur_rows.length) {
-        tbody.innerHTML = totalRow + '<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No approved budget found.</span></div></td></tr>';
+        tbody.innerHTML = totalRow + '<tr><td colspan="3"><!-- was colspan="9" --><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No approved budget found.</span></div></td></tr>';
         return;
     }
 

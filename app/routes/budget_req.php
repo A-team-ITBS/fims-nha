@@ -140,10 +140,10 @@ $app->get('/budget_req/read/{id}', function ($request, $response, $args) use ($B
 })->add($jwtMiddleware);
 
 // Add one Program (+ its project blocks + line items) to the budget
-// request for the given fiscal year — creates that request (status Draft)
+// request for the given (fiscal year, Region) — creates that request (status Draft)
 // if it doesn't exist yet, or appends to it if it does and is still Draft.
 // Rejected if that fiscal year's request has moved past Draft.
-// body: { fiscal_yr, program_code, sub_program_code, projects: [ { project_code, line_items: [{ account_id, particulars, proposed_amount }, ...] }, ... ] }
+// body: { fiscal_yr, rc_id, program_code, sub_program_code, projects: [ { project_code, line_items: [{ account_id, particulars, proposed_amount }, ...] }, ... ] }
 $app->post('/budget_req/add', function ($request, $response, $args) use ($BudgetReqService, $budgetReqParseBody) {
     try {
         $body     = $budgetReqParseBody($request);
@@ -163,14 +163,14 @@ $app->post('/budget_req/add', function ($request, $response, $args) use ($Budget
                 'Program-based budget requests are reserved for FMD. Your office may only submit a COE budget request.'], 403);
         }
 
-        // rc_id is auto-detected from the caller's own account — no manual RC
-        // picker. Every creating user, admin included, must have one set.
-        // getUserRcId() resolves the session-backed current user itself and
-        // throws if none is logged in (caught below, surfaced as a 400).
-        $rcId = GlobalService::getUserRcId();
-        if ($rcId === null) {
-            return $response->withJson(['success' => false, 'message' =>
-                'Your account has no RC assigned (uac.users.rc_id). Ask an administrator to set it.'], 400);
+        // rc_id: which Region this budget request is FOR, not the (FMD) caller's own account — picked
+        // on the form's own #bgr-region (form/budget-req-form.php) and required there before this is
+        // ever called. ONE header per (fiscal_yr, rc_id) (see
+        // BudgetReqService::fetchHeaderByFiscalYearAndRc()), so this is what decides whether a Program
+        // joins an existing request for that Region or starts a new one.
+        $rcId = trim((string) ($body['rc_id'] ?? ''));
+        if ($rcId === '') {
+            return $response->withJson(['success' => false, 'message' => 'Select a region for this budget request.'], 400);
         }
         $body['rc_id'] = $rcId;
 

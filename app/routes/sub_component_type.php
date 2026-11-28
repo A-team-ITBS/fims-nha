@@ -6,11 +6,12 @@ use PHPMaker2024\FIMS\Service\SubComponentTypeService;
 
 $SubComponentTypeService = new SubComponentTypeService();
 
-// Fetch all — no pagination (for dropdowns)
+// Fetch all — no pagination (for dropdowns). ?component=Other-Capital Outlay|Capital Outlay narrows
+// the list to that Component's own bucket — see SubComponentTypeService::fetchAlls()'s own doc comment.
 $app->get('/sub_component_type/all', function ($request, $response, $args) use ($SubComponentTypeService) {
     try {
         $params = $request->getQueryParams();
-        $result = $SubComponentTypeService->fetchAlls(null, 10, $params['search'] ?? '');
+        $result = $SubComponentTypeService->fetchAlls(null, 10, $params['search'] ?? '', $params['component'] ?? '');
 
         return $response->withJson($result);
     } catch (\Exception $e) {
@@ -18,14 +19,14 @@ $app->get('/sub_component_type/all', function ($request, $response, $args) use (
     }
 })->add($jwtMiddleware);
 
-// Fetch all (with pagination)
+// Fetch all (with pagination) — same ?component= filter as /all above.
 $app->get('/sub_component_type/list', function ($request, $response, $args) use ($SubComponentTypeService) {
     try {
         $params = $request->getQueryParams();
         $page   = isset($params['page']) ? (int) $params['page'] : 1;
         $limit  = isset($params['limit']) ? (int) $params['limit'] : 10;
 
-        $result = $SubComponentTypeService->fetchAlls($page, $limit, $params['search'] ?? '');
+        $result = $SubComponentTypeService->fetchAlls($page, $limit, $params['search'] ?? '', $params['component'] ?? '');
 
         return $response->withJson($result);
     } catch (\Exception $e) {

@@ -6,21 +6,19 @@ use PHPMaker2024\FIMS as App;
 use PHPMaker2024\FIMS\DataType;
 
 /**
- * Budget Request "Export to Excel" / "Preview and Print" -> the layout picker's four modes (self::MODES):
- * a real .xlsx (report(), format='xlsx') or PDF (format='pdf', via GlobalService::renderPdf()) for each, built
+ * Budget Request "Export to Excel" / "Preview and Print" -> the layout picker's modes (self::MODES): a real
+ * .xlsx (report(), format='xlsx') or PDF (format='pdf', via GlobalService::renderPdf()) for each, built
  * from the budget_req / budget_line_items tables directly (the SAME source readone/budget-req-readone.php's
  * "View as COB" modal reads via BGR_API + '/all') — NOT CobService's Approved-only COB Monitoring data, since
  * this runs from the Budget Request / Budget Proposal list on whatever requests exist, any status, same as the
  * on-screen modal. Both formats share the same model per mode (buildRegion()/buildProgram()/
- * buildProgramSummary()/buildDetailed()) — the xlsx* / html* methods only differ in how that model is laid out
- * (an XlsxWriter sheet vs. a plain HTML table), so they can never disagree on a number.
+ * buildProgramSummary()/buildDetailed()/buildComponent()) — the xlsx* / html* methods only differ in how that
+ * model is laid out (an XlsxWriter sheet vs. a plain HTML table), so they can never disagree on a number.
  *
- * All four reports share the SAME structural CO vs. COE split and the SAME three money columns; they differ only
- * in what the CAPITAL OUTLAY section groups by and how deep it goes:
+ * "Project"/"Program"/"Detailed" share the SAME structural CO vs. COE split and the SAME Proposed/Amendment/
+ * Approved/Amended money columns (full pesos, 2 decimals); they differ only in what the CAPITAL OUTLAY section
+ * groups by and how deep it goes:
  *
- *   "Per Region" (buildRegion/xlsxRegion) — one rolled-up TOTAL row per Region, not a nested tree. Matches the
- *     supplied "per region.xlsx" template; its own huge Program/Sub-Program/Project breakdown per region is NOT
- *     reproduced — see buildRegion()'s own doc comment.
  *   "Program" (buildProgramSummary/xlsxProgramSummary) — one rolled-up TOTAL row per Program, no Sub-Program/
  *     Project drill-down. Reached from the picker's "Per Program" card, as the shallower of its two choices.
  *   "Project" (buildProgram/xlsxProgram) — the full tree: one row per Program, one per Sub-Program under it,
@@ -34,6 +32,14 @@ use PHPMaker2024\FIMS\DataType;
  *   "Detailed" (buildDetailed/xlsxDetailed) — one level deeper than "Project": each Project's own chart-of-
  *     accounts line items, and the CORPORATE OPERATING EXPENDITURE section itemized by PS/MOOE/Other group
  *     instead of just its subtotal.
+ *
+ * "Per Component" (buildComponent) and "Per Region" (buildRegion) are a DIFFERENT shape entirely — DBM
+ * submission reports grouping CO lines by their own stored Component/Sub-Component instead of Region/Program,
+ * with Proposed Budget/Beginning Balance/New Funds/Accounts Payable columns (in Millions, 3 decimals) instead
+ * of the four above. They share the SAME CAPITAL OUTLAY (PROJECT RELATED + OTHER CAPITAL OUTLAY) / COE tree;
+ * "Per Region" differs only in how its "Project Development" row breaks down (by Region instead of by New
+ * Works/Carry-over Works) — see buildComponent()'s own doc comment for the full tree and buildRegion()'s for
+ * what it changes.
  *
  * CO vs. COE: budget_line_items.budget_req_project_id IS NOT NULL (tied to a Project) = CO, IS NULL (headless) =
  * COE — the SAME structural rule BudgetReqService itself uses to split a header's lines into its programs/projects
@@ -69,12 +75,18 @@ class BudgetReqCobReportService
     private string $tableProgram = 'fims.program';
     private string $tableSubProgram = 'fims.sub_program';
     private string $tableProject = 'fims.project';
+    private string $tableComponentType = 'fims.component_type';
+    private string $tableSubComponentType = 'fims.sub_component_type';
 
     /** Header fill (RGB, no '#') — the same navy CobReportService::xlsx() uses, for a consistent look across the app's Excel exports. */
     private const HEAD = '1F497D';
     private const TOTAL_FILL = 'D9D9D9';
     private const LINE = 'D9D9D9';
     private const NUM_FMT = '#,##0.00;(#,##0.00);"-"';
+    // "Per Component" only — its own four columns are shown in Millions (see buildComponent()'s own doc
+    // comment), three decimals instead of every other mode's two.
+    private const NUM_FMT_MILLIONS = '#,##0.000;(#,##0.000);"-"';
+    private const MILLION = 1_000_000.0;
 
     private static function str(string $v): string
     {
@@ -96,6 +108,33 @@ class BudgetReqCobReportService
     private static function zero(): array
     {
         return ['proposed' => 0.0, 'amendment' => 0.0, 'approved' => 0.0, 'amended' => 0.0];
+    }
+
+    /** "Per Component" only — its own four columns (proposed_budget/beginning_balance/new_funds/
+     *  accounts_payable, see buildComponent()'s own doc comment), parallel to amt()/zero() above. */
+    private static function amtComponent(array $row): array
+    {
+        return [
+            'proposed_budget' => (float) $row['proposed_budget'],
+            'beginning_balance' => (float) $row['beginning_balance'],
+            'new_funds' => (float) $row['new_funds'],
+            'accounts_payable' => (float) $row['accounts_payable'],
+        ];
+    }
+
+    private static function zeroComponent(): array
+    {
+        return ['proposed_budget' => 0.0, 'beginning_balance' => 0.0, 'new_funds' => 0.0, 'accounts_payable' => 0.0];
+    }
+
+    private static function addComponent(array $a, array $b): array
+    {
+        return [
+            'proposed_budget' => $a['proposed_budget'] + $b['proposed_budget'],
+            'beginning_balance' => $a['beginning_balance'] + $b['beginning_balance'],
+            'new_funds' => $a['new_funds'] + $b['new_funds'],
+            'accounts_payable' => $a['accounts_payable'] + $b['accounts_payable'],
+        ];
     }
 
     // -------------------------------------------------------------------------
@@ -152,11 +191,80 @@ class BudgetReqCobReportService
         return ['ps' => $ps, 'mooe' => $mooe, 'total' => $total];
     }
 
+    /**
+     * "Per Component" only — same headless-line rule and account-code PS/MOOE split as coeBreakdown()
+     * above, but its own four columns (proposed_budget/beginning_balance/new_funds/accounts_payable)
+     * instead of proposed/amendment/approved/amended. COE line items don't collect their own Source of
+     * Fund yet (only the regular CO flow's form/budget-req-form.php does — see
+     * BudgetLineItemService::SOURCE_OF_FUND_OPTIONS), so beginning_balance/new_funds/accounts_payable
+     * are always 0 here for now; proposed_budget is still each COE line's real total.
+     *
+     * @return array{ps: array, mooe: array, total: array}
+     */
+    private function coeComponentBreakdown(string $fyWhere, string $scopeWhere): array
+    {
+        $rows = App\ExecuteRows(
+            "SELECT CASE WHEN coa.account_code LIKE '5-01%' THEN 'PS' WHEN coa.account_code LIKE '5-02%' THEN 'MOOE' ELSE 'OTHER' END AS cls,
+                    COALESCE(SUM(li.proposed_amount), 0) AS proposed_budget,
+                    COALESCE(SUM(li.proposed_amount) FILTER (WHERE li.source_of_fund = 'BEGINNING BALANCE'), 0) AS beginning_balance,
+                    COALESCE(SUM(li.proposed_amount) FILTER (WHERE li.source_of_fund = 'NEW FUNDS'), 0) AS new_funds,
+                    COALESCE(SUM(li.proposed_amount) FILTER (WHERE li.source_of_fund = 'ACCOUNTS PAYABLE'), 0) AS accounts_payable
+             FROM {$this->tableLineItems} li
+             JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = li.budget_reference_number
+             LEFT JOIN fims.chart_of_accounts coa ON coa.account_id = li.account_id
+             WHERE li.budget_req_project_id IS NULL{$fyWhere}{$scopeWhere}
+             GROUP BY CASE WHEN coa.account_code LIKE '5-01%' THEN 'PS' WHEN coa.account_code LIKE '5-02%' THEN 'MOOE' ELSE 'OTHER' END",
+            'DB'
+        ) ?: [];
+
+        $ps = self::zeroComponent();
+        $mooe = self::zeroComponent();
+        $total = self::zeroComponent();
+        foreach ($rows as $row) {
+            $a = self::amtComponent($row);
+            if ($row['cls'] === 'PS') {
+                $ps = $a;
+            } elseif ($row['cls'] === 'MOOE') {
+                $mooe = $a;
+            }
+            $total = self::addComponent($total, $a);
+        }
+
+        return ['ps' => $ps, 'mooe' => $mooe, 'total' => $total];
+    }
+
     // -------------------------------------------------------------------------
     // Per Region — model
     // -------------------------------------------------------------------------
 
     /**
+     * DBM's own short labels for the 17 Regional offices (fims.responsibility_code, office_type =
+     * 'Regional'), keyed by rc_id (stable regardless of rc_name text) — confirmed against the live table:
+     * Region 1/2 fold their CAR counterpart's figures in silently (no separate "/CAR2" label — only
+     * Region I keeps the "/CAR" suffix), Region 9 gets "/ARMM" appended, and the four NCR sector offices
+     * drop the "NCR " prefix and "- Regional Office" suffix entirely. A Regional office this map doesn't
+     * recognize (a future new one) falls back to its own rc_name instead — see buildRegion() below.
+     */
+    private const REGION_LABELS = [
+        'R01' => 'Region I/CAR', 'R02' => 'Region II', 'R03' => 'Region III', 'R04' => 'Region IV',
+        'R05' => 'Region V', 'R06' => 'Region VI', 'R07' => 'Region VII', 'R08' => 'Region VIII',
+        'R09' => 'Region IX/ARMM', 'R10' => 'Region X', 'R11' => 'Region XI', 'R12' => 'Region XII',
+        'R13' => 'Region XIII', 'NES' => 'East Sector', 'NNS' => 'North Sector', 'NWS' => 'West Sector',
+        'NSS' => 'South Sector',
+    ];
+
+    /**
+     * "Per Region" — a DBM submission report, same shape as "Per Component" (see buildComponent()'s own
+     * doc comment for the shared CAPITAL OUTLAY/PROJECT RELATED/OTHER CAPITAL OUTLAY/COE structure and the
+     * Proposed Budget/Beginning Balance/New Funds/Accounts Payable columns), EXCEPT the "Project
+     * Development" row breaks down by Region (see REGION_LABELS above) instead of by New Works/Carry-over
+     * Works — every other row (Housing Support, Land Acquisition/Assembly, Other Project Related Capital
+     * Outlay, OTHER CAPITAL OUTLAY's own two rows, COE's Personnel Services/MOOE) stays a single flat
+     * total, same as "Per Component". A Region's own total is its own requests PLUS every descendant
+     * office's (its Districts, via parent_rc_id — any depth) — the same descendant-closure rollup the
+     * previous "Per Region" report used, just restricted to Project Development's own two Sub-Components
+     * now instead of the whole CAPITAL OUTLAY total.
+     *
      * @param string $fiscalYr '' = every fiscal year
      * @param string $scopeRcId the RC the caller is limited to ('' = every RC), as resolved by
      *                          GlobalService::resolveBudgetReqRcFilter() — same convention as /budget_req/all
@@ -172,18 +280,79 @@ class BudgetReqCobReportService
             $fyWhere = $fy !== null ? ' AND br.fiscal_yr = '.$fy : '';
             $scopeWhere = $scopeIds !== null ? ' AND br.rc_id IN ('.self::inList($scopeIds).')' : '';
 
-            // Every Regional office the caller may see, rc_code order — the row labels of the CAPITAL OUTLAY section.
+            // Every CAPITAL OUTLAY Sub-Component EXCEPT Project Development (that one's broken down by
+            // Region below instead) — same categorization query/logic buildComponent() uses.
+            $rows = App\ExecuteRows(
+                "SELECT ct.name AS component_name, sct.name AS sub_component_name,
+                        COALESCE(SUM(li.proposed_amount), 0) AS proposed_budget,
+                        COALESCE(SUM(li.proposed_amount) FILTER (WHERE li.source_of_fund = 'BEGINNING BALANCE'), 0) AS beginning_balance,
+                        COALESCE(SUM(li.proposed_amount) FILTER (WHERE li.source_of_fund = 'NEW FUNDS'), 0) AS new_funds,
+                        COALESCE(SUM(li.proposed_amount) FILTER (WHERE li.source_of_fund = 'ACCOUNTS PAYABLE'), 0) AS accounts_payable
+                 FROM {$this->tableLineItems} li
+                 JOIN {$this->tableBudgetReqProject} bprj ON bprj.budget_req_project_id = li.budget_req_project_id
+                 JOIN {$this->tableBudgetReqProgram} brp ON brp.budget_req_program_id = bprj.budget_req_program_id
+                 JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = brp.budget_reference_number
+                 LEFT JOIN {$this->tableComponentType} ct ON ct.component_type_id = li.component_id
+                 LEFT JOIN {$this->tableSubComponentType} sct ON sct.sub_component_type_id = li.sub_component_id
+                 WHERE li.budget_req_project_id IS NOT NULL{$this->noSuppSql()}{$fyWhere}{$scopeWhere}
+                   AND COALESCE(UPPER(sct.name), '') NOT IN ('PROJECT DEVELOPMENT - NEW WORKS', 'PROJECT DEVELOPMENT - CARRY-OVER WORKS')
+                 GROUP BY ct.name, sct.name",
+                'DB'
+            ) ?: [];
+
+            $projectRelatedOther = [
+                'Housing Support' => self::zeroComponent(),
+                'Land Acquisition/Assembly' => self::zeroComponent(),
+                'Other Project Related Capital Outlay' => self::zeroComponent(),
+                'Unclassified' => self::zeroComponent(),
+            ];
+            $otherCapitalOutlay = [
+                'NHA Building Construction and Repair' => self::zeroComponent(),
+                'Equipment Outlay' => self::zeroComponent(),
+                'Unclassified' => self::zeroComponent(),
+            ];
+            $capitalUnclassified = self::zeroComponent();
+
+            foreach ($rows as $row) {
+                $a = self::amtComponent($row);
+                $componentName = strtoupper(trim((string) ($row['component_name'] ?? '')));
+                $subComponentName = strtoupper(trim((string) ($row['sub_component_name'] ?? '')));
+
+                if ($componentName === 'CAPITAL OUTLAY') {
+                    $key = match ($subComponentName) {
+                        'HOUSING SUPPORT' => 'Housing Support',
+                        'LAND ACQUISITION/ASSEMBLY' => 'Land Acquisition/Assembly',
+                        'OTHER PROJECT RELATED CAPITAL OUTLAY' => 'Other Project Related Capital Outlay',
+                        default => 'Unclassified',
+                    };
+                    $projectRelatedOther[$key] = self::addComponent($projectRelatedOther[$key], $a);
+                } elseif ($componentName === 'OTHER-CAPITAL OUTLAY') {
+                    $key = match ($subComponentName) {
+                        'NHA BUILDING CONSTRUCTION AND REPAIR' => 'NHA Building Construction and Repair',
+                        'EQUIPMENT OUTLAY' => 'Equipment Outlay',
+                        default => 'Unclassified',
+                    };
+                    $otherCapitalOutlay[$key] = self::addComponent($otherCapitalOutlay[$key], $a);
+                } else {
+                    $capitalUnclassified = self::addComponent($capitalUnclassified, $a);
+                }
+            }
+
+            // Project Development, by Region — every Regional office the caller may see (rc_code order,
+            // same list/order the previous "Per Region" report used).
             $regionWhere = "WHERE office_type = 'Regional'".($scopeIds !== null ? ' AND rc_id IN ('.self::inList($scopeIds).')' : '');
             $regions = App\ExecuteRows(
                 "SELECT rc_id, rc_name, rc_code FROM fims.responsibility_code {$regionWhere} ORDER BY rc_code ASC NULLS LAST, rc_name ASC",
                 'DB'
             ) ?: [];
 
-            // CO line items, rolled up by the Region each requesting office belongs to: a Region's own requests
-            // PLUS every descendant office's (its Districts, via parent_rc_id — any depth), via a recursive walk
-            // DOWN from each Regional office — the same descendant-closure idea as GlobalService::getRcIdsInScope(),
-            // just for every Region at once.
-            $coRows = App\ExecuteRows(
+            // Same descendant-closure rollup the previous "Per Region" report used (a Region's own
+            // requests PLUS every descendant office's, via parent_rc_id, any depth) — restricted to
+            // Project Development's own two Sub-Components instead of the whole CAPITAL OUTLAY total.
+            // $scopeWhere is NOT applied here (same as before): the region_tree starts from every Regional
+            // office unconditionally, and scoping instead happens below, by only iterating $regions (which
+            // IS scoped).
+            $pdRows = App\ExecuteRows(
                 "WITH RECURSIVE region_tree AS (
                     SELECT rc_id AS region_id, rc_id FROM fims.responsibility_code WHERE office_type = 'Regional'
                     UNION ALL
@@ -192,47 +361,64 @@ class BudgetReqCobReportService
                     JOIN region_tree rt ON child.parent_rc_id = rt.rc_id
                  )
                  SELECT rt.region_id,
-                        COALESCE(SUM(li.proposed_amount), 0) AS proposed,
-                        COALESCE(SUM(li.adjustment), 0) AS amendment,
-                        COALESCE(SUM(li.suggested_amount), 0) AS approved,
-                        COALESCE(SUM(li.revised_amount), 0) AS amended
+                        COALESCE(SUM(li.proposed_amount), 0) AS proposed_budget,
+                        COALESCE(SUM(li.proposed_amount) FILTER (WHERE li.source_of_fund = 'BEGINNING BALANCE'), 0) AS beginning_balance,
+                        COALESCE(SUM(li.proposed_amount) FILTER (WHERE li.source_of_fund = 'NEW FUNDS'), 0) AS new_funds,
+                        COALESCE(SUM(li.proposed_amount) FILTER (WHERE li.source_of_fund = 'ACCOUNTS PAYABLE'), 0) AS accounts_payable
                  FROM region_tree rt
                  JOIN {$this->tableBudgetReq} br ON br.rc_id = rt.rc_id
                  JOIN {$this->tableLineItems} li ON li.budget_reference_number = br.budget_reference_number
+                 LEFT JOIN {$this->tableComponentType} ct ON ct.component_type_id = li.component_id
+                 LEFT JOIN {$this->tableSubComponentType} sct ON sct.sub_component_type_id = li.sub_component_id
                  WHERE li.budget_req_project_id IS NOT NULL{$this->noSuppSql()}{$fyWhere}
+                   AND UPPER(ct.name) = 'CAPITAL OUTLAY'
+                   AND UPPER(sct.name) IN ('PROJECT DEVELOPMENT - NEW WORKS', 'PROJECT DEVELOPMENT - CARRY-OVER WORKS')
                  GROUP BY rt.region_id",
                 'DB'
             ) ?: [];
-            $coByRegion = [];
-            foreach ($coRows as $row) {
-                $coByRegion[(string) $row['region_id']] = self::amt($row);
+            $pdByRegion = [];
+            foreach ($pdRows as $row) {
+                $pdByRegion[(string) $row['region_id']] = self::amtComponent($row);
             }
 
             $regionRows = [];
-            $coTotal = self::zero();
+            $projectDevelopment = self::zeroComponent();
             foreach ($regions as $rg) {
-                $a = $coByRegion[(string) $rg['rc_id']] ?? self::zero();
-                $regionRows[] = ['label' => (string) $rg['rc_name']] + $a;
-                foreach (['proposed', 'amendment', 'approved', 'amended'] as $k) {
-                    $coTotal[$k] += $a[$k];
-                }
+                $a = $pdByRegion[(string) $rg['rc_id']] ?? self::zeroComponent();
+                $label = self::REGION_LABELS[(string) $rg['rc_id']] ?? (string) $rg['rc_name'];
+                $regionRows[] = ['label' => $label] + $a;
+                $projectDevelopment = self::addComponent($projectDevelopment, $a);
             }
 
-            $coe = $this->coeBreakdown($fyWhere, $scopeWhere);
-            $grand = [
-                'proposed' => $coTotal['proposed'] + $coe['total']['proposed'],
-                'amendment' => $coTotal['amendment'] + $coe['total']['amendment'],
-                'approved' => $coTotal['approved'] + $coe['total']['approved'],
-                'amended' => $coTotal['amended'] + $coe['total']['amended'],
-            ];
+            $sumOf = function (array $rows): array {
+                $total = self::zeroComponent();
+                foreach ($rows as $row) {
+                    $total = self::addComponent($total, $row);
+                }
+
+                return $total;
+            };
+
+            $projectRelatedTotal = self::addComponent($projectDevelopment, $sumOf($projectRelatedOther));
+            $otherCapitalOutlayTotal = $sumOf($otherCapitalOutlay);
+            $capitalOutlayTotal = self::addComponent(self::addComponent($projectRelatedTotal, $otherCapitalOutlayTotal), $capitalUnclassified);
+
+            $coe = $this->coeComponentBreakdown($fyWhere, $scopeWhere);
+            $grand = self::addComponent($capitalOutlayTotal, $coe['total']);
 
             return ['success' => true, 'data' => [
                 'fiscal_yr' => $fy,
                 'generated' => date('F j, Y'),
                 'grand' => $grand,
-                'co_total' => $coTotal,
-                'coe_total' => $coe['total'],
+                'capital_outlay_total' => $capitalOutlayTotal,
+                'project_related_total' => $projectRelatedTotal,
+                'project_development' => $projectDevelopment,
                 'regions' => $regionRows,
+                'project_related_other' => $projectRelatedOther,
+                'other_capital_outlay_total' => $otherCapitalOutlayTotal,
+                'other_capital_outlay' => $otherCapitalOutlay,
+                'capital_unclassified' => $capitalUnclassified,
+                'coe_total' => $coe['total'],
                 'ps' => $coe['ps'],
                 'mooe' => $coe['mooe'],
             ]];
@@ -243,6 +429,92 @@ class BudgetReqCobReportService
         }
     }
 
+    /**
+     * Its own header/row layout — NOT xlsxCommon()/xlsxHeader() (hardcoded to the Proposed/Approved
+     * two-column shape; see xlsxComponent()'s own doc comment, which this mirrors — same four columns,
+     * in Millions). Same REGION/PROGRAM/PROJECT LOCATION label column and date row as every other mode.
+     */
+    public function xlsxRegion(array $m): string
+    {
+        $x = new XlsxWriter('Per Region');
+
+        $s = [
+            'date' => $x->style(['font' => $this->font(['bold' => true, 'color' => self::HEAD])]),
+            'th' => $x->style(['font' => $this->font(['bold' => true, 'color' => 'FFFFFF']), 'fill' => self::HEAD, 'border' => 'FFFFFF',
+                'align' => ['h' => 'center', 'v' => 'center', 'wrap' => true]]),
+            'labelHead' => $x->style(['font' => $this->font(['bold' => true]), 'border' => self::LINE, 'align' => ['h' => 'left', 'v' => 'center', 'wrap' => true]]),
+        ];
+        $totalBase = ['font' => $this->font(['bold' => true]), 'fill' => self::TOTAL_FILL, 'border' => self::LINE];
+        $s['totalLabel'] = $x->style($totalBase + ['align' => ['h' => 'left', 'v' => 'center']]);
+        $s['totalNum'] = $x->style($totalBase + ['align' => ['h' => 'right', 'v' => 'center'], 'numFmt' => self::NUM_FMT_MILLIONS]);
+        $s['labelBold'] = $x->style(['font' => $this->font(['bold' => true]), 'border' => self::LINE, 'align' => ['h' => 'left', 'v' => 'center']]);
+        $s['numBold'] = $x->style(['font' => $this->font(['bold' => true]), 'border' => self::LINE, 'align' => ['h' => 'right', 'v' => 'center'], 'numFmt' => self::NUM_FMT_MILLIONS]);
+        $sLabelLvl = [];
+        foreach ([1, 2, 3] as $lvl) {
+            $sLabelLvl[$lvl] = $x->style(['font' => $this->font(), 'border' => self::LINE, 'align' => ['h' => 'left', 'v' => 'center', 'indent' => $lvl]]);
+        }
+        $sNum = $x->style(['font' => $this->font(), 'border' => self::LINE, 'align' => ['h' => 'right', 'v' => 'center'], 'numFmt' => self::NUM_FMT_MILLIONS]);
+
+        $amountRow = function (int &$r, string $label, array $a, int $labelStyle, int $numStyle) use ($x): void {
+            $x->set($r, 0, $label, $labelStyle);
+            $x->set($r, 1, $a['proposed_budget'] / self::MILLION, $numStyle);
+            $x->set($r, 2, $a['beginning_balance'] / self::MILLION, $numStyle);
+            $x->set($r, 3, $a['new_funds'] / self::MILLION, $numStyle);
+            $x->set($r, 4, $a['accounts_payable'] / self::MILLION, $numStyle);
+            $r++;
+        };
+
+        $r = 0;
+        $x->set($r, 0, $m['fiscal_yr'] !== null ? 'FY '.$m['fiscal_yr'].'   |   '.$m['generated'] : 'All Fiscal Years   |   '.$m['generated'], $s['date']);
+        $x->set($r, 1, 'PROPOSED BUDGET (in Millions)', $s['th']);
+        $x->set($r, 2, 'BEGINNING BALANCE (in Millions)', $s['th']);
+        $x->set($r, 3, 'NEW FUNDS (in Millions)', $s['th']);
+        $x->set($r, 4, 'ACCOUNTS PAYABLE (in Millions)', $s['th']);
+        $x->rowHeight($r, 32);
+        $r++;
+
+        $x->set($r, 0, "REGION/PROGRAM/PROJECT\nLOCATION (City/Municipality)", $s['labelHead']);
+        $x->rowHeight($r, 32);
+        $r++;
+
+        $x->rowHeight($r++, 8);   // spacer rows, same as every other mode's xlsxHeader()
+        $x->rowHeight($r++, 8);
+
+        $amountRow($r, 'TOTAL', $m['grand'], $s['totalLabel'], $s['totalNum']);
+        $amountRow($r, 'CAPITAL OUTLAY', $m['capital_outlay_total'], $s['labelBold'], $s['numBold']);
+        $amountRow($r, 'PROJECT RELATED', $m['project_related_total'], $sLabelLvl[1], $sNum);
+        $amountRow($r, 'Project Development', $m['project_development'], $sLabelLvl[2], $sNum);
+        foreach ($m['regions'] as $rg) {
+            $amountRow($r, $rg['label'], $rg, $sLabelLvl[3], $sNum);
+        }
+        $amountRow($r, 'Housing Support', $m['project_related_other']['Housing Support'], $sLabelLvl[2], $sNum);
+        $amountRow($r, 'Land Acquisition/Assembly', $m['project_related_other']['Land Acquisition/Assembly'], $sLabelLvl[2], $sNum);
+        $amountRow($r, 'Other Project Related Capital Outlay', $m['project_related_other']['Other Project Related Capital Outlay'], $sLabelLvl[2], $sNum);
+        if (abs($m['project_related_other']['Unclassified']['proposed_budget']) >= 0.005) {
+            $amountRow($r, 'Unclassified', $m['project_related_other']['Unclassified'], $sLabelLvl[2], $sNum);
+        }
+        $amountRow($r, 'OTHER CAPITAL OUTLAY', $m['other_capital_outlay_total'], $sLabelLvl[1], $sNum);
+        $amountRow($r, 'NHA Building Construction and Repair', $m['other_capital_outlay']['NHA Building Construction and Repair'], $sLabelLvl[2], $sNum);
+        $amountRow($r, 'Equipment Outlay', $m['other_capital_outlay']['Equipment Outlay'], $sLabelLvl[2], $sNum);
+        if (abs($m['other_capital_outlay']['Unclassified']['proposed_budget']) >= 0.005) {
+            $amountRow($r, 'Unclassified', $m['other_capital_outlay']['Unclassified'], $sLabelLvl[2], $sNum);
+        }
+        if (abs($m['capital_unclassified']['proposed_budget']) >= 0.005) {
+            $amountRow($r, 'Unclassified', $m['capital_unclassified'], $sLabelLvl[1], $sNum);
+        }
+        $amountRow($r, 'COE', $m['coe_total'], $s['labelBold'], $s['numBold']);
+        $amountRow($r, 'Personnel Services', $m['ps'], $sLabelLvl[1], $sNum);
+        $amountRow($r, 'MOOE', $m['mooe'], $sLabelLvl[1], $sNum);
+
+        $x->colWidth(0, 48);
+        $x->colWidth(1, 20);
+        $x->colWidth(2, 20);
+        $x->colWidth(3, 20);
+        $x->colWidth(4, 20);
+
+        return $x->render();
+    }
+
     /** The one "Print COB" entry point every report mode goes through — see MODES below. */
     private const MODES = [
         'region' => ['label' => 'Per Region', 'build' => 'buildRegion', 'xlsx' => 'xlsxRegion', 'html' => 'htmlRegion'],
@@ -250,16 +522,26 @@ class BudgetReqCobReportService
         // buildProgram()/xlsxProgram()/htmlProgram() as-is (these predate the Project/Program split and were
         // originally labelled "Per Program" — the method names stayed, only this mode key/label changed).
         'project' => ['label' => 'Project', 'build' => 'buildProgram', 'xlsx' => 'xlsxProgram', 'html' => 'htmlProgram'],
-        // 'Program' — one rolled-up total row per Program, no Sub-Program/Project drill-down.
+        // 'Program' — a DBM submission report, same shape as 'component'/'region' (see buildComponent()'s
+        // own doc comment), except "Project Development" breaks down by the full Program -> Sub-Program ->
+        // Project tree instead of New Works/Carry-over Works or Region — see buildProgramSummary()'s own
+        // doc comment. Reached from the picker's "Program" card's step 2, as "Program Level" ("Project
+        // Level" — mode 'project' above — is untouched, still the old Proposed/Amendment/Approved/Amended
+        // shape).
         'program' => ['label' => 'Program', 'build' => 'buildProgramSummary', 'xlsx' => 'xlsxProgramSummary', 'html' => 'htmlProgramSummary'],
         // 'Detailed' — one level deeper than 'project': each Project's own chart-of-accounts line items, and
         // the CORPORATE OPERATING EXPENDITURE section itemized (PS/MOOE/Other groups of line items) instead of
         // just their subtotal.
         'detailed' => ['label' => 'Detailed', 'build' => 'buildDetailed', 'xlsx' => 'xlsxDetailed', 'html' => 'htmlDetailed'],
+        // 'Per Component' — a different shape entirely from the four above: CO lines broken down by their
+        // own stored Component/Sub-Component instead of Region/Program, and Proposed Budget/Beginning
+        // Balance/New Funds/Accounts Payable instead of Proposed/Amendment/Approved/Amended — see
+        // buildComponent()'s own doc comment.
+        'component' => ['label' => 'Per Component', 'build' => 'buildComponent', 'xlsx' => 'xlsxComponent', 'html' => 'htmlComponent'],
     ];
 
     /**
-     * @param string $mode   one of self::MODES ('region', 'project', 'program', 'detailed')
+     * @param string $mode   one of self::MODES ('region', 'project', 'program', 'detailed', 'component')
      * @param string $format 'xlsx' (default — "Export to Excel") or 'pdf' ("Preview and Print": rendered via
      *                       GlobalService::renderPdf(), same model/rows as the xlsx — see htmlRegion()/htmlProgram())
      *
@@ -299,37 +581,6 @@ class BudgetReqCobReportService
 
             return ['success' => false, 'httpCode' => 500, 'message' => 'The '.$cfg['label'].' report could not be generated.'];
         }
-    }
-
-    /**
-     * The workbook: date + the three amount headers, the Region/Program/Project label, a couple of spacer rows, TOTAL,
-     * CAPITAL OUTLAY (+ one row per Region), CORPORATE OPERATING EXPENDITURE (+ Personnel Services / MOOE). A zero cell
-     * shows as "-", a negative in brackets — Excel's own number format, not a PHP-formatted string, so the cell still
-     * keeps its full value.
-     */
-    public function xlsxRegion(array $m): string
-    {
-        $x = new XlsxWriter('Per Region');
-        [$s, $amountRow] = $this->xlsxCommon($x);
-
-        $s['label'] = $x->style(['font' => $this->font(), 'border' => self::LINE, 'align' => ['h' => 'left', 'v' => 'center', 'indent' => 1]]);
-        $s['labelChild'] = $x->style(['font' => $this->font(), 'border' => self::LINE, 'align' => ['h' => 'left', 'v' => 'center', 'indent' => 2]]);
-        $s['num'] = $x->style(['font' => $this->font(), 'border' => self::LINE, 'align' => ['h' => 'right', 'v' => 'center'], 'numFmt' => self::NUM_FMT]);
-
-        $r = $this->xlsxHeader($x, $m, $s);
-
-        $amountRow($r, 'TOTAL', $m['grand'], $s['totalLabel'], $s['totalNum']);
-        $amountRow($r, 'CAPITAL OUTLAY', $m['co_total'], $s['labelBold'], $s['numBold']);
-        foreach ($m['regions'] as $rg) {
-            $amountRow($r, $rg['label'], $rg, $s['label'], $s['num']);
-        }
-        $amountRow($r, 'CORPORATE OPERATING EXPENDITURE', $m['coe_total'], $s['labelBold'], $s['numBold']);
-        $amountRow($r, 'Personnel Services', $m['ps'], $s['labelChild'], $s['num']);
-        $amountRow($r, 'MOOE', $m['mooe'], $s['labelChild'], $s['num']);
-
-        $this->xlsxColWidths($x, 48);
-
-        return $x->render();
     }
 
     // -------------------------------------------------------------------------
@@ -481,13 +732,19 @@ class BudgetReqCobReportService
     }
 
     // -------------------------------------------------------------------------
-    // Program (program-level totals only) — model
+    // Program (DBM submission report) — model
     // -------------------------------------------------------------------------
 
     /**
-     * Same CAPITAL OUTLAY / CORPORATE OPERATING EXPENDITURE split as buildRegion()/buildProgram(), but the
-     * CAPITAL OUTLAY section rolls each Program up to a single total row — no Sub-Program/Project drill-down
-     * (that's 'project' mode, buildProgram() above, reused as-is under its own mode key).
+     * "Per Program" — same shape as buildRegion()/buildComponent() (CAPITAL OUTLAY = PROJECT RELATED +
+     * OTHER CAPITAL OUTLAY, COE separate, Proposed Budget/Beginning Balance/New Funds/Accounts Payable
+     * columns in Millions), EXCEPT the "Project Development" row breaks down by the EXISTING Program ->
+     * Sub-Program -> Project hierarchy (fims.program/fims.sub_program/fims.project — the SAME tree
+     * buildProgram()/'project' mode already shows) instead of by New Works/Carry-over Works or Region.
+     * Every other row (Housing Support, Land Acquisition/Assembly, Other Project Related Capital Outlay,
+     * OTHER CAPITAL OUTLAY's own two rows, COE's Personnel Services/MOOE) stays a single flat total, same
+     * as buildComponent()/buildRegion(). Dynamic — whatever Programs/Sub-Programs/Projects actually have
+     * budget data show up; none are hardcoded.
      *
      * @param string $fiscalYr '' = every fiscal year
      * @param string $scopeRcId the RC the caller is limited to ('' = every RC) — same convention as buildRegion()
@@ -503,49 +760,156 @@ class BudgetReqCobReportService
             $fyWhere = $fy !== null ? ' AND br.fiscal_yr = '.$fy : '';
             $scopeWhere = $scopeIds !== null ? ' AND br.rc_id IN ('.self::inList($scopeIds).')' : '';
 
+            // Every CAPITAL OUTLAY Sub-Component EXCEPT Project Development (that one's broken down by
+            // Program -> Sub-Program -> Project below instead) — same categorization query/logic
+            // buildComponent()/buildRegion() use.
             $rows = App\ExecuteRows(
+                "SELECT ct.name AS component_name, sct.name AS sub_component_name,
+                        COALESCE(SUM(li.proposed_amount), 0) AS proposed_budget,
+                        COALESCE(SUM(li.proposed_amount) FILTER (WHERE li.source_of_fund = 'BEGINNING BALANCE'), 0) AS beginning_balance,
+                        COALESCE(SUM(li.proposed_amount) FILTER (WHERE li.source_of_fund = 'NEW FUNDS'), 0) AS new_funds,
+                        COALESCE(SUM(li.proposed_amount) FILTER (WHERE li.source_of_fund = 'ACCOUNTS PAYABLE'), 0) AS accounts_payable
+                 FROM {$this->tableLineItems} li
+                 JOIN {$this->tableBudgetReqProject} bprj ON bprj.budget_req_project_id = li.budget_req_project_id
+                 JOIN {$this->tableBudgetReqProgram} brp ON brp.budget_req_program_id = bprj.budget_req_program_id
+                 JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = brp.budget_reference_number
+                 LEFT JOIN {$this->tableComponentType} ct ON ct.component_type_id = li.component_id
+                 LEFT JOIN {$this->tableSubComponentType} sct ON sct.sub_component_type_id = li.sub_component_id
+                 WHERE li.budget_req_project_id IS NOT NULL{$this->noSuppSql()}{$fyWhere}{$scopeWhere}
+                   AND COALESCE(UPPER(sct.name), '') NOT IN ('PROJECT DEVELOPMENT - NEW WORKS', 'PROJECT DEVELOPMENT - CARRY-OVER WORKS')
+                 GROUP BY ct.name, sct.name",
+                'DB'
+            ) ?: [];
+
+            $projectRelatedOther = [
+                'Housing Support' => self::zeroComponent(),
+                'Land Acquisition/Assembly' => self::zeroComponent(),
+                'Other Project Related Capital Outlay' => self::zeroComponent(),
+                'Unclassified' => self::zeroComponent(),
+            ];
+            $otherCapitalOutlay = [
+                'NHA Building Construction and Repair' => self::zeroComponent(),
+                'Equipment Outlay' => self::zeroComponent(),
+                'Unclassified' => self::zeroComponent(),
+            ];
+            $capitalUnclassified = self::zeroComponent();
+
+            foreach ($rows as $row) {
+                $a = self::amtComponent($row);
+                $componentName = strtoupper(trim((string) ($row['component_name'] ?? '')));
+                $subComponentName = strtoupper(trim((string) ($row['sub_component_name'] ?? '')));
+
+                if ($componentName === 'CAPITAL OUTLAY') {
+                    $key = match ($subComponentName) {
+                        'HOUSING SUPPORT' => 'Housing Support',
+                        'LAND ACQUISITION/ASSEMBLY' => 'Land Acquisition/Assembly',
+                        'OTHER PROJECT RELATED CAPITAL OUTLAY' => 'Other Project Related Capital Outlay',
+                        default => 'Unclassified',
+                    };
+                    $projectRelatedOther[$key] = self::addComponent($projectRelatedOther[$key], $a);
+                } elseif ($componentName === 'OTHER-CAPITAL OUTLAY') {
+                    $key = match ($subComponentName) {
+                        'NHA BUILDING CONSTRUCTION AND REPAIR' => 'NHA Building Construction and Repair',
+                        'EQUIPMENT OUTLAY' => 'Equipment Outlay',
+                        default => 'Unclassified',
+                    };
+                    $otherCapitalOutlay[$key] = self::addComponent($otherCapitalOutlay[$key], $a);
+                } else {
+                    $capitalUnclassified = self::addComponent($capitalUnclassified, $a);
+                }
+            }
+
+            // Project Development, by Program -> Sub-Program -> Project — same nested-tree-building idea
+            // as buildProgram() ('project' mode), just this report's own four columns and restricted to
+            // Project Development's own two Sub-Components.
+            $pdRows = App\ExecuteRows(
                 "SELECT brp.program_code, pg.program_name,
-                        COALESCE(SUM(li.proposed_amount), 0) AS proposed,
-                        COALESCE(SUM(li.adjustment), 0) AS amendment,
-                        COALESCE(SUM(li.suggested_amount), 0) AS approved,
-                        COALESCE(SUM(li.revised_amount), 0) AS amended
+                        brp.sub_program_code, sp.sub_program_name,
+                        bprj.project_code, pj.project_name,
+                        COALESCE(SUM(li.proposed_amount), 0) AS proposed_budget,
+                        COALESCE(SUM(li.proposed_amount) FILTER (WHERE li.source_of_fund = 'BEGINNING BALANCE'), 0) AS beginning_balance,
+                        COALESCE(SUM(li.proposed_amount) FILTER (WHERE li.source_of_fund = 'NEW FUNDS'), 0) AS new_funds,
+                        COALESCE(SUM(li.proposed_amount) FILTER (WHERE li.source_of_fund = 'ACCOUNTS PAYABLE'), 0) AS accounts_payable
                  FROM {$this->tableLineItems} li
                  JOIN {$this->tableBudgetReqProject} bprj ON bprj.budget_req_project_id = li.budget_req_project_id
                  JOIN {$this->tableBudgetReqProgram} brp ON brp.budget_req_program_id = bprj.budget_req_program_id
                  JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = brp.budget_reference_number
                  LEFT JOIN {$this->tableProgram} pg ON pg.program_code = brp.program_code
+                 LEFT JOIN {$this->tableSubProgram} sp ON sp.sub_program_code = brp.sub_program_code
+                 LEFT JOIN {$this->tableProject} pj ON pj.project_code = bprj.project_code
+                 LEFT JOIN {$this->tableComponentType} ct ON ct.component_type_id = li.component_id
+                 LEFT JOIN {$this->tableSubComponentType} sct ON sct.sub_component_type_id = li.sub_component_id
                  WHERE li.budget_req_project_id IS NOT NULL{$this->noSuppSql()}{$fyWhere}{$scopeWhere}
-                 GROUP BY brp.program_code, pg.program_name
-                 ORDER BY brp.program_code ASC NULLS LAST",
+                   AND UPPER(ct.name) = 'CAPITAL OUTLAY'
+                   AND UPPER(sct.name) IN ('PROJECT DEVELOPMENT - NEW WORKS', 'PROJECT DEVELOPMENT - CARRY-OVER WORKS')
+                 GROUP BY brp.program_code, pg.program_name, brp.sub_program_code, sp.sub_program_name, bprj.project_code, pj.project_name
+                 ORDER BY brp.program_code ASC NULLS LAST, brp.sub_program_code ASC NULLS LAST, bprj.project_code ASC NULLS LAST",
                 'DB'
             ) ?: [];
 
-            $programRows = [];
-            $coTotal = self::zero();
-            foreach ($rows as $row) {
+            $programs = [];
+            foreach ($pdRows as $row) {
                 $progCode = (string) ($row['program_code'] ?? '');
-                $a = self::amt($row);
-                $programRows[] = ['label' => (string) ($row['program_name'] ?: ($progCode !== '' ? $progCode : 'No Program'))] + $a;
-                foreach (['proposed', 'amendment', 'approved', 'amended'] as $k) {
-                    $coTotal[$k] += $a[$k];
+                $subCode = (string) ($row['sub_program_code'] ?? '');
+                $a = self::amtComponent($row);
+
+                if (!isset($programs[$progCode])) {
+                    $programs[$progCode] = [
+                        'label' => (string) ($row['program_name'] ?: ($progCode !== '' ? $progCode : 'No Program')),
+                    ] + self::zeroComponent() + ['subPrograms' => []];
+                }
+                if (!isset($programs[$progCode]['subPrograms'][$subCode])) {
+                    $programs[$progCode]['subPrograms'][$subCode] = [
+                        'label' => (string) ($row['sub_program_name'] ?: ($subCode !== '' ? $subCode : 'No Sub-Program')),
+                    ] + self::zeroComponent() + ['projects' => []];
+                }
+                $programs[$progCode]['subPrograms'][$subCode]['projects'][] = [
+                    'label' => (string) ($row['project_name'] ?: ((string) ($row['project_code'] ?? '') !== '' ? $row['project_code'] : 'Untitled Project')),
+                ] + $a;
+
+                foreach (['proposed_budget', 'beginning_balance', 'new_funds', 'accounts_payable'] as $k) {
+                    $programs[$progCode][$k] += $a[$k];
+                    $programs[$progCode]['subPrograms'][$subCode][$k] += $a[$k];
                 }
             }
 
-            $coe = $this->coeBreakdown($fyWhere, $scopeWhere);
-            $grand = [
-                'proposed' => $coTotal['proposed'] + $coe['total']['proposed'],
-                'amendment' => $coTotal['amendment'] + $coe['total']['amendment'],
-                'approved' => $coTotal['approved'] + $coe['total']['approved'],
-                'amended' => $coTotal['amended'] + $coe['total']['amended'],
-            ];
+            $programRows = [];
+            $projectDevelopment = self::zeroComponent();
+            foreach ($programs as $p) {
+                $p['subPrograms'] = array_values($p['subPrograms']);
+                $programRows[] = $p;
+                $projectDevelopment = self::addComponent($projectDevelopment, $p);
+            }
+
+            $sumOf = function (array $rows): array {
+                $total = self::zeroComponent();
+                foreach ($rows as $row) {
+                    $total = self::addComponent($total, $row);
+                }
+
+                return $total;
+            };
+
+            $projectRelatedTotal = self::addComponent($projectDevelopment, $sumOf($projectRelatedOther));
+            $otherCapitalOutlayTotal = $sumOf($otherCapitalOutlay);
+            $capitalOutlayTotal = self::addComponent(self::addComponent($projectRelatedTotal, $otherCapitalOutlayTotal), $capitalUnclassified);
+
+            $coe = $this->coeComponentBreakdown($fyWhere, $scopeWhere);
+            $grand = self::addComponent($capitalOutlayTotal, $coe['total']);
 
             return ['success' => true, 'data' => [
                 'fiscal_yr' => $fy,
                 'generated' => date('F j, Y'),
                 'grand' => $grand,
-                'co_total' => $coTotal,
-                'coe_total' => $coe['total'],
+                'capital_outlay_total' => $capitalOutlayTotal,
+                'project_related_total' => $projectRelatedTotal,
+                'project_development' => $projectDevelopment,
                 'programs' => $programRows,
+                'project_related_other' => $projectRelatedOther,
+                'other_capital_outlay_total' => $otherCapitalOutlayTotal,
+                'other_capital_outlay' => $otherCapitalOutlay,
+                'capital_unclassified' => $capitalUnclassified,
+                'coe_total' => $coe['total'],
                 'ps' => $coe['ps'],
                 'mooe' => $coe['mooe'],
             ]];
@@ -556,28 +920,95 @@ class BudgetReqCobReportService
         }
     }
 
-    /** Same shape as xlsxRegion() — one row per Program instead of per Region. */
+    /**
+     * Its own header/row layout — same reasoning as xlsxComponent()/xlsxRegion() (this report's own four
+     * columns, in Millions, not xlsxCommon()/xlsxHeader()'s Proposed/Approved shape). "Project Development"
+     * nests one level deeper than xlsxRegion() (Program -> Sub-Program -> Project, 3 levels, vs. a flat
+     * Region list), so this uses indent levels 1-5 instead of 1-3.
+     */
     public function xlsxProgramSummary(array $m): string
     {
         $x = new XlsxWriter('Program');
-        [$s, $amountRow] = $this->xlsxCommon($x);
 
-        $s['label'] = $x->style(['font' => $this->font(), 'border' => self::LINE, 'align' => ['h' => 'left', 'v' => 'center', 'indent' => 1]]);
-        $s['labelChild'] = $x->style(['font' => $this->font(), 'border' => self::LINE, 'align' => ['h' => 'left', 'v' => 'center', 'indent' => 2]]);
-        $s['num'] = $x->style(['font' => $this->font(), 'border' => self::LINE, 'align' => ['h' => 'right', 'v' => 'center'], 'numFmt' => self::NUM_FMT]);
+        $s = [
+            'date' => $x->style(['font' => $this->font(['bold' => true, 'color' => self::HEAD])]),
+            'th' => $x->style(['font' => $this->font(['bold' => true, 'color' => 'FFFFFF']), 'fill' => self::HEAD, 'border' => 'FFFFFF',
+                'align' => ['h' => 'center', 'v' => 'center', 'wrap' => true]]),
+            'labelHead' => $x->style(['font' => $this->font(['bold' => true]), 'border' => self::LINE, 'align' => ['h' => 'left', 'v' => 'center', 'wrap' => true]]),
+        ];
+        $totalBase = ['font' => $this->font(['bold' => true]), 'fill' => self::TOTAL_FILL, 'border' => self::LINE];
+        $s['totalLabel'] = $x->style($totalBase + ['align' => ['h' => 'left', 'v' => 'center']]);
+        $s['totalNum'] = $x->style($totalBase + ['align' => ['h' => 'right', 'v' => 'center'], 'numFmt' => self::NUM_FMT_MILLIONS]);
+        $s['labelBold'] = $x->style(['font' => $this->font(['bold' => true]), 'border' => self::LINE, 'align' => ['h' => 'left', 'v' => 'center']]);
+        $s['numBold'] = $x->style(['font' => $this->font(['bold' => true]), 'border' => self::LINE, 'align' => ['h' => 'right', 'v' => 'center'], 'numFmt' => self::NUM_FMT_MILLIONS]);
+        $sLabelLvl = [];
+        foreach ([1, 2, 3, 4, 5] as $lvl) {
+            $sLabelLvl[$lvl] = $x->style(['font' => $this->font(), 'border' => self::LINE, 'align' => ['h' => 'left', 'v' => 'center', 'indent' => $lvl]]);
+        }
+        $sNum = $x->style(['font' => $this->font(), 'border' => self::LINE, 'align' => ['h' => 'right', 'v' => 'center'], 'numFmt' => self::NUM_FMT_MILLIONS]);
 
-        $r = $this->xlsxHeader($x, $m, $s);
+        $amountRow = function (int &$r, string $label, array $a, int $labelStyle, int $numStyle) use ($x): void {
+            $x->set($r, 0, $label, $labelStyle);
+            $x->set($r, 1, $a['proposed_budget'] / self::MILLION, $numStyle);
+            $x->set($r, 2, $a['beginning_balance'] / self::MILLION, $numStyle);
+            $x->set($r, 3, $a['new_funds'] / self::MILLION, $numStyle);
+            $x->set($r, 4, $a['accounts_payable'] / self::MILLION, $numStyle);
+            $r++;
+        };
+
+        $r = 0;
+        $x->set($r, 0, $m['fiscal_yr'] !== null ? 'FY '.$m['fiscal_yr'].'   |   '.$m['generated'] : 'All Fiscal Years   |   '.$m['generated'], $s['date']);
+        $x->set($r, 1, 'PROPOSED BUDGET (in Millions)', $s['th']);
+        $x->set($r, 2, 'BEGINNING BALANCE (in Millions)', $s['th']);
+        $x->set($r, 3, 'NEW FUNDS (in Millions)', $s['th']);
+        $x->set($r, 4, 'ACCOUNTS PAYABLE (in Millions)', $s['th']);
+        $x->rowHeight($r, 32);
+        $r++;
+
+        $x->set($r, 0, "REGION/PROGRAM/PROJECT\nLOCATION (City/Municipality)", $s['labelHead']);
+        $x->rowHeight($r, 32);
+        $r++;
+
+        $x->rowHeight($r++, 8);   // spacer rows, same as every other mode's xlsxHeader()
+        $x->rowHeight($r++, 8);
 
         $amountRow($r, 'TOTAL', $m['grand'], $s['totalLabel'], $s['totalNum']);
-        $amountRow($r, 'CAPITAL OUTLAY', $m['co_total'], $s['labelBold'], $s['numBold']);
+        $amountRow($r, 'CAPITAL OUTLAY', $m['capital_outlay_total'], $s['labelBold'], $s['numBold']);
+        $amountRow($r, 'PROJECT RELATED', $m['project_related_total'], $sLabelLvl[1], $sNum);
+        $amountRow($r, 'Project Development', $m['project_development'], $sLabelLvl[2], $sNum);
         foreach ($m['programs'] as $prog) {
-            $amountRow($r, $prog['label'], $prog, $s['label'], $s['num']);
+            $amountRow($r, $prog['label'], $prog, $sLabelLvl[3], $sNum);
+            foreach ($prog['subPrograms'] as $sub) {
+                $amountRow($r, $sub['label'], $sub, $sLabelLvl[4], $sNum);
+                foreach ($sub['projects'] as $proj) {
+                    $amountRow($r, $proj['label'], $proj, $sLabelLvl[5], $sNum);
+                }
+            }
         }
-        $amountRow($r, 'CORPORATE OPERATING EXPENDITURE', $m['coe_total'], $s['labelBold'], $s['numBold']);
-        $amountRow($r, 'Personnel Services', $m['ps'], $s['labelChild'], $s['num']);
-        $amountRow($r, 'MOOE', $m['mooe'], $s['labelChild'], $s['num']);
+        $amountRow($r, 'Housing Support', $m['project_related_other']['Housing Support'], $sLabelLvl[2], $sNum);
+        $amountRow($r, 'Land Acquisition/Assembly', $m['project_related_other']['Land Acquisition/Assembly'], $sLabelLvl[2], $sNum);
+        $amountRow($r, 'Other Project Related Capital Outlay', $m['project_related_other']['Other Project Related Capital Outlay'], $sLabelLvl[2], $sNum);
+        if (abs($m['project_related_other']['Unclassified']['proposed_budget']) >= 0.005) {
+            $amountRow($r, 'Unclassified', $m['project_related_other']['Unclassified'], $sLabelLvl[2], $sNum);
+        }
+        $amountRow($r, 'OTHER CAPITAL OUTLAY', $m['other_capital_outlay_total'], $sLabelLvl[1], $sNum);
+        $amountRow($r, 'NHA Building Construction and Repair', $m['other_capital_outlay']['NHA Building Construction and Repair'], $sLabelLvl[2], $sNum);
+        $amountRow($r, 'Equipment Outlay', $m['other_capital_outlay']['Equipment Outlay'], $sLabelLvl[2], $sNum);
+        if (abs($m['other_capital_outlay']['Unclassified']['proposed_budget']) >= 0.005) {
+            $amountRow($r, 'Unclassified', $m['other_capital_outlay']['Unclassified'], $sLabelLvl[2], $sNum);
+        }
+        if (abs($m['capital_unclassified']['proposed_budget']) >= 0.005) {
+            $amountRow($r, 'Unclassified', $m['capital_unclassified'], $sLabelLvl[1], $sNum);
+        }
+        $amountRow($r, 'COE', $m['coe_total'], $s['labelBold'], $s['numBold']);
+        $amountRow($r, 'Personnel Services', $m['ps'], $sLabelLvl[1], $sNum);
+        $amountRow($r, 'MOOE', $m['mooe'], $sLabelLvl[1], $sNum);
 
-        $this->xlsxColWidths($x, 48);
+        $x->colWidth(0, 60);
+        $x->colWidth(1, 20);
+        $x->colWidth(2, 20);
+        $x->colWidth(3, 20);
+        $x->colWidth(4, 20);
 
         return $x->render();
     }
@@ -790,6 +1221,251 @@ class BudgetReqCobReportService
     }
 
     // -------------------------------------------------------------------------
+    // Per Component — model
+    // -------------------------------------------------------------------------
+
+    /**
+     * "Per Component" — a different shape from every mode above: CO lines (li.budget_req_project_id IS
+     * NOT NULL) broken down by their own STORED Component/Sub-Component (li.component_id/sub_component_id
+     * — real FKs set on the Budget Request form's regular CO flow, see form/budget-req-form.php's
+     * Component/Sub-Component selects — not re-derived from an account-code prefix the way COE's PS/MOOE
+     * split is), further split by Source of Fund (li.source_of_fund — a fixed list, see
+     * BudgetLineItemService::SOURCE_OF_FUND_OPTIONS) instead of the Proposed/Amendment/Approved/Amended
+     * columns every other mode here shows. One aggregate total across whatever (fiscal year, RC scope) is
+     * in effect — no per-region breakdown (same convention as buildProgramSummary(), just no region axis
+     * at all).
+     *
+     * Row tree (labels exactly as shown — see xlsxComponent()/htmlComponent()):
+     *   TOTAL                                        = CAPITAL OUTLAY + COE
+     *     CAPITAL OUTLAY                              every CO line
+     *       PROJECT RELATED                           component_type.name = 'CAPITAL OUTLAY'
+     *         Project Development                     synthetic subtotal — the next two rows
+     *           New Works                             sub_component_type.name = 'PROJECT DEVELOPMENT - NEW WORKS'
+     *           Carry-over Works                      'PROJECT DEVELOPMENT - CARRY-OVER WORKS'
+     *         Housing Support                         'HOUSING SUPPORT'
+     *         Land Acquisition/Assembly                'LAND ACQUISITION/ASSEMBLY'
+     *         Other Project Related Capital Outlay     'OTHER PROJECT RELATED CAPITAL OUTLAY'
+     *         Unclassified                             anything else under this Component — hidden if zero
+     *       OTHER CAPITAL OUTLAY                      component_type.name = 'OTHER-CAPITAL OUTLAY'
+     *         NHA Building Construction and Repair     'NHA BUILDING CONSTRUCTION AND REPAIR'
+     *         Equipment Outlay                         'EQUIPMENT OUTLAY'
+     *         Unclassified                             hidden if zero
+     *       Unclassified                               no Component picked (a line saved before this field
+     *                                                   existed) or a name this split doesn't recognize —
+     *                                                   hidden if zero; keeps TOTAL reconciling regardless
+     *     COE                                         li.budget_req_project_id IS NULL (same headless rule
+     *                                                   every other mode here uses)
+     *       Personnel Services / MOOE                 same account-code-prefix split as coeBreakdown() —
+     *                                                   see coeComponentBreakdown()'s own doc comment for
+     *                                                   why their Beginning Balance/New Funds/Accounts
+     *                                                   Payable always show 0 for now
+     *
+     * Displayed in MILLIONS, 3 decimals (self::NUM_FMT_MILLIONS/self::MILLION) — unlike every other mode
+     * here, which shows full pesos at 2 decimals. The model below stays in full pesos regardless (so the
+     * numbers add up exactly); xlsxComponent()/htmlComponent() divide by self::MILLION only at render time.
+     *
+     * @param string $fiscalYr '' = every fiscal year
+     * @param string $scopeRcId the RC the caller is limited to ('' = every RC) — same convention as buildRegion()
+     *
+     * @return array{success: bool, data?: array, httpCode?: int, message?: string}
+     */
+    public function buildComponent(string $fiscalYr = '', string $scopeRcId = ''): array
+    {
+        try {
+            $fy = trim($fiscalYr) !== '' ? (int) $fiscalYr : null;
+            $scopeIds = trim($scopeRcId) !== '' ? (GlobalService::getRcIdsInScope($scopeRcId) ?: [$scopeRcId]) : null;
+
+            $fyWhere = $fy !== null ? ' AND br.fiscal_yr = '.$fy : '';
+            $scopeWhere = $scopeIds !== null ? ' AND br.rc_id IN ('.self::inList($scopeIds).')' : '';
+
+            $rows = App\ExecuteRows(
+                "SELECT ct.name AS component_name, sct.name AS sub_component_name,
+                        COALESCE(SUM(li.proposed_amount), 0) AS proposed_budget,
+                        COALESCE(SUM(li.proposed_amount) FILTER (WHERE li.source_of_fund = 'BEGINNING BALANCE'), 0) AS beginning_balance,
+                        COALESCE(SUM(li.proposed_amount) FILTER (WHERE li.source_of_fund = 'NEW FUNDS'), 0) AS new_funds,
+                        COALESCE(SUM(li.proposed_amount) FILTER (WHERE li.source_of_fund = 'ACCOUNTS PAYABLE'), 0) AS accounts_payable
+                 FROM {$this->tableLineItems} li
+                 JOIN {$this->tableBudgetReqProject} bprj ON bprj.budget_req_project_id = li.budget_req_project_id
+                 JOIN {$this->tableBudgetReqProgram} brp ON brp.budget_req_program_id = bprj.budget_req_program_id
+                 JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = brp.budget_reference_number
+                 LEFT JOIN {$this->tableComponentType} ct ON ct.component_type_id = li.component_id
+                 LEFT JOIN {$this->tableSubComponentType} sct ON sct.sub_component_type_id = li.sub_component_id
+                 WHERE li.budget_req_project_id IS NOT NULL{$this->noSuppSql()}{$fyWhere}{$scopeWhere}
+                 GROUP BY ct.name, sct.name",
+                'DB'
+            ) ?: [];
+
+            $projectRelated = [
+                'New Works' => self::zeroComponent(),
+                'Carry-over Works' => self::zeroComponent(),
+                'Housing Support' => self::zeroComponent(),
+                'Land Acquisition/Assembly' => self::zeroComponent(),
+                'Other Project Related Capital Outlay' => self::zeroComponent(),
+                'Unclassified' => self::zeroComponent(),
+            ];
+            $otherCapitalOutlay = [
+                'NHA Building Construction and Repair' => self::zeroComponent(),
+                'Equipment Outlay' => self::zeroComponent(),
+                'Unclassified' => self::zeroComponent(),
+            ];
+            $capitalUnclassified = self::zeroComponent();
+
+            foreach ($rows as $row) {
+                $a = self::amtComponent($row);
+                $componentName = strtoupper(trim((string) ($row['component_name'] ?? '')));
+                $subComponentName = strtoupper(trim((string) ($row['sub_component_name'] ?? '')));
+
+                if ($componentName === 'CAPITAL OUTLAY') {
+                    $key = match ($subComponentName) {
+                        'PROJECT DEVELOPMENT - NEW WORKS' => 'New Works',
+                        'PROJECT DEVELOPMENT - CARRY-OVER WORKS' => 'Carry-over Works',
+                        'HOUSING SUPPORT' => 'Housing Support',
+                        'LAND ACQUISITION/ASSEMBLY' => 'Land Acquisition/Assembly',
+                        'OTHER PROJECT RELATED CAPITAL OUTLAY' => 'Other Project Related Capital Outlay',
+                        default => 'Unclassified',
+                    };
+                    $projectRelated[$key] = self::addComponent($projectRelated[$key], $a);
+                } elseif ($componentName === 'OTHER-CAPITAL OUTLAY') {
+                    $key = match ($subComponentName) {
+                        'NHA BUILDING CONSTRUCTION AND REPAIR' => 'NHA Building Construction and Repair',
+                        'EQUIPMENT OUTLAY' => 'Equipment Outlay',
+                        default => 'Unclassified',
+                    };
+                    $otherCapitalOutlay[$key] = self::addComponent($otherCapitalOutlay[$key], $a);
+                } else {
+                    // No Component picked (a line saved before this field existed) or a name this split
+                    // doesn't recognize — still counted toward the grand total, just under its own
+                    // catch-all so nothing silently vanishes from TOTAL.
+                    $capitalUnclassified = self::addComponent($capitalUnclassified, $a);
+                }
+            }
+
+            $sumOf = function (array $rows): array {
+                $total = self::zeroComponent();
+                foreach ($rows as $row) {
+                    $total = self::addComponent($total, $row);
+                }
+
+                return $total;
+            };
+
+            $projectDevelopment = self::addComponent($projectRelated['New Works'], $projectRelated['Carry-over Works']);
+            $projectRelatedTotal = $sumOf($projectRelated);
+            $otherCapitalOutlayTotal = $sumOf($otherCapitalOutlay);
+            $capitalOutlayTotal = self::addComponent(self::addComponent($projectRelatedTotal, $otherCapitalOutlayTotal), $capitalUnclassified);
+
+            $coe = $this->coeComponentBreakdown($fyWhere, $scopeWhere);
+            $grand = self::addComponent($capitalOutlayTotal, $coe['total']);
+
+            return ['success' => true, 'data' => [
+                'fiscal_yr' => $fy,
+                'generated' => date('F j, Y'),
+                'grand' => $grand,
+                'capital_outlay_total' => $capitalOutlayTotal,
+                'project_related_total' => $projectRelatedTotal,
+                'project_development' => $projectDevelopment,
+                'project_related' => $projectRelated,
+                'other_capital_outlay_total' => $otherCapitalOutlayTotal,
+                'other_capital_outlay' => $otherCapitalOutlay,
+                'capital_unclassified' => $capitalUnclassified,
+                'coe_total' => $coe['total'],
+                'ps' => $coe['ps'],
+                'mooe' => $coe['mooe'],
+            ]];
+        } catch (\Throwable $e) {
+            App\LogError('BudgetReqCobReportService::buildComponent '.$e->getMessage());
+
+            return ['success' => false, 'httpCode' => 500, 'message' => 'Failed to build the Per Component report.'];
+        }
+    }
+
+    /**
+     * Its own header/row layout — NOT xlsxCommon()/xlsxHeader() (those are hardcoded to the Proposed/
+     * Approved two-column shape every other mode shares; this one has four columns of its own, in
+     * Millions). Same REGION/PROGRAM/PROJECT LOCATION label column and date row as every other mode,
+     * for a consistent look.
+     */
+    public function xlsxComponent(array $m): string
+    {
+        $x = new XlsxWriter('Per Component');
+
+        $s = [
+            'date' => $x->style(['font' => $this->font(['bold' => true, 'color' => self::HEAD])]),
+            'th' => $x->style(['font' => $this->font(['bold' => true, 'color' => 'FFFFFF']), 'fill' => self::HEAD, 'border' => 'FFFFFF',
+                'align' => ['h' => 'center', 'v' => 'center', 'wrap' => true]]),
+            'labelHead' => $x->style(['font' => $this->font(['bold' => true]), 'border' => self::LINE, 'align' => ['h' => 'left', 'v' => 'center', 'wrap' => true]]),
+        ];
+        $totalBase = ['font' => $this->font(['bold' => true]), 'fill' => self::TOTAL_FILL, 'border' => self::LINE];
+        $s['totalLabel'] = $x->style($totalBase + ['align' => ['h' => 'left', 'v' => 'center']]);
+        $s['totalNum'] = $x->style($totalBase + ['align' => ['h' => 'right', 'v' => 'center'], 'numFmt' => self::NUM_FMT_MILLIONS]);
+        $s['labelBold'] = $x->style(['font' => $this->font(['bold' => true]), 'border' => self::LINE, 'align' => ['h' => 'left', 'v' => 'center']]);
+        $s['numBold'] = $x->style(['font' => $this->font(['bold' => true]), 'border' => self::LINE, 'align' => ['h' => 'right', 'v' => 'center'], 'numFmt' => self::NUM_FMT_MILLIONS]);
+        $sLabelLvl = [];
+        foreach ([1, 2, 3] as $lvl) {
+            $sLabelLvl[$lvl] = $x->style(['font' => $this->font(), 'border' => self::LINE, 'align' => ['h' => 'left', 'v' => 'center', 'indent' => $lvl]]);
+        }
+        $sNum = $x->style(['font' => $this->font(), 'border' => self::LINE, 'align' => ['h' => 'right', 'v' => 'center'], 'numFmt' => self::NUM_FMT_MILLIONS]);
+
+        $amountRow = function (int &$r, string $label, array $a, int $labelStyle, int $numStyle) use ($x): void {
+            $x->set($r, 0, $label, $labelStyle);
+            $x->set($r, 1, $a['proposed_budget'] / self::MILLION, $numStyle);
+            $x->set($r, 2, $a['beginning_balance'] / self::MILLION, $numStyle);
+            $x->set($r, 3, $a['new_funds'] / self::MILLION, $numStyle);
+            $x->set($r, 4, $a['accounts_payable'] / self::MILLION, $numStyle);
+            $r++;
+        };
+
+        $r = 0;
+        $x->set($r, 0, $m['fiscal_yr'] !== null ? 'FY '.$m['fiscal_yr'].'   |   '.$m['generated'] : 'All Fiscal Years   |   '.$m['generated'], $s['date']);
+        $x->set($r, 1, 'PROPOSED BUDGET (in Millions)', $s['th']);
+        $x->set($r, 2, 'BEGINNING BALANCE (in Millions)', $s['th']);
+        $x->set($r, 3, 'NEW FUNDS (in Millions)', $s['th']);
+        $x->set($r, 4, 'ACCOUNTS PAYABLE (in Millions)', $s['th']);
+        $x->rowHeight($r, 32);
+        $r++;
+
+        $x->set($r, 0, "REGION/PROGRAM/PROJECT\nLOCATION (City/Municipality)", $s['labelHead']);
+        $x->rowHeight($r, 32);
+        $r++;
+
+        $x->rowHeight($r++, 8);   // spacer rows, same as every other mode's xlsxHeader()
+        $x->rowHeight($r++, 8);
+
+        $amountRow($r, 'TOTAL', $m['grand'], $s['totalLabel'], $s['totalNum']);
+        $amountRow($r, 'CAPITAL OUTLAY', $m['capital_outlay_total'], $s['labelBold'], $s['numBold']);
+        $amountRow($r, 'PROJECT RELATED', $m['project_related_total'], $sLabelLvl[1], $sNum);
+        $amountRow($r, 'Project Development', $m['project_development'], $sLabelLvl[2], $sNum);
+        $amountRow($r, 'New Works', $m['project_related']['New Works'], $sLabelLvl[3], $sNum);
+        $amountRow($r, 'Carry-over Works', $m['project_related']['Carry-over Works'], $sLabelLvl[3], $sNum);
+        $amountRow($r, 'Housing Support', $m['project_related']['Housing Support'], $sLabelLvl[2], $sNum);
+        $amountRow($r, 'Land Acquisition/Assembly', $m['project_related']['Land Acquisition/Assembly'], $sLabelLvl[2], $sNum);
+        $amountRow($r, 'Other Project Related Capital Outlay', $m['project_related']['Other Project Related Capital Outlay'], $sLabelLvl[2], $sNum);
+        if (abs($m['project_related']['Unclassified']['proposed_budget']) >= 0.005) {
+            $amountRow($r, 'Unclassified', $m['project_related']['Unclassified'], $sLabelLvl[2], $sNum);
+        }
+        $amountRow($r, 'OTHER CAPITAL OUTLAY', $m['other_capital_outlay_total'], $sLabelLvl[1], $sNum);
+        $amountRow($r, 'NHA Building Construction and Repair', $m['other_capital_outlay']['NHA Building Construction and Repair'], $sLabelLvl[2], $sNum);
+        $amountRow($r, 'Equipment Outlay', $m['other_capital_outlay']['Equipment Outlay'], $sLabelLvl[2], $sNum);
+        if (abs($m['other_capital_outlay']['Unclassified']['proposed_budget']) >= 0.005) {
+            $amountRow($r, 'Unclassified', $m['other_capital_outlay']['Unclassified'], $sLabelLvl[2], $sNum);
+        }
+        if (abs($m['capital_unclassified']['proposed_budget']) >= 0.005) {
+            $amountRow($r, 'Unclassified', $m['capital_unclassified'], $sLabelLvl[1], $sNum);
+        }
+        $amountRow($r, 'COE', $m['coe_total'], $s['labelBold'], $s['numBold']);
+        $amountRow($r, 'Personnel Services', $m['ps'], $sLabelLvl[1], $sNum);
+        $amountRow($r, 'MOOE', $m['mooe'], $sLabelLvl[1], $sNum);
+
+        $x->colWidth(0, 48);
+        $x->colWidth(1, 20);
+        $x->colWidth(2, 20);
+        $x->colWidth(3, 20);
+        $x->colWidth(4, 20);
+
+        return $x->render();
+    }
+
+    // -------------------------------------------------------------------------
     // HTML ("Preview and Print" → PDF, via GlobalService::renderPdf()) — same
     // models (buildRegion()/buildProgram()) and the same TOTAL / CAPITAL OUTLAY /
     // CORPORATE OPERATING EXPENDITURE structure as the xlsx versions above, just
@@ -861,18 +1537,40 @@ class BudgetReqCobReportService
             . '</body></html>';
     }
 
+    /**
+     * "Per Region" — same shape as htmlComponent() (see buildRegion()'s own doc comment), not built on
+     * htmlDoc() for the same reason htmlComponent() isn't: this report's own four "(in Millions)" columns,
+     * not the Proposed/Amendment/Approved/Amended shape htmlDoc() is hardcoded to.
+     */
     public function htmlRegion(array $m): string
     {
-        $rows = self::htmlRow('TOTAL', $m['grand'], 0, true, true)
-            . self::htmlRow('CAPITAL OUTLAY', $m['co_total'], 0, true);
+        $rows = self::htmlComponentRow('TOTAL', $m['grand'], 0, true, true)
+            . self::htmlComponentRow('CAPITAL OUTLAY', $m['capital_outlay_total'], 0, true)
+            . self::htmlComponentRow('PROJECT RELATED', $m['project_related_total'], 1)
+            . self::htmlComponentRow('Project Development', $m['project_development'], 2);
         foreach ($m['regions'] as $rg) {
-            $rows .= self::htmlRow($rg['label'], $rg, 1);
+            $rows .= self::htmlComponentRow($rg['label'], $rg, 3);
         }
-        $rows .= self::htmlRow('CORPORATE OPERATING EXPENDITURE', $m['coe_total'], 0, true)
-            . self::htmlRow('Personnel Services', $m['ps'], 1)
-            . self::htmlRow('MOOE', $m['mooe'], 1);
+        $rows .= self::htmlComponentRow('Housing Support', $m['project_related_other']['Housing Support'], 2)
+            . self::htmlComponentRow('Land Acquisition/Assembly', $m['project_related_other']['Land Acquisition/Assembly'], 2)
+            . self::htmlComponentRow('Other Project Related Capital Outlay', $m['project_related_other']['Other Project Related Capital Outlay'], 2);
+        if (abs($m['project_related_other']['Unclassified']['proposed_budget']) >= 0.005) {
+            $rows .= self::htmlComponentRow('Unclassified', $m['project_related_other']['Unclassified'], 2);
+        }
+        $rows .= self::htmlComponentRow('OTHER CAPITAL OUTLAY', $m['other_capital_outlay_total'], 1)
+            . self::htmlComponentRow('NHA Building Construction and Repair', $m['other_capital_outlay']['NHA Building Construction and Repair'], 2)
+            . self::htmlComponentRow('Equipment Outlay', $m['other_capital_outlay']['Equipment Outlay'], 2);
+        if (abs($m['other_capital_outlay']['Unclassified']['proposed_budget']) >= 0.005) {
+            $rows .= self::htmlComponentRow('Unclassified', $m['other_capital_outlay']['Unclassified'], 2);
+        }
+        if (abs($m['capital_unclassified']['proposed_budget']) >= 0.005) {
+            $rows .= self::htmlComponentRow('Unclassified', $m['capital_unclassified'], 1);
+        }
+        $rows .= self::htmlComponentRow('COE', $m['coe_total'], 0, true)
+            . self::htmlComponentRow('Personnel Services', $m['ps'], 1)
+            . self::htmlComponentRow('MOOE', $m['mooe'], 1);
 
-        return $this->htmlDoc('Per Region', $m, $rows);
+        return $this->htmlComponentDoc('Per Region', $m, $rows);
     }
 
     public function htmlProgram(array $m): string
@@ -895,19 +1593,46 @@ class BudgetReqCobReportService
         return $this->htmlDoc('Per Program', $m, $rows);
     }
 
-    /** Same shape as htmlRegion() — one row per Program instead of per Region. */
+    /**
+     * "Per Program" — same shape as htmlComponent()/htmlRegion() (see buildProgramSummary()'s own doc
+     * comment), except "Project Development" nests a full Program -> Sub-Program -> Project tree (indents
+     * 3/4/5) instead of a flat Region list or New Works/Carry-over Works.
+     */
     public function htmlProgramSummary(array $m): string
     {
-        $rows = self::htmlRow('TOTAL', $m['grand'], 0, true, true)
-            . self::htmlRow('CAPITAL OUTLAY', $m['co_total'], 0, true);
+        $rows = self::htmlComponentRow('TOTAL', $m['grand'], 0, true, true)
+            . self::htmlComponentRow('CAPITAL OUTLAY', $m['capital_outlay_total'], 0, true)
+            . self::htmlComponentRow('PROJECT RELATED', $m['project_related_total'], 1)
+            . self::htmlComponentRow('Project Development', $m['project_development'], 2);
         foreach ($m['programs'] as $prog) {
-            $rows .= self::htmlRow($prog['label'], $prog, 1);
+            $rows .= self::htmlComponentRow($prog['label'], $prog, 3);
+            foreach ($prog['subPrograms'] as $sub) {
+                $rows .= self::htmlComponentRow($sub['label'], $sub, 4);
+                foreach ($sub['projects'] as $proj) {
+                    $rows .= self::htmlComponentRow($proj['label'], $proj, 5);
+                }
+            }
         }
-        $rows .= self::htmlRow('CORPORATE OPERATING EXPENDITURE', $m['coe_total'], 0, true)
-            . self::htmlRow('Personnel Services', $m['ps'], 1)
-            . self::htmlRow('MOOE', $m['mooe'], 1);
+        $rows .= self::htmlComponentRow('Housing Support', $m['project_related_other']['Housing Support'], 2)
+            . self::htmlComponentRow('Land Acquisition/Assembly', $m['project_related_other']['Land Acquisition/Assembly'], 2)
+            . self::htmlComponentRow('Other Project Related Capital Outlay', $m['project_related_other']['Other Project Related Capital Outlay'], 2);
+        if (abs($m['project_related_other']['Unclassified']['proposed_budget']) >= 0.005) {
+            $rows .= self::htmlComponentRow('Unclassified', $m['project_related_other']['Unclassified'], 2);
+        }
+        $rows .= self::htmlComponentRow('OTHER CAPITAL OUTLAY', $m['other_capital_outlay_total'], 1)
+            . self::htmlComponentRow('NHA Building Construction and Repair', $m['other_capital_outlay']['NHA Building Construction and Repair'], 2)
+            . self::htmlComponentRow('Equipment Outlay', $m['other_capital_outlay']['Equipment Outlay'], 2);
+        if (abs($m['other_capital_outlay']['Unclassified']['proposed_budget']) >= 0.005) {
+            $rows .= self::htmlComponentRow('Unclassified', $m['other_capital_outlay']['Unclassified'], 2);
+        }
+        if (abs($m['capital_unclassified']['proposed_budget']) >= 0.005) {
+            $rows .= self::htmlComponentRow('Unclassified', $m['capital_unclassified'], 1);
+        }
+        $rows .= self::htmlComponentRow('COE', $m['coe_total'], 0, true)
+            . self::htmlComponentRow('Personnel Services', $m['ps'], 1)
+            . self::htmlComponentRow('MOOE', $m['mooe'], 1);
 
-        return $this->htmlDoc('Program', $m, $rows);
+        return $this->htmlComponentDoc('Program', $m, $rows);
     }
 
     /** Same tree as htmlProgram(), one level deeper (each Project's own line items), and the CORPORATE
@@ -941,6 +1666,107 @@ class BudgetReqCobReportService
         }
 
         return $this->htmlDoc('Detailed', $m, $rows);
+    }
+
+    /** Same shape as fmtAmt(), but divided into Millions first and shown to 3 decimals instead of 2 — "Per
+     *  Component" only (see buildComponent()'s own doc comment for why). */
+    private static function fmtAmtMillions(float $v): string
+    {
+        $v /= self::MILLION;
+        if (abs($v) < 0.0005) {
+            return '-';
+        }
+        $s = number_format(abs($v), 3);
+
+        return $v < 0 ? "({$s})" : $s;
+    }
+
+    /** Same idea as htmlRow(), but "Per Component"'s own four columns (proposed_budget/beginning_balance/
+     *  new_funds/accounts_payable) instead of the proposed/amendment/approved/amended every other mode
+     *  shows — not reused from htmlRow() since that one is hardcoded to the other shape. */
+    private static function htmlComponentRow(string $label, array $a, int $indent = 0, bool $bold = false, bool $fill = false): string
+    {
+        $class = trim(($bold ? 'b ' : '') . ($fill ? 'fill' : ''));
+        $style = $indent > 0 ? ' style="padding-left:' . (8 + $indent * 16) . 'px"' : '';
+
+        return '<tr' . ($class !== '' ? ' class="' . $class . '"' : '') . '>'
+            . '<td' . $style . '>' . self::esc($label) . '</td>'
+            . '<td class="n">' . self::fmtAmtMillions($a['proposed_budget']) . '</td>'
+            . '<td class="n">' . self::fmtAmtMillions($a['beginning_balance']) . '</td>'
+            . '<td class="n">' . self::fmtAmtMillions($a['new_funds']) . '</td>'
+            . '<td class="n">' . self::fmtAmtMillions($a['accounts_payable']) . '</td>'
+            . '</tr>';
+    }
+
+    /**
+     * "Per Component" — not built on htmlDoc() (that one's <thead> is hardcoded to the Proposed/Amendment/
+     * Approved/Amended shape); its own near-identical page shell, just with this report's own four
+     * "(in Millions)" column headers instead.
+     */
+    public function htmlComponent(array $m): string
+    {
+        $rows = self::htmlComponentRow('TOTAL', $m['grand'], 0, true, true)
+            . self::htmlComponentRow('CAPITAL OUTLAY', $m['capital_outlay_total'], 0, true)
+            . self::htmlComponentRow('PROJECT RELATED', $m['project_related_total'], 1)
+            . self::htmlComponentRow('Project Development', $m['project_development'], 2)
+            . self::htmlComponentRow('New Works', $m['project_related']['New Works'], 3)
+            . self::htmlComponentRow('Carry-over Works', $m['project_related']['Carry-over Works'], 3)
+            . self::htmlComponentRow('Housing Support', $m['project_related']['Housing Support'], 2)
+            . self::htmlComponentRow('Land Acquisition/Assembly', $m['project_related']['Land Acquisition/Assembly'], 2)
+            . self::htmlComponentRow('Other Project Related Capital Outlay', $m['project_related']['Other Project Related Capital Outlay'], 2);
+        if (abs($m['project_related']['Unclassified']['proposed_budget']) >= 0.005) {
+            $rows .= self::htmlComponentRow('Unclassified', $m['project_related']['Unclassified'], 2);
+        }
+        $rows .= self::htmlComponentRow('OTHER CAPITAL OUTLAY', $m['other_capital_outlay_total'], 1)
+            . self::htmlComponentRow('NHA Building Construction and Repair', $m['other_capital_outlay']['NHA Building Construction and Repair'], 2)
+            . self::htmlComponentRow('Equipment Outlay', $m['other_capital_outlay']['Equipment Outlay'], 2);
+        if (abs($m['other_capital_outlay']['Unclassified']['proposed_budget']) >= 0.005) {
+            $rows .= self::htmlComponentRow('Unclassified', $m['other_capital_outlay']['Unclassified'], 2);
+        }
+        if (abs($m['capital_unclassified']['proposed_budget']) >= 0.005) {
+            $rows .= self::htmlComponentRow('Unclassified', $m['capital_unclassified'], 1);
+        }
+        $rows .= self::htmlComponentRow('COE', $m['coe_total'], 0, true)
+            . self::htmlComponentRow('Personnel Services', $m['ps'], 1)
+            . self::htmlComponentRow('MOOE', $m['mooe'], 1);
+
+        return $this->htmlComponentDoc('Per Component', $m, $rows);
+    }
+
+    /**
+     * Shared by htmlComponent()/htmlRegion() — NOT htmlDoc() (that one's <thead> is hardcoded to the
+     * Proposed/Amendment/Approved/Amended shape every other mode shows); this is the same page shell,
+     * just with this report's own four "(in Millions)" column headers instead.
+     */
+    private function htmlComponentDoc(string $title, array $m, string $rows): string
+    {
+        $dateLine = $m['fiscal_yr'] !== null ? 'FY ' . $m['fiscal_yr'] : 'All Fiscal Years';
+
+        return '<!doctype html><html><head><meta charset="utf-8"><title>' . self::esc($title) . '</title><style>'
+            . 'body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#1A1B21;margin:0}'
+            . 'h1{font-size:14pt;margin:0 0 2px;color:#1F497D}'
+            . 'p.meta{margin:0 0 12px;color:#62657E;font-size:9pt}'
+            . 'table{border-collapse:collapse;width:100%}'
+            . 'th{background:#1F497D;color:#fff;text-align:left;padding:5px 6px;font-size:8.5pt}'
+            . 'th.n{text-align:right;white-space:nowrap}'
+            . 'td{padding:4px 6px;border-bottom:1px solid #D9D9D9;vertical-align:top}'
+            . 'td.n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}'
+            . 'tr.b td{font-weight:bold}'
+            . 'tr.fill td{background:#D9D9D9}'
+            . 'tr{page-break-inside:avoid}'
+            . 'thead{display:table-header-group}'
+            . '@page{margin:10mm}'
+            . '</style></head><body>'
+            . '<h1>' . self::esc($title) . ' — National Housing Authority</h1>'
+            . '<p class="meta">' . self::esc($dateLine) . ' &nbsp;|&nbsp; Generated ' . self::esc($m['generated']) . '</p>'
+            . '<table><thead><tr><th>Region/Program/Project</th>'
+            . '<th class="n">Proposed Budget (in Millions)</th>'
+            . '<th class="n">Beginning Balance (in Millions)</th>'
+            . '<th class="n">New Funds (in Millions)</th>'
+            . '<th class="n">Accounts Payable (in Millions)</th>'
+            . '</tr></thead>'
+            . '<tbody>' . $rows . '</tbody></table>'
+            . '</body></html>';
     }
 
     // -------------------------------------------------------------------------
