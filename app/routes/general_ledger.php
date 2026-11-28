@@ -198,6 +198,30 @@ $app->get('/general_ledger/postings', function ($request, $response, $args) use 
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
+// Schedule of one GL account as of a date — its balance by Sector / Region → office → project → contract (the NHA
+// "SCHEDULE OF …" report). Required: account_code, as_of (YYYY-MM-DD). Optional: book_id. See GeneralLedgerService::fetchSchedule().
+$app->get('/general_ledger/schedule', function ($request, $response, $args) use ($GeneralLedgerService, $glIntOrNull) {
+    try {
+        $params      = $request->getQueryParams();
+        $accountCode = trim((string) ($params['account_code'] ?? ''));
+        $asOf        = trim((string) ($params['as_of'] ?? ''));
+        if ($accountCode === '') {
+            return $response->withJson(['success' => false, 'message' => 'account_code is required.'], 400);
+        }
+        $d = \DateTime::createFromFormat('!Y-m-d', $asOf);
+        if (!$d || $d->format('Y-m-d') !== $asOf) {
+            return $response->withJson(['success' => false, 'message' => 'as_of must be a date (YYYY-MM-DD).'], 400);
+        }
+        $result = $GeneralLedgerService->fetchSchedule($accountCode, $asOf, $glIntOrNull($params['book_id'] ?? null));
+
+        return $response->withJson($result, $result['success'] ? 200 : 400);
+    } catch (\Exception $e) {
+        LogError('GET /general_ledger/schedule ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
 // Subsidiary Ledger — one SL account's ledger card with a running balance, or (sl_code omitted)
 // every SL account's ledger card at once — the page's default view before one is picked. An "SL
 // account" is a child fims.chart_of_accounts row (parent_account_id IS NOT NULL) under a control

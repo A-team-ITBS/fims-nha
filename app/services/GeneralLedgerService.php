@@ -67,6 +67,8 @@ class GeneralLedgerService
     private string $tableCoa        = 'fims.chart_of_accounts';
     private string $tableDv               = 'fims.disbursement_vouchers';
     private string $tableChecks           = 'fims.checks';
+    private string $tableRc               = 'fims.responsibility_code';
+    private string $tableUsers            = 'uac.users';
     private string $tableBankAccounts     = 'fims.bank_accounts';
     private string $tableAdaReleases      = 'fims.ada_releases';
     private string $tableOfficialReceipts      = 'fims.official_receipts';
@@ -932,6 +934,84 @@ class GeneralLedgerService
             App\LogError('GeneralLedgerService::fetchGlSubLedgers ' . $e->getMessage());
 
             return ['success' => false, 'message' => 'Failed to fetch the sub-ledgers of this account.'];
+        }
+    }
+
+    /**
+     * Schedule of one GL account (e.g. SCHEDULE OF CONSTRUCTION IN PROGRESS) as of a date — its balance broken down by
+     * Sector / Region → office → project / location → contract, the layout of the NHA accounting schedules.
+     *   group    : the posting's responsibility center (general_ledger.rc_id, else the office of the user who created its DV);
+     *              a District Office rolls up to its parent (the Regional / Sector office), any other office is its own
+     *              group. No responsibility center at all → UNASSIGNED.
+     *   location : the SL account posted to (else the DV's dept/project), under the office.
+     *   contract : the DV's claimant (contractor) + the particulars of its earliest DV on that line.
+     * Every posting up to $asOf (all fiscal years — a balance, not a period) of the GL and its SLs, optionally one book.
+     * Lines that net to zero are kept (`amount` 0), so a fully paid contract still shows.
+     */
+    public function fetchSchedule(string $accountCode, string $asOf, ?int $bookId = null): array
+    {
+        try {
+            $account = App\ExecuteRow(
+                "SELECT account_code, account_title, account_type FROM {$this->tableCoa} WHERE account_code = " . $this->str($accountCode),
+                'DB'
+            );
+            if (!$account) {
+                return ['success' => false, 'message' => "Account code '{$accountCode}' does not exist in the chart of accounts."];
+            }
+            $debitNormal = in_array($account['account_type'], self::DEBIT_NORMAL_TYPES, true);
+            $signV       = $debitNormal ? '(v.debit - v.credit)' : '(v.credit - v.debit)';
+            $code        = $this->str($accountCode);
+            $where       = ["(g.account_code = {$code} OR v.account_code = {$code})", 'v.posting_date <= ' . $this->str($asOf) . '::date'];
+            if ($bookId !== null) {
+                $where[] = 'v.book_id = ' . (int) $bookId;
+            }
+            $rows = App\ExecuteRows(
+                $this->glRollupCte() . ",
+                 lines AS (
+                    SELECT CASE WHEN r.rc_id IS NULL THEN NULL WHEN r.office_type = 'District' AND rp.rc_id IS NOT NULL THEN rp.rc_id ELSE r.rc_id END AS group_rc_id,
+                           CASE WHEN r.rc_id IS NULL THEN NULL WHEN r.office_type = 'District' AND rp.rc_id IS NOT NULL THEN rp.rc_name ELSE r.rc_name END AS group_name,
+                           r.rc_id, r.rc_name,
+                           CASE WHEN v.account_code <> g.account_code THEN v.account_code END AS sl_account_code,
+                           CASE WHEN v.account_code <> g.account_code THEN lc.account_title ELSE NULLIF(TRIM(d.dept_project), '') END AS location,
+                           COALESCE(NULLIF(TRIM(d.claimant_name), ''), '') AS contractor,
+                           NULLIF(TRIM(d.particulars), '') AS particulars,
+                           {$signV} AS amt, v.posting_date, v.gl_id
+                    FROM {$this->tableViewJournals} v
+                    JOIN {$this->tableCoa} lc ON lc.account_code = v.account_code
+                    JOIN gl_of ON gl_of.leaf_id = lc.account_id
+                    JOIN {$this->tableCoa} g ON g.account_id = gl_of.gl_account_id
+                    LEFT JOIN {$this->tableDv} d ON d.dv_no = v.dv_no
+                    LEFT JOIN {$this->tableUsers} u ON u.user_id = d.created_by
+                    LEFT JOIN {$this->tableRc} r ON r.rc_id = COALESCE(v.rc_id, u.rc_id)
+                    LEFT JOIN {$this->tableRc} rp ON rp.rc_id = r.parent_rc_id
+                    WHERE " . implode(' AND ', $where) . "
+                 )
+                 SELECT group_rc_id, group_name, rc_id, rc_name, sl_account_code, location, contractor,
+                        (ARRAY_AGG(particulars ORDER BY posting_date, gl_id) FILTER (WHERE particulars IS NOT NULL))[1] AS particulars,
+                        ROUND(SUM(amt), 2) AS amount
+                 FROM lines
+                 GROUP BY group_rc_id, group_name, rc_id, rc_name, sl_account_code, location, contractor
+                 ORDER BY group_rc_id NULLS LAST, rc_id NULLS LAST, sl_account_code NULLS FIRST, location, contractor",
+                'DB'
+            ) ?: [];
+            foreach ($rows as &$r) {
+                $r['amount'] = (float) $r['amount'];
+            }
+            unset($r);
+
+            return [
+                'success'        => true,
+                'account'        => $account,
+                'debit_normal'   => $debitNormal,
+                'normal_balance' => $debitNormal ? 'DEBIT' : 'CREDIT',
+                'as_of'          => $asOf,
+                'data'           => $rows,
+                'total'          => round(array_sum(array_column($rows, 'amount')), 2),
+            ];
+        } catch (\Exception $e) {
+            App\LogError('GeneralLedgerService::fetchSchedule ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to fetch the schedule of this account.'];
         }
     }
 
